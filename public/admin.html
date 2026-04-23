@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ehoser shop - Admin Upload</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="bg-shape bg-shape-1"></div>
+    <div class="bg-shape bg-shape-2"></div>
+
+    <div class="container">
+        <nav class="navbar">
+            <div class="navbar-content">
+                <div class="logo">
+                    <span class="logo-icon">E</span>
+                    <h1>ehoser shop admin</h1>
+                </div>
+                <div class="nav-links">
+                    <a class="nav-link" href="index.html">Zum Store</a>
+                </div>
+            </div>
+        </nav>
+
+        <main class="admin-wrapper">
+            <section class="admin-card">
+                <h2>Neue App hochladen</h2>
+                <p class="admin-help">Hier lädst du Icon, APK, Beschreibung und Quellenlink hoch. Die App erscheint danach direkt im Store.</p>
+
+                <form id="uploadForm">
+                    <div class="form-group">
+                        <label for="accessCode">Admin Zugangscode*</label>
+                        <input id="accessCode" name="accessCode" type="password" placeholder="Nils2014!" required>
+                        <small>Nur mit diesem Code ist Upload erlaubt.</small>
+                    </div>
+
+                    <div class="upload-row">
+                        <div class="form-group">
+                            <label for="name">App Name*</label>
+                            <input id="name" name="name" type="text" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="version">Version*</label>
+                            <input id="version" name="version" type="text" placeholder="1.0.0" required>
+                        </div>
+                    </div>
+
+                    <div class="upload-row">
+                        <div class="form-group">
+                            <label for="category">Kategorie*</label>
+                            <select id="category" name="category" required>
+                                <option value="">Bitte wählen</option>
+                                <option>Grafik</option>
+                                <option>Entwicklung</option>
+                                <option>Video</option>
+                                <option>Produktivität</option>
+                                <option>Sicherheit</option>
+                                <option>Cloud</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="sourceUrl">Quell-Seite (andere Seite)</label>
+                            <input id="sourceUrl" name="sourceUrl" type="url" placeholder="https://deine-seite.de/app-detail">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Beschreibung*</label>
+                        <textarea id="description" name="description" required></textarea>
+                    </div>
+
+                    <div class="upload-row">
+                        <div class="form-group">
+                            <label for="icon">Icon Datei*</label>
+                            <input id="icon" name="icon" type="file" accept="image/*" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="apk">APK Datei*</label>
+                            <input id="apk" name="apk" type="file" accept=".apk,application/vnd.android.package-archive" required>
+                        </div>
+                    </div>
+
+                    <div class="admin-actions">
+                        <button class="btn-primary" type="submit">App veröffentlichen</button>
+                        <a href="index.html" class="btn-secondary">Zurück zum Store</a>
+                    </div>
+                </form>
+
+                <div id="uploadStatus"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ehoser shop - Professioneller App Store</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="bg-shape bg-shape-1"></div>
+    <div class="bg-shape bg-shape-2"></div>
+    <div class="container">
+        <nav class="navbar">
+            <div class="navbar-content">
+                <div class="logo">
+                    <span class="logo-icon">E</span>
+                    <h1>ehoser shop</h1>
+                </div>
+                <div class="nav-links" id="navLinks">
+                    <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
+                    <a href="admin.html" class="nav-link">App hochladen</a>
+                </div>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <section id="auth" class="section active">
+                <div class="auth-container">
+                    <div class="hero-copy">
+                        <p class="eyebrow">Geschlossener Premium App Store</p>
+                        <h2>Installiere kuratierte Apps in Sekunden.</h2>
+                        <p>Nur Mitglieder mit Zugangscode sehen den ehoser shop. Nach dem Beitritt kannst du direkt Apps entdecken, installieren und verwalten.</p>
+                        <div class="hero-pills">
+                            <span>Sicherer Zugang</span>
+                            <span>APK Downloads</span>
+                            <span>Admin Uploads</span>
+                        </div>
+                    </div>
+                    <div class="auth-card">
+                        <h2>Willkommen bei ehoser shop</h2>
+                        <p class="auth-subtitle">Exklusiver App Store für Mitglieder</p>
+                        
+                        <form id="registerForm" onsubmit="handleRegister(event)">
+                            <div class="form-group">
+                                <label for="accessCode">Zugangscode*</label>
+                                <input 
+                                    type="password" 
+                                    id="accessCode" 
+                                    placeholder="Dein Zugangscode" 
+                                    required
+                                    minlength="6"
+                                >
+                                <small>Der Zugangscode kommt aus deiner Datenbank oder Admin-Verwaltung.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="username">Benutzername*</label>
+                                <input 
+                                    type="text" 
+                                    id="username" 
+                                    placeholder="Dein Benutzername" 
+                                    required
+                                    minlength="3"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="email">E-Mail</label>
+                                <input 
+                                    type="email" 
+                                    id="email" 
+                                    placeholder="Deine E-Mail-Adresse"
+                                >
+                            </div>
+
+                            <button type="submit" class="btn-primary">Beitreten & Zugang Erhalten</button>
+                        </form>
+
+                        <div class="auth-info">
+                            <h3>Warum ein Zugangscode?</h3>
+                            <p>Du steuerst exakt, wer den Store nutzen darf. Nur freigegebene Nutzer sehen die Inhalte und App-Downloads.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="store" class="section">
+                <div class="store-header">
+                    <h2>Store Bibliothek</h2>
+                    <div class="search-bar">
+                        <input 
+                            type="text" 
+                            id="searchInput" 
+                            placeholder="Apps durchsuchen..."
+                            onkeyup="filterApps()"
+                        >
+                    </div>
+                </div>
+
+                <div class="category-filter">
+                    <button class="filter-btn active" onclick="filterByCategory('all', event)">Alle</button>
+                    <button class="filter-btn" onclick="filterByCategory('Grafik', event)">Grafik</button>
+                    <button class="filter-btn" onclick="filterByCategory('Entwicklung', event)">Entwicklung</button>
+                    <button class="filter-btn" onclick="filterByCategory('Video', event)">Video</button>
+                    <button class="filter-btn" onclick="filterByCategory('Produktivität', event)">Produktivität</button>
+                    <button class="filter-btn" onclick="filterByCategory('Sicherheit', event)">Sicherheit</button>
+                    <button class="filter-btn" onclick="filterByCategory('Cloud', event)">Cloud</button>
+                </div>
+
+                <div id="appsList" class="apps-grid">
+                </div>
+            </section>
+
+            <section id="my-apps" class="section">
+                <h2>Meine Installationen</h2>
+                <div id="myAppsList" class="apps-grid">
+                </div>
+            </section>
+        </main>
+
+        <div id="appModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <div id="modalBody"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
