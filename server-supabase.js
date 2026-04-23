@@ -227,113 +227,74 @@ app.get('/api/apps/:id', async (req, res) => {
   }
 });
 
-// Neue App hochladen (Admin)
-app.post('/api/admin/apps', upload.fields([{ name: 'icon', maxCount: 1 }, { name: 'apk', maxCount: 1 }]), async (req, res) => {
+// Signed Upload URLs generieren (Dateien werden direkt vom Browser zu Supabase hochgeladen)
+app.post('/api/admin/upload-url', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
     return res.status(401).json({ error: 'Ungültiger Admin-Key' });
   }
 
-  const { name, description, category, version, sourceUrl } = req.body;
-  const iconFile = req.files?.icon?.[0];
-  const apkFile = req.files?.apk?.[0];
+  const { iconName, apkName } = req.body;
+  if (!iconName || !apkName) {
+    return res.status(400).json({ error: 'iconName und apkName erforderlich' });
+  }
+
+  const safe = (n) => n.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const ts = Date.now();
+  const iconPath = `${ts}-${safe(iconName)}`;
+  const apkPath = `${ts + 1}-${safe(apkName)}`;
+
+  try {
+    const [iconResult, apkResult] = await Promise.all([
+      supabase.storage.from('app-icons').createSignedUploadUrl(iconPath),
+      supabase.storage.from('app-apks').createSignedUploadUrl(apkPath)
+    ]);
+
+    if (iconResult.error) throw new Error('Icon URL: ' + iconResult.error.message);
+    if (apkResult.error) throw new Error('APK URL: ' + apkResult.error.message);
+
+    const iconPublicUrl = supabase.storage.from('app-icons').getPublicUrl(iconPath).data.publicUrl;
+    const apkPublicUrl = supabase.storage.from('app-apks').getPublicUrl(apkPath).data.publicUrl;
+
+    res.json({
+      icon: { signedUrl: iconResult.data.signedUrl, publicUrl: iconPublicUrl },
+      apk: { signedUrl: apkResult.data.signedUrl, publicUrl: apkPublicUrl }
+    });
+  } catch (error) {
+    console.error('Upload URL Error:', error);
+    res.status(500).json({ error: error.message || 'Fehler beim Erstellen der Upload-URLs' });
+  }
+});
+
+// Neue App speichern (nur Metadaten, Dateien wurden direkt zu Supabase hochgeladen)
+app.post('/api/admin/apps', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const { name, description, category, version, sourceUrl, iconUrl, downloadUrl } = req.body;
 
   if (!name || !description || !category || !version) {
     return res.status(400).json({ error: 'Bitte alle Pflichtfelder ausfüllen.' });
   }
 
-  if (!iconFile || !apkFile) {
-    return res.status(400).json({ error: 'Icon und APK sind Pflicht.' });
+  if (!iconUrl || !downloadUrl) {
+    return res.status(400).json({ error: 'Icon und APK URLs sind Pflicht.' });
   }
 
   try {
-    // Upload Icon zu Supabase Storage
-    const iconFileName = `${Date.now()}-${iconFile.originalname}`;
-    const iconBuffer = fs.readFileSync(iconFile.path);
-    const { error: iconError } = await supabase.storage
-      .from('app-icons')
-      .upload(iconFileName, iconBuffer, {
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (iconError) {
-      console.error('Icon Upload Error:', iconError);
-      throw new Error('Icon Upload fehlgeschlagen');
-    }
-
-    // Upload APK zu Supabase Storage
-    const apkFileName = `${Date.now()}-${apkFile.originalname}`;
-    const apkBuffer = fs.readFileSync(apkFile.path);
-    const { error: apkError } = await supabase.storage
-      .from('app-apks')
-      .upload(apkFileName, apkBuffer, {
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (apkError) {
-      console.error('APK Upload Error:', apkError);
-      throw new Error('APK Upload fehlgeschlagen');
-    }
-
-    // Öffentliche URLs generieren
-    const { data: iconData } = supabase.storage
-      .from('app-icons')
-      .getPublicUrl(iconFileName);
-    const iconUrl = iconData.publicUrl;
-
-    const { data: apkData } = supabase.storage
-      .from('app-apks')
-      .getPublicUrl(apkFileName);
-    const downloadUrl = apkData.publicUrl;
-
-    // App in Datenbank speichern
     const { data, error: insertError } = await supabase
       .from('apps')
-      .insert([
-        {
-          name,
-          description,
-          category,
-          version,
-          icon_url: iconUrl,
-          download_url: downloadUrl,
-          source_url: sourceUrl || null
-        }
-      ])
+      .insert([{ name, description, category, version, icon_url: iconUrl, download_url: downloadUrl, source_url: sourceUrl || null }])
       .select();
 
-    if (insertError) {
-      console.error('Insert Error:', insertError);
-      throw insertError;
-    }
+    if (insertError) throw insertError;
 
-    // Temp Files löschen
-    try {
-      fs.unlinkSync(iconFile.path);
-      fs.unlinkSync(apkFile.path);
-    } catch (e) {
-      // Ignorieren
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'App erfolgreich hochgeladen.',
-      app: data[0]
-    });
+    res.status(201).json({ success: true, message: 'App erfolgreich gespeichert.', app: data[0] });
   } catch (error) {
-    console.error('Admin Upload Error:', error);
-    
-    // Temp Files löschen im Error-Fall
-    try {
-      if (iconFile) fs.unlinkSync(iconFile.path);
-      if (apkFile) fs.unlinkSync(apkFile.path);
-    } catch (e) {
-      // Ignorieren
-    }
-
-    res.status(500).json({ error: error.message || 'Fehler beim Hochladen' });
+    console.error('Admin Save Error:', error);
+    res.status(500).json({ error: error.message || 'Fehler beim Speichern' });
   }
 });
 
