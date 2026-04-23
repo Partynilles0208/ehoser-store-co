@@ -29,8 +29,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// File Upload (temp folder)
-const uploadsRoot = path.join(__dirname, 'uploads');
+// File Upload (temp folder) — /tmp auf Vercel, lokaler Ordner sonst
+const uploadsRoot = process.env.VERCEL ? '/tmp' : path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadsRoot, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -368,8 +368,12 @@ app.use((err, req, res, next) => {
   next();
 });
 
-// Server starten
-app.listen(PORT, () => {
-  console.log(`🚀 ehoser shop läuft auf http://localhost:${PORT}`);
-  console.log(`📊 Connected to Supabase: ${SUPABASE_URL}`);
-});
+// Server starten (lokal) oder als Vercel-Handler exportieren
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 ehoser shop läuft auf http://localhost:${PORT}`);
+    console.log(`📊 Connected to Supabase: ${SUPABASE_URL}`);
+  });
+}
+
+module.exports = app;
