@@ -128,7 +128,8 @@ app.post('/api/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Register Error:', error);
-    res.status(500).json({ error: 'Registrierung fehlgeschlagen' });
+    const msg = error?.message || error?.details || error?.hint || JSON.stringify(error) || 'Unbekannter Fehler';
+    res.status(500).json({ error: `Registrierung fehlgeschlagen: ${msg}` });
   }
 });
 
