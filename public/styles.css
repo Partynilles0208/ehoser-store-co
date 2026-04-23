@@ -219,6 +219,29 @@ body {
     padding: 26px;
 }
 
+.auth-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 9px;
+    border: none;
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--muted);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.auth-tab.active {
+    background: var(--accent);
+    color: #fff;
+}
+
 .auth-card h2 {
     margin: 0;
     font-size: 1.5rem;

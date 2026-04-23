@@ -42,7 +42,12 @@
                     <div class="auth-card">
                         <h2>Willkommen bei ehoser shop</h2>
                         <p class="auth-subtitle">Exklusiver App Store für Mitglieder</p>
-                        
+
+                        <div class="auth-tabs">
+                            <button class="auth-tab active" onclick="switchAuthTab('register', this)">Registrieren</button>
+                            <button class="auth-tab" onclick="switchAuthTab('login', this)">Anmelden</button>
+                        </div>
+
                         <form id="registerForm" onsubmit="handleRegister(event)">
                             <div class="form-group">
                                 <label for="accessCode">Zugangscode*</label>
@@ -53,7 +58,7 @@
                                     required
                                     minlength="6"
                                 >
-                                <small>Der Zugangscode kommt aus deiner Datenbank oder Admin-Verwaltung.</small>
+                                <small>Den Zugangscode bekommst du vom Admin.</small>
                             </div>
 
                             <div class="form-group">
@@ -77,6 +82,31 @@
                             </div>
 
                             <button type="submit" class="btn-primary">Beitreten & Zugang Erhalten</button>
+                        </form>
+
+                        <form id="loginForm" onsubmit="handleLogin(event)" style="display:none">
+                            <div class="form-group">
+                                <label for="loginUsername">Benutzername*</label>
+                                <input 
+                                    type="text" 
+                                    id="loginUsername" 
+                                    placeholder="Dein Benutzername" 
+                                    required
+                                    minlength="3"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label for="loginCode">Zugangscode*</label>
+                                <input 
+                                    type="password" 
+                                    id="loginCode" 
+                                    placeholder="Dein Zugangscode" 
+                                    required
+                                    minlength="6"
+                                >
+                                <small>Derselbe Zugangscode den du bei der Registrierung verwendet hast.</small>
+                            </div>
+                            <button type="submit" class="btn-primary">Anmelden</button>
                         </form>
 
                         <div class="auth-info">
