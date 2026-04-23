@@ -12,6 +12,43 @@
     --danger: #b63f2d;
     --shadow: 0 20px 40px rgba(4, 21, 32, 0.22);
     --radius: 18px;
+    --accent: #0e8a9b;
+}
+
+.online-widget {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 16px;
+    box-shadow: var(--shadow);
+    z-index: 1000;
+    min-width: 140px;
+    max-width: 200px;
+}
+
+.online-header {
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+    color: var(--text);
+}
+
+.online-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.online-list li::before {
+    content: "● ";
+    color: #22c55e;
+    font-size: 0.6rem;
+    vertical-align: middle;
 }
 
 * {
