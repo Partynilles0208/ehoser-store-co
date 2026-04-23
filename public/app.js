@@ -407,8 +407,12 @@ async function fetchOnlineUsers() {
         const users = await res.json();
         const widget = document.getElementById('onlineWidget');
         const list = document.getElementById('onlineList');
-        widget.style.display = users.length ? '' : 'none';
-        list.innerHTML = users.map(u => `<li>${escapeHtml(u.username)}</li>`).join('');
+        widget.style.display = '';
+        if (users.length === 0) {
+            list.innerHTML = '<li style="color:var(--muted)">Niemand online</li>';
+        } else {
+            list.innerHTML = users.map(u => `<li>${escapeHtml(u.username)}</li>`).join('');
+        }
     } catch {}
 }
 
