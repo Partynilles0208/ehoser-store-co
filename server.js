@@ -11,7 +11,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const ADMIN_UPLOAD_KEY = process.env.ADMIN_UPLOAD_KEY || 'change-this-admin-key';
-const uploadsRoot = path.join(__dirname, 'uploads');
+const isVercel = Boolean(process.env.VERCEL);
+const uploadsRoot = isVercel ? '/tmp/uploads' : path.join(__dirname, 'uploads');
 const iconsDir = path.join(uploadsRoot, 'icons');
 const apksDir = path.join(uploadsRoot, 'apks');
 
@@ -74,7 +75,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadsRoot));
 
 // Datenbank initialisieren
-const db = new sqlite3.Database('./store.db', (err) => {
+const databasePath = isVercel ? '/tmp/store.db' : path.join(__dirname, 'store.db');
+
+const db = new sqlite3.Database(databasePath, (err) => {
   if (err) console.error('DB Error:', err);
   else console.log('Datenbank verbunden');
 });
@@ -176,7 +179,7 @@ removeSeededDemoApps();
 // Zugangscode überprüfen und Benutzer registrieren
 app.post('/api/register', (req, res) => {
   const { accessCode, username, email } = req.body;
-  const isAdmin = accessCode === 'Nils2014!';
+  const isAdmin = accessCode === ADMIN_UPLOAD_KEY;
 
   // Hier würdest du normalerweise die Codes validieren
   // Für Demo: Alle Codes mit 6 Ziffern akzeptieren
@@ -350,6 +353,10 @@ app.use((err, req, res, next) => {
 });
 
 // Server starten
-app.listen(PORT, () => {
-  console.log(`🚀 ehoser shop läuft auf http://localhost:${PORT}`);
-});
+if (!isVercel) {
+  app.listen(PORT, () => {
+    console.log(`🚀 ehoser shop läuft auf http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
