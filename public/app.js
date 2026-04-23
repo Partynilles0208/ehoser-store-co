@@ -226,6 +226,7 @@ async function installApp(appId, button) {
         return;
     }
 
+    const app = allApps.find((item) => item.id === appId);
     const token = localStorage.getItem('token');
 
     try {
@@ -250,7 +251,17 @@ async function installApp(appId, button) {
             button.disabled = true;
         }
 
-        showAlert('App erfolgreich installiert.', 'success');
+        // APK direkt herunterladen
+        if (app && app.download_url) {
+            const a = document.createElement('a');
+            a.href = app.download_url;
+            a.download = `${app.name || 'app'}.apk`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        showAlert('Download gestartet!', 'success');
     } catch (err) {
         showAlert('Installationsfehler.', 'error');
     }
