@@ -133,6 +133,45 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// Login
+app.post('/api/login', async (req, res) => {
+  const { username, accessCode } = req.body;
+
+  if (!username || !accessCode) {
+    return res.status(400).json({ error: 'Benutzername und Zugangscode erforderlich' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .eq('access_code', accessCode)
+      .single();
+
+    if (error || !data) {
+      return res.status(401).json({ error: 'Benutzername oder Zugangscode falsch' });
+    }
+
+    const isAdmin = accessCode === ADMIN_UPLOAD_KEY;
+    const token = jwt.sign(
+      { id: data.id, username: data.username, isAdmin },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      userId: data.id,
+      redirectToAdmin: isAdmin
+    });
+  } catch (error) {
+    console.error('Login Error:', error);
+    res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
+  }
+});
+
 // Token verifizieren
 app.post('/api/verify-token', (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];

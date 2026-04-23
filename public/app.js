@@ -3,6 +3,50 @@ let currentUser = null;
 let allApps = [];
 let currentCategory = 'all';
 
+function switchAuthTab(tab, btn) {
+    document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
+    document.getElementById('loginForm').style.display = tab === 'login' ? '' : 'none';
+    document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    const username = document.getElementById('loginUsername').value.trim();
+    const accessCode = document.getElementById('loginCode').value.trim();
+
+    try {
+        const response = await fetch(`${API_BASE}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, accessCode })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            showAlert(`Fehler: ${data.error || 'Anmeldung fehlgeschlagen'}`, 'error');
+            return;
+        }
+
+        localStorage.setItem('token', data.token);
+        currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
+        showAlert('Erfolgreich angemeldet!', 'success');
+
+        if (data.redirectToAdmin) {
+            window.location.href = 'admin.html';
+            return;
+        }
+
+        showLoggedInUI();
+        await loadApps();
+        showSection('store');
+        document.getElementById('loginForm').reset();
+    } catch (err) {
+        showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('token');
     if (token) {
