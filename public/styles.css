@@ -510,6 +510,12 @@ textarea:focus {
     color: #842a1f;
 }
 
+.alert-info {
+    background: #ddeeff;
+    border: 1px solid #99bbdd;
+    color: #1a3a5c;
+}
+
 .admin-wrapper {
     max-width: 860px;
     margin: 34px auto;
