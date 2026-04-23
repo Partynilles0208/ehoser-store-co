@@ -41,6 +41,7 @@ async function handleLogin(event) {
         showLoggedInUI();
         await loadApps();
         showSection('store');
+        startOnlinePolling();
         document.getElementById('loginForm').reset();
     } catch (err) {
         showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
@@ -74,6 +75,7 @@ async function verifyToken(token) {
         showLoggedInUI();
         await loadApps();
         showSection('store');
+        startOnlinePolling();
     } catch (err) {
         localStorage.removeItem('token');
         showSection('auth');
@@ -113,6 +115,7 @@ async function handleRegister(event) {
         showLoggedInUI();
         await loadApps();
         showSection('store');
+        startOnlinePolling();
         document.getElementById('registerForm').reset();
     } catch (err) {
         showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
@@ -365,7 +368,48 @@ function logout() {
     localStorage.removeItem('token');
     currentUser = null;
     allApps = [];
+    stopOnlinePolling();
+    document.getElementById('onlineWidget').style.display = 'none';
     location.reload();
+}
+
+let onlineInterval = null;
+let heartbeatInterval = null;
+
+function startOnlinePolling() {
+    fetchOnlineUsers();
+    onlineInterval = setInterval(fetchOnlineUsers, 30000);
+    heartbeatInterval = setInterval(sendHeartbeat, 60000);
+}
+
+function stopOnlinePolling() {
+    clearInterval(onlineInterval);
+    clearInterval(heartbeatInterval);
+}
+
+async function sendHeartbeat() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    fetch(`${API_BASE}/heartbeat`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+    }).catch(() => {});
+}
+
+async function fetchOnlineUsers() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const res = await fetch(`${API_BASE}/online-users`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const users = await res.json();
+        const widget = document.getElementById('onlineWidget');
+        const list = document.getElementById('onlineList');
+        widget.style.display = users.length ? '' : 'none';
+        list.innerHTML = users.map(u => `<li>${escapeHtml(u.username)}</li>`).join('');
+    } catch {}
 }
 
 function showAlert(message, type) {

@@ -172,8 +172,8 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Token verifizieren
-app.post('/api/verify-token', (req, res) => {
+// Token verifizieren + last_seen aktualisieren
+app.post('/api/verify-token', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
 
   if (!token) {
@@ -182,8 +182,44 @@ app.post('/api/verify-token', (req, res) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    // last_seen aktualisieren (Fehler ignorieren)
+    await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id).catch(() => {});
     res.json({ valid: true, user: decoded });
   } catch (err) {
+    res.status(401).json({ error: 'Ungültiger Token' });
+  }
+});
+
+// Online-Nutzer (letzte 5 Minuten)
+app.get('/api/online-users', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Nicht angemeldet' });
+  try {
+    jwt.verify(token, JWT_SECRET);
+  } catch {
+    return res.status(401).json({ error: 'Ungültiger Token' });
+  }
+
+  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('users')
+    .select('username')
+    .gte('last_seen', since)
+    .order('last_seen', { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// Heartbeat: last_seen aktualisieren
+app.post('/api/heartbeat', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Nicht angemeldet' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id);
+    res.json({ ok: true });
+  } catch {
     res.status(401).json({ error: 'Ungültiger Token' });
   }
 });
