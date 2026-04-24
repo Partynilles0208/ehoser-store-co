@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const UNLOCK_CODE = '020818';
 const ADMIN_UPLOAD_KEY = 'nils2014!';
-const TOKEN_EXPIRES_IN = '30d';
+const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre – Token läuft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 
 const authAttempts = new Map();
@@ -495,6 +495,23 @@ app.post('/api/verify-token', async (req, res) => {
     res.json({ valid: true, user: decoded, token: refreshedToken, profile });
   } catch (err) {
     res.status(401).json({ error: 'Ungültiger Token' });
+  }
+});
+
+// Login-Code des eingeloggten Nutzers abrufen
+app.get('/api/me/login-code', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('access_code')
+      .eq('id', auth.id)
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Nicht gefunden' });
+    res.json({ loginCode: data.access_code });
+  } catch {
+    res.status(500).json({ error: 'Fehler beim Abrufen des Login-Codes' });
   }
 });
 

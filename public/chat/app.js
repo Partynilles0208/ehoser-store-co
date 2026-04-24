@@ -23,7 +23,9 @@ let _attachOpen = false;
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _token }
         });
         if (resp.status === 401) {
-            // Token abgelaufen oder ungültig → LoginWall zeigen
+            // Token abgelaufen → einmalig neu anmelden nötig (nur 1x, dann 10 Jahre gültig)
+            const wall = document.getElementById('loginWall');
+            wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">🔑</div><h2>Erneut anmelden</h2><p style="color:#a88">Deine Sitzung ist abgelaufen. Melde dich einmal im Store neu an – danach bleibst du dauerhaft angemeldet.</p><a href="/" class="btn-primary" style="margin-top:8px;display:block;text-align:center">Im Store anmelden</a></div>`;
             show('loginWall');
             return;
         }
