@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ehoser shop - Professioneller App Store</title>
+    <title>ehoser - Professioneller App Store</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
             <div class="navbar-content">
                 <div class="logo">
                     <span class="logo-icon">E</span>
-                    <h1>ehoser shop</h1>
+                    <h1>ehoser</h1>
                 </div>
                 <div class="nav-links" id="navLinks">
                     <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
@@ -37,7 +37,7 @@
                     <div class="hero-copy">
                         <p class="eyebrow">Geschlossener Premium App Store</p>
                         <h2>Installiere kuratierte Apps in Sekunden.</h2>
-                        <p>Nur Mitglieder mit Zugangscode sehen den ehoser shop. Nach dem Beitritt kannst du direkt Apps entdecken, installieren und verwalten.</p>
+                        <p>Nur Mitglieder mit Entsperrcode sehen ehoser. Nach dem Beitritt kannst du direkt Apps entdecken, installieren und verwalten.</p>
                         <div class="hero-pills">
                             <span>Sicherer Zugang</span>
                             <span>APK Downloads</span>
@@ -45,7 +45,7 @@
                         </div>
                     </div>
                     <div class="auth-card">
-                        <h2>Willkommen bei ehoser shop</h2>
+                        <h2>Willkommen bei ehoser</h2>
                         <p class="auth-subtitle">Exklusiver App Store für Mitglieder</p>
 
                         <div class="auth-tabs">
@@ -55,15 +55,15 @@
 
                         <form id="registerForm" onsubmit="handleRegister(event)">
                             <div class="form-group">
-                                <label for="accessCode">Zugangscode*</label>
+                                <label for="unlockCode">Entsperrcode*</label>
                                 <input 
                                     type="password" 
-                                    id="accessCode" 
-                                    placeholder="Dein Zugangscode" 
+                                    id="unlockCode" 
+                                    placeholder="Dein Entsperrcode" 
                                     required
                                     minlength="6"
                                 >
-                                <small>Den Zugangscode bekommst du vom Admin.</small>
+                                <small>Ohne Entsperrcode ist keine Registrierung oder Anmeldung moeglich.</small>
                             </div>
 
                             <div class="form-group">
@@ -86,10 +86,20 @@
                                 >
                             </div>
 
-                            <button type="submit" class="btn-primary">Beitreten & Zugang Erhalten</button>
+                            <button type="submit" class="btn-primary">Registrieren</button>
                         </form>
 
                         <form id="loginForm" onsubmit="handleLogin(event)" style="display:none">
+                            <div class="form-group">
+                                <label for="loginUnlockCode">Entsperrcode*</label>
+                                <input 
+                                    type="password" 
+                                    id="loginUnlockCode" 
+                                    placeholder="Entsperrcode" 
+                                    required
+                                    minlength="6"
+                                >
+                            </div>
                             <div class="form-group">
                                 <label for="loginUsername">Benutzername*</label>
                                 <input 
@@ -101,15 +111,15 @@
                                 >
                             </div>
                             <div class="form-group">
-                                <label for="loginCode">Zugangscode*</label>
+                                <label for="loginCode">Login-Code*</label>
                                 <input 
                                     type="password" 
                                     id="loginCode" 
-                                    placeholder="Dein Zugangscode" 
+                                    placeholder="Dein Login-Code" 
                                     required
                                     minlength="6"
                                 >
-                                <small>Derselbe Zugangscode den du bei der Registrierung verwendet hast.</small>
+                                <small>Der Login-Code wurde dir einmalig bei der Registrierung gezeigt.</small>
                             </div>
                             <button type="submit" class="btn-primary">Anmelden</button>
                         </form>
