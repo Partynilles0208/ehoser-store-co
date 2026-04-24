@@ -498,6 +498,8 @@ function selectMode(mode) {
         showSection('games');
     } else if (mode === 'facewarp') {
         window.location.href = '/facewarp/';
+    } else if (mode === 'chat') {
+        window.location.href = '/chat/';
     } else {
         showSection('mode-select');
     }

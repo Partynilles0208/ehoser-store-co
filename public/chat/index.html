@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ehoser Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- ── Topbar ─────────────────────────────────────────────────────────── -->
+    <header class="chat-topbar">
+        <a href="/" class="chat-back">← Zurück</a>
+        <div class="chat-topbar-title">
+            <span class="chat-logo">E</span>
+            <span>ehoser Chat</span>
+        </div>
+        <span class="chat-e2e-badge">🔒 Ende-zu-Ende verschlüsselt</span>
+    </header>
+
+    <!-- ── Login-Wall (wenn kein Token) ──────────────────────────────────── -->
+    <div id="loginWall" class="login-wall" style="display:none">
+        <div class="login-wall-box">
+            <div class="login-wall-icon">💬</div>
+            <h2>Anmeldung erforderlich</h2>
+            <p>Der Chat ist nur für eingeloggte Mitglieder verfügbar.</p>
+            <a href="/" class="btn-primary" style="display:inline-block;margin-top:12px;">Zur Anmeldung</a>
+        </div>
+    </div>
+
+    <!-- ── Haupt-Chat-Layout ─────────────────────────────────────────────── -->
+    <div id="chatApp" class="chat-app" style="display:none">
+
+        <!-- Linke Sidebar: Gruppenlist -->
+        <aside class="chat-sidebar">
+            <div class="sidebar-header">
+                <h3>Gruppen</h3>
+                <button class="btn-icon" onclick="openNewGroupModal()" title="Neue Gruppe erstellen">＋</button>
+            </div>
+            <div id="groupList" class="group-list">
+                <p class="sidebar-empty">Keine Gruppen vorhanden.<br>Erstelle eine neue!</p>
+            </div>
+        </aside>
+
+        <!-- Rechte Seite: Chat-Bereich -->
+        <main class="chat-main">
+            <!-- Kein Raum ausgewählt -->
+            <div id="noGroupSelected" class="no-group">
+                <div class="no-group-icon">💬</div>
+                <h3>Wähle eine Gruppe aus</h3>
+                <p>oder erstelle eine neue Gruppe mit dem <strong>＋</strong> Button.</p>
+            </div>
+
+            <!-- Aktiver Chat -->
+            <div id="activeChat" class="active-chat" style="display:none">
+                <div class="chat-header">
+                    <div class="chat-header-info">
+                        <span class="chat-group-icon">👥</span>
+                        <div>
+                            <strong id="activeChatName"></strong>
+                            <span id="activeChatMembers" class="chat-members-count"></span>
+                        </div>
+                    </div>
+                    <div class="chat-header-actions">
+                        <button class="btn-sm" onclick="openAddMemberModal()">＋ Mitglied</button>
+                        <button class="btn-sm btn-sm-info" onclick="openMembersModal()">👥 Mitglieder</button>
+                    </div>
+                </div>
+
+                <div id="messagesArea" class="messages-area">
+                    <div class="messages-loading" id="messagesLoading">Lade Nachrichten…</div>
+                </div>
+
+                <form class="chat-input-bar" onsubmit="sendMessage(event)">
+                    <input
+                        type="text"
+                        id="messageInput"
+                        placeholder="Nachricht eingeben (verschlüsselt)…"
+                        autocomplete="off"
+                        maxlength="4000"
+                    />
+                    <button type="submit" class="btn-send">➤</button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- ── Modal: Neue Gruppe ─────────────────────────────────────────────── -->
+    <div id="newGroupModal" class="modal-overlay" style="display:none" onclick="closeModalIfOverlay(event,'newGroupModal')">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Neue Gruppe erstellen</h3>
+                <button class="modal-close" onclick="closeModal('newGroupModal')">✕</button>
+            </div>
+            <label class="modal-label">Gruppenname</label>
+            <input type="text" id="newGroupName" class="modal-input" placeholder="z.B. Freunde" maxlength="50" />
+
+            <label class="modal-label" style="margin-top:16px;">Mitglieder hinzufügen</label>
+            <div class="member-search-wrap">
+                <input type="text" id="memberSearchInput" class="modal-input" placeholder="Nutzername suchen…" oninput="searchUsers(this.value,'newGroupResults')" />
+                <div id="newGroupResults" class="search-results"></div>
+            </div>
+            <div id="selectedMembers" class="selected-members"></div>
+
+            <div class="modal-note">
+                💡 Du kannst auch alleine eine Gruppe erstellen und später Mitglieder hinzufügen.
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('newGroupModal')">Abbrechen</button>
+                <button class="btn-primary" onclick="createGroup()">Gruppe erstellen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Modal: Mitglied hinzufügen ────────────────────────────────────── -->
+    <div id="addMemberModal" class="modal-overlay" style="display:none" onclick="closeModalIfOverlay(event,'addMemberModal')">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Mitglied hinzufügen</h3>
+                <button class="modal-close" onclick="closeModal('addMemberModal')">✕</button>
+            </div>
+            <input type="text" id="addMemberInput" class="modal-input" placeholder="Nutzername suchen…" oninput="searchUsers(this.value,'addMemberResults')" />
+            <div id="addMemberResults" class="search-results"></div>
+            <div id="addMemberStatus" class="modal-status"></div>
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeModal('addMemberModal')">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Modal: Mitgliederliste ────────────────────────────────────────── -->
+    <div id="membersModal" class="modal-overlay" style="display:none" onclick="closeModalIfOverlay(event,'membersModal')">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Mitglieder</h3>
+                <button class="modal-close" onclick="closeModal('membersModal')">✕</button>
+            </div>
+            <ul id="membersList" class="members-list"></ul>
+        </div>
+    </div>
+
+    <!-- ── Toast ─────────────────────────────────────────────────────────── -->
+    <div id="chatToast" class="chat-toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
