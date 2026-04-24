@@ -267,20 +267,42 @@ function setTier(nextTier) {
 async function resolveTierFromServer() {
   const forcedTier = new URLSearchParams(window.location.search).get("tier");
   const token = localStorage.getItem("token");
-  if (!token) {
-    setTier(forcedTier === "pro" ? "basic" : "basic");
+  
+  // 🔥 Zuerst localStorage proStatus prüfen (schneller, aus letztem Login)
+  const cachedProStatus = localStorage.getItem("proStatus");
+  if (cachedProStatus === "1" && forcedTier !== "basic") {
+    setTier("pro");
     return;
   }
+  if (cachedProStatus === "0") {
+    setTier("basic");
+    return;
+  }
+  
+  // Wenn nicht gecacht: vom Server abrufen
+  if (!token) {
+    setTier("basic");
+    return;
+  }
+  
   try {
     const res = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
     const proByAccount = Boolean(data?.profile?.isPro);
+    // 🔥 Ergebnis in localStorage speichern
+    localStorage.setItem("proStatus", proByAccount ? "1" : "0");
+    
     if (forcedTier === "pro" && !proByAccount) {
       alert("Pro Face Warp ist nicht aktiv. Du nutzt Basics.");
     }
     setTier(proByAccount && forcedTier !== "basic" ? "pro" : "basic");
   } catch {
-    setTier("basic");
+    // 🔥 Bei Fehler: localStorage fallback, dann basic
+    if (cachedProStatus === "1") {
+      setTier("pro");
+    } else {
+      setTier("basic");
+    }
   }
 }
 

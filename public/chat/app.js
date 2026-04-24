@@ -24,6 +24,7 @@ let _attachOpen = false;
         });
         if (resp.status === 401) {
             // Token abgelaufen → einmalig neu anmelden nötig (nur 1x, dann 10 Jahre gültig)
+            localStorage.removeItem('proStatus');
             const wall = document.getElementById('loginWall');
             wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">🔑</div><h2>Erneut anmelden</h2><p style="color:#a88">Deine Sitzung ist abgelaufen. Melde dich einmal im Store neu an – danach bleibst du dauerhaft angemeldet.</p><a href="/" class="btn-primary" style="margin-top:8px;display:block;text-align:center">Im Store anmelden</a></div>`;
             show('loginWall');
@@ -43,12 +44,20 @@ let _attachOpen = false;
             localStorage.setItem('token', r.token);
         }
         _meProfile = r.profile || null;
+        // 🔥 Pro-Status in localStorage speichern
+        localStorage.setItem('proStatus', _meProfile?.isPro ? '1' : '0');
         if (!_meProfile) {
             try {
                 const meData = await api('/me');
                 _meProfile = meData.profile || null;
+                localStorage.setItem('proStatus', _meProfile?.isPro ? '1' : '0');
             } catch {
                 _meProfile = null;
+                // 🔥 Fallback zu localStorage cached value
+                const cached = localStorage.getItem('proStatus');
+                if (cached === '1') {
+                    _meProfile = { isPro: true };
+                }
             }
         }
     } catch {
