@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
+const { Pool } = require('pg');
 require('dotenv').config();
 
 const app = express();
@@ -30,6 +31,60 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Auto-Migration: Tabellen anlegen wenn nicht vorhanden
+async function initDatabase() {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) {
+    console.warn('⚠️  DATABASE_URL nicht gesetzt – Auto-Migration übersprungen.');
+    console.warn('   Bitte folgendes SQL in Supabase > SQL-Editor ausführen:');
+    console.warn(`
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT NULL;
+CREATE TABLE IF NOT EXISTS user_profiles (
+  username TEXT PRIMARY KEY,
+  settings JSONB DEFAULT '{}'::jsonb,
+  pro_until TIMESTAMP NULL
+);
+CREATE TABLE IF NOT EXISTS referral_invites (
+  code TEXT PRIMARY KEY,
+  inviter_username TEXT NOT NULL,
+  used_by TEXT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  used_at TIMESTAMP NULL
+);`);
+    return;
+  }
+
+  const pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT NULL;
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        username TEXT PRIMARY KEY,
+        settings JSONB DEFAULT '{}'::jsonb,
+        pro_until TIMESTAMP NULL
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS referral_invites (
+        code TEXT PRIMARY KEY,
+        inviter_username TEXT NOT NULL,
+        used_by TEXT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        used_at TIMESTAMP NULL
+      );
+    `);
+    console.log('✅ Datenbank-Tabellen überprüft/erstellt.');
+  } catch (err) {
+    console.error('⚠️  Auto-Migration fehlgeschlagen:', err.message);
+  } finally {
+    await pool.end();
+  }
+}
+
+initDatabase();
 
 const isRateLimited = (key) => {
   const now = Date.now();
