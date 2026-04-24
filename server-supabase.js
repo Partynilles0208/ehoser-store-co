@@ -792,6 +792,157 @@ app.post('/api/screenshare/end', async (req, res) => {
   }
 });
 
+// ─── Chat API (E2E verschlüsselt) ────────────────────────────────────────────
+
+// Helper: JWT aus Request lesen + verifizieren
+function chatAuth(req, res) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) { res.status(401).json({ error: 'Nicht angemeldet' }); return null; }
+  try { return jwt.verify(token, JWT_SECRET); }
+  catch { res.status(401).json({ error: 'Ungültiger Token' }); return null; }
+}
+
+// POST /api/chat/key — eigenen ECDH Public Key hochladen/aktualisieren
+app.post('/api/chat/key', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { publicKey } = req.body;
+  if (!publicKey || typeof publicKey !== 'string' || publicKey.length > 4096) {
+    return res.status(400).json({ error: 'Ungültiger Public Key' });
+  }
+  try { JSON.parse(publicKey); } catch { return res.status(400).json({ error: 'Public Key muss valides JSON sein' }); }
+  const { error } = await supabase.from('chat_user_keys').upsert({ username: user.username, public_key: publicKey });
+  if (error) return res.status(500).json({ error: 'Fehler beim Speichern' });
+  res.json({ ok: true });
+});
+
+// GET /api/chat/key/:username — Public Key eines Nutzers abrufen
+app.get('/api/chat/key/:username', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { username } = req.params;
+  if (!/^[a-zA-Z0-9_\-]{1,32}$/.test(username)) return res.status(400).json({ error: 'Ungültiger Nutzername' });
+  const { data } = await supabase.from('chat_user_keys').select('public_key').eq('username', username).single();
+  if (!data) return res.status(404).json({ error: 'Kein Public Key gefunden – Nutzer muss Chat einmal geöffnet haben' });
+  res.json({ publicKey: data.public_key });
+});
+
+// GET /api/chat/users/search?q= — Nutzer suchen (min. 2 Zeichen)
+app.get('/api/chat/users/search', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const q = String(req.query.q || '').trim();
+  if (!q || q.length < 2) return res.json({ users: [] });
+  const { data } = await supabase.from('users').select('username').ilike('username', `%${q}%`).limit(10);
+  const users = (data || []).map(u => u.username).filter(u => u !== user.username);
+  res.json({ users });
+});
+
+// POST /api/chat/groups — neue Gruppe erstellen
+// Body: { name, memberKeys: { username: encryptedGroupKeyJson } }
+app.post('/api/chat/groups', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { name, memberKeys } = req.body;
+  if (!name || typeof name !== 'string' || name.trim().length < 1 || name.length > 50) {
+    return res.status(400).json({ error: 'Ungültiger Gruppenname (1-50 Zeichen)' });
+  }
+  if (!memberKeys || typeof memberKeys !== 'object' || Array.isArray(memberKeys)) {
+    return res.status(400).json({ error: 'memberKeys fehlt' });
+  }
+  if (!memberKeys[user.username]) {
+    return res.status(400).json({ error: 'Eigener Schlüssel muss enthalten sein' });
+  }
+  const id = crypto.randomUUID();
+  const { error: gErr } = await supabase.from('chat_groups').insert({ id, name: name.trim(), created_by: user.username });
+  if (gErr) return res.status(500).json({ error: 'Fehler beim Erstellen der Gruppe' });
+
+  const rows = Object.entries(memberKeys).map(([username, encKey]) => ({
+    group_id: id, username, encrypted_group_key: String(encKey).substring(0, 8192)
+  }));
+  const { error: mErr } = await supabase.from('chat_group_members').insert(rows);
+  if (mErr) {
+    await supabase.from('chat_groups').delete().eq('id', id);
+    return res.status(500).json({ error: 'Fehler beim Hinzufügen der Mitglieder' });
+  }
+  res.json({ id, name: name.trim() });
+});
+
+// GET /api/chat/groups — eigene Gruppen abrufen
+app.get('/api/chat/groups', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { data: memberships } = await supabase.from('chat_group_members').select('group_id').eq('username', user.username);
+  if (!memberships?.length) return res.json({ groups: [] });
+  const ids = memberships.map(m => m.group_id);
+  const { data: groups } = await supabase.from('chat_groups').select('id,name,created_by,created_at').in('id', ids).order('created_at', { ascending: false });
+  res.json({ groups: groups || [] });
+});
+
+// GET /api/chat/groups/:id/key — eigenen verschlüsselten Gruppenschlüssel abrufen
+app.get('/api/chat/groups/:id/key', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const { data } = await supabase.from('chat_group_members').select('encrypted_group_key').eq('group_id', id).eq('username', user.username).single();
+  if (!data) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+  res.json({ encryptedGroupKey: data.encrypted_group_key });
+});
+
+// GET /api/chat/groups/:id/members — Mitgliederliste abrufen
+app.get('/api/chat/groups/:id/members', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const { data: self } = await supabase.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).single();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  const { data } = await supabase.from('chat_group_members').select('username,joined_at').eq('group_id', id);
+  res.json({ members: data || [] });
+});
+
+// POST /api/chat/groups/:id/members — neues Mitglied hinzufügen
+// Body: { username, encryptedGroupKey }
+app.post('/api/chat/groups/:id/members', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const { username, encryptedGroupKey } = req.body;
+  if (!username || !encryptedGroupKey) return res.status(400).json({ error: 'username und encryptedGroupKey erforderlich' });
+  // Muss selbst Mitglied sein
+  const { data: self } = await supabase.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).single();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+  // Ziel-Nutzer muss existieren
+  const { data: target } = await supabase.from('users').select('username').eq('username', username).single();
+  if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+  // Bereits Mitglied?
+  const { data: existing } = await supabase.from('chat_group_members').select('username').eq('group_id', id).eq('username', username).single();
+  if (existing) return res.status(409).json({ error: 'Nutzer ist bereits Mitglied' });
+  const { error } = await supabase.from('chat_group_members').insert({ group_id: id, username, encrypted_group_key: String(encryptedGroupKey).substring(0, 8192) });
+  if (error) return res.status(500).json({ error: 'Fehler beim Hinzufügen' });
+  res.json({ ok: true });
+});
+
+// POST /api/chat/messages — Nachricht senden (verschlüsselt)
+app.post('/api/chat/messages', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId, encryptedContent } = req.body;
+  if (!groupId || !encryptedContent || typeof encryptedContent !== 'string' || encryptedContent.length > 65536) {
+    return res.status(400).json({ error: 'Ungültige Nachricht' });
+  }
+  // Muss Mitglied sein
+  const { data: self } = await supabase.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+  const { data, error } = await supabase.from('chat_messages').insert({ group_id: groupId, sender: user.username, encrypted_content: encryptedContent }).select('id,created_at').single();
+  if (error) return res.status(500).json({ error: 'Fehler beim Senden' });
+  res.json({ id: data.id, created_at: data.created_at });
+});
+
+// GET /api/chat/messages/:groupId?after=<id> — Nachrichten abrufen (polling)
+app.get('/api/chat/messages/:groupId', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId } = req.params;
+  const after = parseInt(req.query.after) || 0;
+  // Muss Mitglied sein
+  const { data: self } = await supabase.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  let query = supabase.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).order('id', { ascending: true }).limit(50);
+  if (after) query = query.gt('id', after);
+  const { data } = await query;
+  res.json({ messages: data || [] });
+});
+
 // ─── VirusTotal Integration ───────────────────────────────────────────────────
 const VT_API_KEY = process.env.VIRUSTOTAL_API_KEY;
 const VT_BASE = 'https://www.virustotal.com/api/v3';
