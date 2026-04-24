@@ -201,8 +201,15 @@ async function verifyToken(token) {
             headers: { Authorization: `Bearer ${token}` }
         });
 
-        if (!response.ok) {
+        if (response.status === 401) {
+            // Nur bei ungültigem/abgelaufenem Token abmelden
             localStorage.removeItem('token');
+            showSection('mode-select');
+            return;
+        }
+
+        if (!response.ok) {
+            // Server-Fehler: Token behalten, trotzdem UI laden
             showSection('mode-select');
             return;
         }
@@ -217,7 +224,7 @@ async function verifyToken(token) {
         showSection('mode-select');
         startOnlinePolling();
     } catch (err) {
-        localStorage.removeItem('token');
+        // Netzwerkfehler: Token NICHT löschen, Seite trotzdem zeigen
         showSection('mode-select');
     }
 }

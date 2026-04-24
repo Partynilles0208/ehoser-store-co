@@ -484,3 +484,65 @@ canvas {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+@media (max-width: 760px) {
+  .app {
+    padding: 22px 12px 36px;
+  }
+
+  .intro-banner {
+    padding: 18px 14px 44px;
+    border-radius: 18px;
+  }
+
+  .banner-title {
+    left: 14px;
+    bottom: 10px;
+  }
+
+  .quick-actions {
+    width: 100%;
+  }
+
+  .quick-actions .btn {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 120px;
+  }
+
+  .panel {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .canvas-frame {
+    border-radius: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .fly-row {
+    height: 40px;
+  }
+
+  .quick-actions {
+    gap: 8px;
+  }
+
+  .quick-actions .btn {
+    flex: 1 1 100%;
+  }
+
+  .mode-grid,
+  .flip-controls,
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .canvas-frame {
+    min-height: 300px;
+  }
+
+  .canvas-frame canvas {
+    max-height: 58svh;
+  }
+}

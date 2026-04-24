@@ -492,13 +492,112 @@ body {
 ::-webkit-scrollbar-thumb { background: #1e3d55; border-radius: 4px; }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
-@media (max-width: 640px) {
-    .sidebar { width: 220px; }
-    .empty-wordmark { font-size: 2.2rem; }
-    .msg-row { max-width: 88%; }
-    .chat-topbar-right .topbar-btn:first-child { display: none; }
+@media (max-width: 900px) {
+    .sidebar {
+        width: 230px;
+    }
+
+    .messages-area {
+        padding: 14px 12px 6px;
+    }
+
+    .chat-topbar {
+        padding: 10px 12px;
+    }
+
+    .input-wrap {
+        padding: 10px 12px;
+    }
 }
-@media (max-width: 460px) {
-    .sidebar { position: absolute; z-index: 100; height: 100svh; left: 0; top: 0; transform: translateX(-100%); transition: transform .25s; }
-    .sidebar.open { transform: translateX(0); }
+
+@media (max-width: 760px) {
+    .chat-app {
+        flex-direction: column;
+        height: 100svh;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: auto;
+        max-height: 34svh;
+        border-right: none;
+        border-bottom: 1px solid var(--card-border);
+    }
+
+    .group-list {
+        max-height: 16svh;
+    }
+
+    .empty-chat {
+        padding: 24px 14px;
+    }
+
+    .empty-wordmark {
+        font-size: 2.1rem;
+    }
+
+    .chat-topbar {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .chat-topbar-right {
+        width: 100%;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .msg-row {
+        max-width: 92%;
+    }
+
+    .msg-img,
+    .msg-video {
+        max-width: min(72vw, 280px);
+    }
+}
+
+@media (max-width: 520px) {
+    .sidebar-brand {
+        padding: 12px;
+    }
+
+    .brand-logo {
+        width: 36px;
+        height: 36px;
+        font-size: 1.1rem;
+    }
+
+    .brand-name {
+        font-size: 1.1rem;
+    }
+
+    .input-wrap {
+        gap: 6px;
+    }
+
+    .input-btn,
+    .send-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+    }
+
+    .msg-input {
+        min-height: 36px;
+        padding: 8px 10px;
+        font-size: .88rem;
+    }
+
+    .attach-menu {
+        min-width: 210px;
+    }
+
+    .chat-topbar-right .topbar-btn:first-child {
+        display: none;
+    }
+
+    .e2e-pill {
+        font-size: .66rem;
+    }
 }
