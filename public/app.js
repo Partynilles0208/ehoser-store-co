@@ -520,11 +520,13 @@ function startOnlinePolling() {
     fetchOnlineUsers();
     onlineInterval = setInterval(fetchOnlineUsers, 30000);
     heartbeatInterval = setInterval(sendHeartbeat, 60000);
+    startScreenSharePolling();
 }
 
 function stopOnlinePolling() {
     clearInterval(onlineInterval);
     clearInterval(heartbeatInterval);
+    stopScreenSharePolling();
 }
 
 async function sendHeartbeat() {
@@ -722,3 +724,165 @@ function changeGamesPage(delta) {
     document.getElementById('gamesSearch').value = '';
     loadGames();
 }
+
+// ─── Bildschirmübertragung (Nutzer = Sharer / WebRTC Answerer) ────────────────
+let _srSession = null;
+let _srOffer = null;
+let _srPc = null;
+let _srStream = null;
+let _srPollInterval = null;
+let _srMouseHandler = null;
+
+function startScreenSharePolling() {
+    if (_srPollInterval) return;
+    _srPollInterval = setInterval(_pollShareRequest, 2500);
+}
+
+function stopScreenSharePolling() {
+    clearInterval(_srPollInterval);
+    _srPollInterval = null;
+}
+
+async function _pollShareRequest() {
+    const token = localStorage.getItem('token');
+    if (!token || _srPc) return;
+    try {
+        const res = await fetch(`${API_BASE}/screenshare/pending`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.pending && data.sessionId && data.offer) {
+            stopScreenSharePolling();
+            _srSession = data.sessionId;
+            _srOffer = data.offer;
+            document.getElementById('shareRequestPopup').style.display = 'flex';
+        }
+    } catch {}
+}
+
+async function acceptShareRequest() {
+    document.getElementById('shareRequestPopup').style.display = 'none';
+    const token = localStorage.getItem('token');
+    try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                displaySurface: 'browser',
+                frameRate: { ideal: 30 },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            },
+            audio: false,
+            preferCurrentTab: true,
+            selfBrowserSurface: 'include'
+        });
+        _srStream = stream;
+
+        const pc = new RTCPeerConnection({
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        });
+        _srPc = pc;
+
+        // Video-Track hinzufügen
+        stream.getTracks().forEach(track => {
+            pc.addTrack(track, stream);
+            track.onended = () => endShareSession();
+        });
+
+        // Maus-DataChannel empfangen (wird vom Admin erstellt)
+        pc.ondatachannel = (event) => {
+            if (event.channel.label !== 'mouse') return;
+            const ch = event.channel;
+            ch.onopen = () => _startMouseTracking(ch);
+            ch.onclose = () => _stopMouseTracking();
+        };
+
+        pc.onconnectionstatechange = () => {
+            if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) endShareSession();
+        };
+
+        // Offer setzen, Answer erstellen
+        await pc.setRemoteDescription(new RTCSessionDescription(_srOffer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        // Warten bis ICE-Gathering abgeschlossen
+        const finalAnswer = await new Promise((resolve) => {
+            if (pc.iceGatheringState === 'complete') return resolve(pc.localDescription);
+            pc.onicegatheringstatechange = () => {
+                if (pc.iceGatheringState === 'complete') resolve(pc.localDescription);
+            };
+            setTimeout(() => resolve(pc.localDescription), 5000);
+        });
+
+        const res = await fetch(`${API_BASE}/screenshare/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ sessionId: _srSession, answer: finalAnswer, accept: true })
+        });
+        if (!res.ok) { endShareSession(); return; }
+
+        document.getElementById('shareIndicator').style.display = 'flex';
+    } catch (err) {
+        endShareSession();
+        startScreenSharePolling();
+    }
+}
+
+async function declineShareRequest() {
+    document.getElementById('shareRequestPopup').style.display = 'none';
+    const token = localStorage.getItem('token');
+    if (_srSession && token) {
+        await fetch(`${API_BASE}/screenshare/respond`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ sessionId: _srSession, accept: false })
+        }).catch(() => {});
+    }
+    _srSession = null;
+    _srOffer = null;
+    startScreenSharePolling();
+}
+
+function _startMouseTracking(channel) {
+    let lastSend = 0;
+    _srMouseHandler = (e) => {
+        const now = Date.now();
+        if (now - lastSend < 33) return; // ~30fps
+        lastSend = now;
+        if (channel.readyState !== 'open') return;
+        channel.send(JSON.stringify({
+            x: e.clientX / window.innerWidth,
+            y: e.clientY / window.innerHeight
+        }));
+    };
+    document.addEventListener('mousemove', _srMouseHandler);
+}
+
+function _stopMouseTracking() {
+    if (_srMouseHandler) {
+        document.removeEventListener('mousemove', _srMouseHandler);
+        _srMouseHandler = null;
+    }
+}
+
+async function endShareSession() {
+    _stopMouseTracking();
+    if (_srStream) { _srStream.getTracks().forEach(t => t.stop()); _srStream = null; }
+    if (_srPc) { _srPc.close(); _srPc = null; }
+    const token = localStorage.getItem('token');
+    if (_srSession && token) {
+        await fetch(`${API_BASE}/screenshare/end`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ sessionId: _srSession })
+        }).catch(() => {});
+        _srSession = null;
+    }
+    document.getElementById('shareIndicator').style.display = 'none';
+    startScreenSharePolling();
+}
+

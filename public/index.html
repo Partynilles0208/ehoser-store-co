@@ -275,6 +275,26 @@
         </div>
     </div>
 
+    <!-- ── Bildschirmübertragung: Anfrage-Popup ────────────────────────────── -->
+    <div id="shareRequestPopup" class="sr-popup" style="display:none">
+        <div class="sr-popup-content">
+            <div class="sr-popup-icon">🖥️</div>
+            <h3>Bildschirmübertragung</h3>
+            <p>Der Admin möchte deinen Bildschirm sehen.</p>
+            <p class="sr-popup-note">⚠️ <strong>Gilt nur für diese Webseite.</strong><br>Beim Annehmen wirst du gefragt, welchen Tab du teilen möchtest. Wähle nur diesen Tab.</p>
+            <div class="sr-popup-actions">
+                <button class="btn-primary" onclick="acceptShareRequest()">Annehmen</button>
+                <button class="btn-secondary" onclick="declineShareRequest()">Ablehnen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Bildschirmübertragung: Aktiv-Indikator ─────────────────────────── -->
+    <div id="shareIndicator" class="sr-indicator" style="display:none">
+        <span>🔴 Bildschirm wird übertragen</span>
+        <button onclick="endShareSession()">Beenden</button>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

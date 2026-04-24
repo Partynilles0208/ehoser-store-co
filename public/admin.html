@@ -126,6 +126,24 @@
         </main>
     </div>
 
+    <!-- ── Bildschirmübertragung Viewer Modal ───────────────────────────── -->
+    <div id="screenViewerModal" class="sv-modal" style="display:none">
+        <div class="sv-content">
+            <div class="sv-header">
+                <span id="screenViewerTitle">🖥️ Bildschirmübertragung</span>
+                <button class="sv-close" onclick="closeScreenShare()">✕ Beenden</button>
+            </div>
+            <div id="screenViewerStatus" class="sv-status">Warte auf Nutzer…</div>
+            <div id="screenVideoWrap" class="sv-video-wrap" style="display:none">
+                <video id="screenVideo" class="sv-video" autoplay muted playsinline></video>
+                <div id="screenCursor" class="sv-cursor" style="display:none">
+                    <svg width="20" height="20" viewBox="0 0 20 20"><path d="M2 2l14 6-6 2-2 6z" fill="white" stroke="#333" stroke-width="1.2"/></svg>
+                </div>
+            </div>
+            <p class="sv-note">🔒 Übertragung ist Ende-zu-Ende verschlüsselt (WebRTC DTLS-SRTP)</p>
+        </div>
+    </div>
+
     <script src="admin.js"></script>
 </body>
 </html>
