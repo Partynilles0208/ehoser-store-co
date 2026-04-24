@@ -1,4 +1,3 @@
-const ADMIN_CODE = 'nils2014!';
 let activeAdminCode = null;
 
 const accessForm = document.getElementById('adminAccessForm');
@@ -12,21 +11,30 @@ let adminRefreshInterval = null;
 accessForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const code = document.getElementById('adminJoinCode').value.trim();
+    if (!code) return;
 
-    if (code !== ADMIN_CODE) {
-        setStatus('Falscher Admin-Code.', 'error');
-        return;
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': code }
+        });
+        if (!res.ok) {
+            setStatus('Falscher Admin-Code.', 'error');
+            return;
+        }
+
+        activeAdminCode = code;
+        secureArea.style.display = '';
+        setStatus('Admin-Bereich freigeschaltet.', 'success');
+        await Promise.all([loadRegisteredUsers(), loadResetRequests()]);
+        clearInterval(adminRefreshInterval);
+        adminRefreshInterval = setInterval(() => {
+            loadRegisteredUsers();
+            loadResetRequests();
+        }, 8000);
+    } catch (err) {
+        setStatus('Verbindungsfehler.', 'error');
     }
-
-    activeAdminCode = code;
-    secureArea.style.display = '';
-    setStatus('Admin-Bereich freigeschaltet.', 'success');
-    await Promise.all([loadRegisteredUsers(), loadResetRequests()]);
-    clearInterval(adminRefreshInterval);
-    adminRefreshInterval = setInterval(() => {
-        loadRegisteredUsers();
-        loadResetRequests();
-    }, 8000);
 });
 
 form.addEventListener('submit', async (event) => {
