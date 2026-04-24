@@ -44,6 +44,28 @@
       <div class="workspace">
         <aside class="panel">
           <div class="panel-section">
+            <h2>Version</h2>
+            <div class="mode-grid">
+              <button id="tierBasicBtn" class="mode-btn active" type="button">Basics Face Warp</button>
+              <button id="tierProBtn" class="mode-btn" type="button">Pro Face Warp</button>
+            </div>
+            <p id="tierInfo" class="sub" style="margin-top:10px;font-size:13px;max-width:none;">Basics aktiv.</p>
+          </div>
+          <div class="panel-section">
+            <h2>Editor Modus</h2>
+            <div class="mode-grid">
+              <button id="editorWarpBtn" class="mode-btn active" type="button">Warp Modus</button>
+              <button id="editorStickerBtn" class="mode-btn" type="button">Sticker Modus</button>
+            </div>
+            <div id="stickerControls" style="display:none;margin-top:12px;">
+              <label class="btn ghost" for="stickerInput">Sticker PNG laden
+                <input id="stickerInput" type="file" accept="image/png,image/webp" hidden>
+              </label>
+              <p class="sub" style="font-size:13px;max-width:none;margin-top:8px;">Im Sticker-Modus: ziehen, mit Mausrad skalieren, mit Q/E drehen.</p>
+              <button id="removeStickerBtn" class="btn ghost" type="button" style="margin-top:8px;">Sticker entfernen</button>
+            </div>
+          </div>
+          <div class="panel-section">
             <h2>Modus</h2>
             <div class="mode-grid">
               <button class="mode-btn active" data-mode="push">1 Ziehen</button>

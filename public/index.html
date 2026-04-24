@@ -108,6 +108,7 @@
                         </div>
 
                         <form id="registerForm" onsubmit="handleRegister(event)">
+                            <input type="hidden" id="referralCode" value="">
                             <div class="form-group">
                                 <label for="unlockCode">Entsperrcode*</label>
                                 <input 
@@ -309,6 +310,55 @@
     <div id="shareIndicator" class="sr-indicator" style="display:none">
         <span>🔴 Bildschirm wird übertragen</span>
         <button onclick="endShareSession()">Beenden</button>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content settings-modal-content">
+            <span class="close" onclick="closeSettingsModal()">&times;</span>
+            <h3>Account Einstellungen</h3>
+            <div class="form-group">
+                <label for="settingLanguage">Sprache</label>
+                <select id="settingLanguage">
+                    <option value="de">Deutsch</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="settingDesign">Design</label>
+                <select id="settingDesign">
+                    <option value="standard">Standard</option>
+                    <option value="ocean">Ocean</option>
+                    <option value="sunset">Sunset</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;">
+                    <input id="settingEnergySaver" type="checkbox" style="width:auto;"> Energiesparmodus
+                </label>
+            </div>
+            <div class="settings-pro-box">
+                <div id="planBadge" class="plan-badge">Plan: Gratis</div>
+                <button class="btn-secondary" onclick="createReferralInvite()">Gratis Pro holen</button>
+                <small id="inviteHint">Lade 1 Person mit deinem Link ein. Nach erfolgreicher Registrierung bekommen beide 2 Tage Pro.</small>
+                <div id="inviteLinkWrap" class="invite-link-wrap" style="display:none;">
+                    <input id="inviteLinkInput" type="text" readonly>
+                    <button class="btn-small" onclick="copyInviteLink()">Kopieren</button>
+                </div>
+            </div>
+            <button class="btn-primary" onclick="saveAccountSettings()">Speichern</button>
+        </div>
+    </div>
+
+    <div id="facewarpModeModal" class="modal">
+        <div class="modal-content settings-modal-content">
+            <span class="close" onclick="closeFacewarpModeModal()">&times;</span>
+            <h3>Face Warp auswählen</h3>
+            <p style="color:var(--muted)">Wähle zwischen Basics oder Pro Face Warp.</p>
+            <div class="admin-actions" style="margin-top:12px;">
+                <button class="btn-secondary" onclick="openFacewarpWithTier('basic')">Basics Face Warp</button>
+                <button class="btn-primary" onclick="openFacewarpWithTier('pro')">Pro Face Warp</button>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>

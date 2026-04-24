@@ -36,6 +36,14 @@ const exportQualityInput = document.getElementById("exportQuality");
 const exportQualityValue = document.getElementById("exportQualityValue");
 const flipHBtn = document.getElementById("flipHBtn");
 const flipVBtn = document.getElementById("flipVBtn");
+const tierBasicBtn = document.getElementById("tierBasicBtn");
+const tierProBtn = document.getElementById("tierProBtn");
+const tierInfo = document.getElementById("tierInfo");
+const editorWarpBtn = document.getElementById("editorWarpBtn");
+const editorStickerBtn = document.getElementById("editorStickerBtn");
+const stickerControls = document.getElementById("stickerControls");
+const stickerInput = document.getElementById("stickerInput");
+const removeStickerBtn = document.getElementById("removeStickerBtn");
 
 let strength = parseFloat(strengthInput.value);
 let radius = parseInt(sizeInput.value, 10);
@@ -50,6 +58,13 @@ let selectedPixabayCard = null;
 let originalImgData = null;
 let historyStack = [];
 let redoStack = [];
+let isPro = false;
+let exportCount = 0;
+let editorMode = "warp";
+let stickerLayer = null;
+let stickerDragging = false;
+let stickerDragOffsetX = 0;
+let stickerDragOffsetY = 0;
 
 const PIXABAY_KEY = "50190970-65ec83f509b70f19f8665f4a1";
 const PIXABAY_ENDPOINT = "https://pixabay.com/api/";
@@ -146,6 +161,9 @@ function getPointerPos(event) {
 function drawToScreen() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(imgCanvas, 0, 0);
+  if (stickerLayer?.img) {
+    drawSticker(ctx, stickerLayer);
+  }
 }
 
 function setCanvasSize(width, height) {
@@ -203,6 +221,89 @@ function loadImageFromUrl(url) {
   img.src = url;
 }
 
+function drawSticker(targetCtx, sticker) {
+  if (!sticker?.img) return;
+  targetCtx.save();
+  targetCtx.translate(sticker.x, sticker.y);
+  targetCtx.rotate(sticker.rotation);
+  targetCtx.drawImage(sticker.img, -sticker.w / 2, -sticker.h / 2, sticker.w, sticker.h);
+  targetCtx.restore();
+}
+
+function setEditorMode(nextMode) {
+  editorMode = nextMode === "sticker" ? "sticker" : "warp";
+  editorWarpBtn.classList.toggle("active", editorMode === "warp");
+  editorStickerBtn.classList.toggle("active", editorMode === "sticker");
+  stickerControls.style.display = editorMode === "sticker" ? "" : "none";
+  if (editorMode === "sticker" && !isPro) {
+    setPixabayStatus("Sticker Modus ist nur mit PRO verfügbar.");
+    editorMode = "warp";
+    editorWarpBtn.classList.add("active");
+    editorStickerBtn.classList.remove("active");
+    stickerControls.style.display = "none";
+  }
+}
+
+function setTier(nextTier) {
+  isPro = nextTier === "pro";
+  tierBasicBtn.classList.toggle("active", !isPro);
+  tierProBtn.classList.toggle("active", isPro);
+  editorStickerBtn.disabled = !isPro;
+  pixabaySearchBtn.disabled = !isPro;
+  pixabayUseBtn.disabled = true;
+  if (!isPro && editorMode === "sticker") {
+    setEditorMode("warp");
+  }
+  if (isPro) {
+    tierInfo.textContent = "Pro aktiv: Pixabay entsperrt, Sticker Modus, unbegrenzter Export, bessere Qualität.";
+    setPixabayStatus("PRO aktiv.");
+  } else {
+    tierInfo.textContent = "Basics aktiv: Warp Tools normal, Export auf 3 pro Sitzung begrenzt.";
+    setPixabayStatus("Pixabay ist nur im Pro Face Warp verfügbar.");
+  }
+}
+
+async function resolveTierFromServer() {
+  const forcedTier = new URLSearchParams(window.location.search).get("tier");
+  const token = localStorage.getItem("token");
+  if (!token) {
+    setTier(forcedTier === "pro" ? "basic" : "basic");
+    return;
+  }
+  try {
+    const res = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    const proByAccount = Boolean(data?.profile?.isPro);
+    if (forcedTier === "pro" && !proByAccount) {
+      alert("Pro Face Warp ist nicht aktiv. Du nutzt Basics.");
+    }
+    setTier(proByAccount && forcedTier !== "basic" ? "pro" : "basic");
+  } catch {
+    setTier("basic");
+  }
+}
+
+function setStickerImageFromUrl(url) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    const base = Math.min(canvas.width || img.width, canvas.height || img.height) * 0.35;
+    const ratio = img.width / img.height;
+    const w = base;
+    const h = base / (ratio || 1);
+    stickerLayer = {
+      img,
+      x: (canvas.width || img.width) / 2,
+      y: (canvas.height || img.height) / 2,
+      w,
+      h,
+      rotation: 0
+    };
+    drawToScreen();
+  };
+  img.src = url;
+}
+
 function resetImage() {
   if (!hasImage) return;
   imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
@@ -212,13 +313,35 @@ function resetImage() {
 
 function exportImage() {
   if (!hasImage) return;
+  if (!isPro && exportCount >= 3) {
+    alert("Basics erlaubt 3 Exporte pro Sitzung. Für unbegrenzt: Pro Face Warp.");
+    return;
+  }
+
   const format = exportFormatSelect ? exportFormatSelect.value : "image/png";
   const quality = exportQualityInput ? parseFloat(exportQualityInput.value) : 0.92;
+  const scale = isPro ? 1.8 : 1;
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(imgCanvas.width * scale));
+  out.height = Math.max(1, Math.round(imgCanvas.height * scale));
+  const outCtx = out.getContext("2d");
+  outCtx.drawImage(imgCanvas, 0, 0, out.width, out.height);
+  if (stickerLayer?.img) {
+    drawSticker(outCtx, {
+      ...stickerLayer,
+      x: stickerLayer.x * scale,
+      y: stickerLayer.y * scale,
+      w: stickerLayer.w * scale,
+      h: stickerLayer.h * scale
+    });
+  }
+
   const ext = format === "image/jpeg" ? "jpg" : "png";
   const link = document.createElement("a");
   link.download = `face-warp.${ext}`;
-  link.href = imgCanvas.toDataURL(format, quality);
+  link.href = out.toDataURL(format, isPro ? 1 : quality);
   link.click();
+  exportCount += 1;
 }
 
 function flipImage(horizontal) {
@@ -297,6 +420,10 @@ function renderPixabayResults(hits) {
 }
 
 async function searchPixabay(query) {
+  if (!isPro) {
+    setPixabayStatus("Pixabay ist nur im Pro Face Warp verfügbar.");
+    return;
+  }
   const key = getPixabayKey();
   if (!key) {
     setPixabayStatus("Pixabay API-Key fehlt. Bitte in app.js setzen.");
@@ -315,8 +442,8 @@ async function searchPixabay(query) {
   try {
     const params = new URLSearchParams({
       key,
-      q: query,
-      image_type: "photo",
+      q: `${query} transparent png sticker`,
+      image_type: "all",
       safesearch: "true",
       per_page: "18",
     });
@@ -518,7 +645,13 @@ if (saveToChatBtn) {
     if (!hasImage) return;
     const token = localStorage.getItem('token');
     if (!token) { alert('Nicht angemeldet – bitte zuerst einloggen'); return; }
-    const dataUrl = imgCanvas.toDataURL('image/png');
+    const out = document.createElement('canvas');
+    out.width = imgCanvas.width;
+    out.height = imgCanvas.height;
+    const outCtx = out.getContext('2d');
+    outCtx.drawImage(imgCanvas, 0, 0);
+    if (stickerLayer?.img) drawSticker(outCtx, stickerLayer);
+    const dataUrl = out.toDataURL('image/png');
     const blob = await (await fetch(dataUrl)).blob();
     const formData = new FormData();
     formData.append('file', new File([blob], 'facewarp.png', { type: 'image/png' }));
@@ -562,11 +695,23 @@ pixabayUseBtn.addEventListener("click", () => {
   if (!selectedPixabay) return;
   const url = selectedPixabay.largeImageURL || selectedPixabay.webformatURL;
   setPixabayStatus("Bild wird geladen...");
-  loadImageFromUrl(url);
+  if (editorMode === "sticker") {
+    setStickerImageFromUrl(url);
+  } else {
+    loadImageFromUrl(url);
+  }
 });
 
 canvas.addEventListener("pointerdown", (event) => {
   if (!hasImage) return;
+  if (editorMode === "sticker") {
+    if (!stickerLayer) return;
+    const pos = getPointerPos(event);
+    stickerDragging = true;
+    stickerDragOffsetX = pos.x - stickerLayer.x;
+    stickerDragOffsetY = pos.y - stickerLayer.y;
+    return;
+  }
   event.preventDefault();
   canvas.setPointerCapture(event.pointerId);
   saveHistory();
@@ -581,6 +726,14 @@ canvas.addEventListener("pointerdown", (event) => {
 canvas.addEventListener("pointermove", (event) => {
   if (!hasImage) return;
   const pos = getPointerPos(event);
+  if (editorMode === "sticker") {
+    if (stickerDragging && stickerLayer) {
+      stickerLayer.x = pos.x - stickerDragOffsetX;
+      stickerLayer.y = pos.y - stickerDragOffsetY;
+      drawToScreen();
+    }
+    return;
+  }
   updateBrushPosition(pos.cssX, pos.cssY, true);
   if (!dragging) return;
   if (!lastPos) {
@@ -593,6 +746,10 @@ canvas.addEventListener("pointermove", (event) => {
 
 canvas.addEventListener("pointerup", (event) => {
   if (!hasImage) return;
+  if (editorMode === "sticker") {
+    stickerDragging = false;
+    return;
+  }
   dragging = false;
   lastPos = null;
   canvas.releasePointerCapture(event.pointerId);
@@ -612,6 +769,7 @@ canvas.addEventListener("pointerenter", (event) => {
 
 canvas.addEventListener("pointercancel", () => {
   dragging = false;
+  stickerDragging = false;
   lastPos = null;
   hideBrush();
 });
@@ -641,6 +799,28 @@ modeButtons.forEach((button) => {
     mode = button.dataset.mode || "push";
   });
 });
+
+tierBasicBtn.addEventListener("click", () => setTier("basic"));
+tierProBtn.addEventListener("click", () => setTier("pro"));
+editorWarpBtn.addEventListener("click", () => setEditorMode("warp"));
+editorStickerBtn.addEventListener("click", () => setEditorMode("sticker"));
+
+if (stickerInput) {
+  stickerInput.addEventListener("change", (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file || !isPro) return;
+    const url = URL.createObjectURL(file);
+    setStickerImageFromUrl(url);
+    stickerInput.value = "";
+  });
+}
+
+if (removeStickerBtn) {
+  removeStickerBtn.addEventListener("click", () => {
+    stickerLayer = null;
+    drawToScreen();
+  });
+}
 
 cameraBtn.addEventListener("click", async () => {
   if (cameraStream) {
@@ -711,6 +891,14 @@ function initFlyText() {
 // Mouse wheel: resize brush
 canvas.addEventListener("wheel", (event) => {
   if (!hasImage) return;
+  if (editorMode === "sticker" && stickerLayer) {
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.06 : 0.94;
+    stickerLayer.w = Math.max(20, stickerLayer.w * factor);
+    stickerLayer.h = Math.max(20, stickerLayer.h * factor);
+    drawToScreen();
+    return;
+  }
   event.preventDefault();
   const delta = event.deltaY < 0 ? 5 : -5;
   const min = parseInt(sizeInput.min, 10);
@@ -732,6 +920,21 @@ document.addEventListener("keydown", (event) => {
 
   // Mode shortcuts (only when not in an input)
   if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) return;
+
+  if (editorMode === "sticker" && stickerLayer) {
+    if (event.key.toLowerCase() === "q") {
+      event.preventDefault();
+      stickerLayer.rotation -= 0.1;
+      drawToScreen();
+      return;
+    }
+    if (event.key.toLowerCase() === "e") {
+      event.preventDefault();
+      stickerLayer.rotation += 0.1;
+      drawToScreen();
+      return;
+    }
+  }
 
   const modeMap = { "1": "push", "2": "bulge", "3": "pinch", "4": "twirl", "5": "smooth", "6": "reconstruct" };
   if (modeMap[event.key]) {
@@ -802,3 +1005,4 @@ if (exportQualityInput && exportQualityValue) {
 initFlyText();
 syncHistoryButtons();
 updateSliderValues();
+resolveTierFromServer();

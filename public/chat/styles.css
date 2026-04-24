@@ -242,6 +242,17 @@ body {
 .msg-body { display: flex; flex-direction: column; gap: 2px; }
 .msg-sender { font-size: .7rem; color: var(--muted); padding: 0 4px; }
 .msg-row.own .msg-sender { text-align: right; }
+.msg-pro-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: .62rem;
+    font-weight: 700;
+    color: #6a3e00;
+    background: linear-gradient(135deg, #ffd277, #ffb84d);
+    border: 1px solid #d1922d;
+}
 
 .msg-bubble {
     background: var(--card);
@@ -285,6 +296,33 @@ body {
 .msg-file-dl { font-size: .78rem; color: var(--cyan2); text-decoration: none; }
 .msg-file-dl:hover { text-decoration: underline; }
 .msg-fw-label { font-size: .7rem; color: var(--accent2); margin-top: 4px; }
+.pro-sticker {
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 194, 87, .5);
+    background: linear-gradient(120deg, rgba(255, 204, 94, .2), rgba(124, 58, 237, .25));
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    animation: proPulse 1.2s ease-in-out infinite;
+}
+.pro-sticker-logo {
+    width: 22px;
+    height: 22px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #7c3aed, #22c8dc);
+    color: #fff;
+    font-size: .88rem;
+}
+@keyframes proPulse {
+    0%,100% { transform: scale(1); filter: saturate(1); }
+    50% { transform: scale(1.03); filter: saturate(1.25); }
+}
 
 /* ── Input Bar ───────────────────────────────────────────────────────────── */
 .input-wrap {

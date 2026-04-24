@@ -41,7 +41,7 @@ form.addEventListener('submit', async (event) => {
     event.preventDefault();
     setStatus('', '');
 
-    if (activeAdminCode !== ADMIN_CODE) {
+    if (!activeAdminCode) {
         setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
         return;
     }
@@ -161,8 +161,9 @@ async function loadRegisteredUsers() {
             .map(
                 (user) => `
                 <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-                    <span>${escapeHtml(user.username)}</span>
+                    <span>${escapeHtml(user.username)} ${user.is_pro ? '<strong style="color:#b45309">PRO</strong>' : ''}</span>
                     <span style="display:flex;gap:6px;">
+                        <button class="btn-small" onclick="toggleUserPro(${user.id}, ${user.is_pro ? 'false' : 'true'})">${user.is_pro ? 'PRO entfernen' : 'PRO geben'}</button>
                         <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
                         <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
                     </span>
@@ -171,6 +172,29 @@ async function loadRegisteredUsers() {
             .join('');
     } catch (error) {
         setStatus(`Fehler beim Laden der Nutzer: ${error.message}`, 'error');
+    }
+}
+
+async function toggleUserPro(userId, enabled) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/pro`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ enabled, days: 2 })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Pro-Status konnte nicht geändert werden.', 'error');
+            return;
+        }
+        setStatus(enabled ? 'PRO wurde aktiviert.' : 'PRO wurde entfernt.', 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler bei PRO-Update: ${error.message}`, 'error');
     }
 }
 

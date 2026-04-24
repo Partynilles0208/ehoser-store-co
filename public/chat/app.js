@@ -3,8 +3,10 @@ const API = window.location.origin + '/api';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let _token = null, _me = null, _myKeys = null;
+let _meProfile = null;
 let _groups = [], _activeGroupId = null;
 let _groupKeyCache = {}, _lastMsgId = {};
+let _proBadgeCache = {};
 let _poll = null;
 let _ngMembers = {}; // new-group selected members { username: pubKeyJwk }
 let _recorder = null, _recChunks = [], _recTimer = null, _recSecs = 0;
@@ -17,9 +19,26 @@ let _attachOpen = false;
     try {
         const r = await api('/verify-token', 'POST');
         _me = r.user;
+        if (r.token) {
+            _token = r.token;
+            localStorage.setItem('token', r.token);
+        }
+        _meProfile = r.profile || null;
+        if (!_meProfile) {
+            try {
+                const meData = await api('/me');
+                _meProfile = meData.profile || null;
+            } catch {
+                _meProfile = null;
+            }
+        }
     } catch { show('loginWall'); return; }
     show('chatApp');
     document.getElementById('sidebarMe').textContent = '👤 ' + _me.username;
+    if (_meProfile?.isPro) {
+        const proStickerItem = document.getElementById('proStickerItem');
+        if (proStickerItem) proStickerItem.style.display = '';
+    }
     _myKeys = await getOrCreateKeys();
     api('/chat/key', 'POST', { publicKey: await exportPub(_myKeys.publicKey) }).catch(() => {});
     await loadGroups();
@@ -186,6 +205,7 @@ async function loadMessages(gid, initial) {
             return;
         }
         const key = await getGroupKey(gid);
+        await fetchProBadges(messages.map((m) => m.sender));
         if (initial) document.getElementById('messagesArea').innerHTML = '';
         for (const m of messages) {
             if (gid !== _activeGroupId) break;
@@ -214,10 +234,11 @@ function appendMessage(m, plainJson) {
     }
     const row = document.createElement('div');
     row.className = 'msg-row' + (own ? ' own' : '');
+    const senderBadge = _proBadgeCache[m.sender]?.isPro ? '<span class="msg-pro-badge">PRO</span>' : '';
     row.innerHTML = `
         <div class="msg-avatar">${esc(m.sender.substring(0,2).toUpperCase())}</div>
         <div class="msg-body">
-            ${!own ? '<span class="msg-sender">' + esc(m.sender) + '</span>' : ''}
+            ${!own ? '<span class="msg-sender">' + esc(m.sender) + senderBadge + '</span>' : ''}
             <div class="msg-bubble">${content}</div>
             <span class="msg-time">${time}</span>
         </div>`;
@@ -232,9 +253,15 @@ function renderContent(p) {
         case 'vid': return `<video class="msg-video" src="${esc(p.url)}" controls preload="metadata"></video>`;
         case 'aud': return renderAudio(p);
         case 'fw':  return `<img class="msg-img" src="${esc(p.url)}" alt="Face Warp" loading="lazy" onclick="viewImg(this.src)"><div class="msg-fw-label">🎭 Face Warp</div>`;
+        case 'pro_sticker': return renderProSticker(p);
         case 'file': return renderFile(p);
         default: return esc(JSON.stringify(p));
     }
+}
+
+function renderProSticker(p) {
+    const label = p?.label || 'ehoser PRO';
+    return `<div class="pro-sticker"><span class="pro-sticker-logo">E</span><span>${esc(label)}</span></div>`;
 }
 
 function renderAudio(p) {
@@ -423,11 +450,35 @@ async function sendFwImage(url) {
 function openFacewarpEditor() {
     closeModal('fwModal');
     localStorage.setItem('faceWarpReturnToChat', '1');
-    window.open('/facewarp/', '_blank');
+    const tier = _meProfile?.isPro ? 'pro' : 'basic';
+    window.open('/facewarp/?tier=' + tier, '_blank');
 }
 
 function getSavedFacewarps() {
     try { return JSON.parse(localStorage.getItem('chatSavedFacewarps') || '[]'); } catch { return []; }
+}
+
+async function fetchProBadges(usernames) {
+    const unique = [...new Set((usernames || []).filter(Boolean))].filter((u) => !_proBadgeCache[u]);
+    if (!unique.length) return;
+    try {
+        const data = await api('/users/pro-badges?usernames=' + encodeURIComponent(unique.join(',')));
+        const users = data?.users || {};
+        Object.keys(users).forEach((username) => {
+            _proBadgeCache[username] = users[username];
+        });
+    } catch {
+        // non-fatal
+    }
+}
+
+async function sendProSticker() {
+    toggleAttachMenu();
+    if (!_meProfile?.isPro) {
+        toast('Nur mit PRO verfügbar.', 'err');
+        return;
+    }
+    await sendMediaMessage({ t: 'pro_sticker', label: 'ehoser PRO Sticker' });
 }
 
 // ─── Groups: New ─────────────────────────────────────────────────────────────
