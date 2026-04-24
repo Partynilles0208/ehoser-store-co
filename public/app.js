@@ -483,12 +483,54 @@ function showSection(sectionId) {
     }
 
     section.classList.add('active');
+    if (sectionId === 'auth') {
+        loadUnlockCode();
+    }
     if (sectionId === 'my-apps') {
         loadMyApps();
     }
     if (sectionId === 'games') {
         if (!gamesAllLoaded.length) loadGames();
     }
+}
+
+let _unlockCode = null;
+
+async function loadUnlockCode() {
+    if (_unlockCode) {
+        document.getElementById('unlockCodeDisplay').textContent = _unlockCode;
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/unlock-code`);
+        const data = await res.json();
+        _unlockCode = data.code;
+        document.getElementById('unlockCodeDisplay').textContent = _unlockCode;
+    } catch {
+        document.getElementById('unlockCodeDisplay').textContent = '–';
+    }
+}
+
+async function copyUnlockCode() {
+    if (!_unlockCode) return;
+    try {
+        await navigator.clipboard.writeText(_unlockCode);
+    } catch {
+        // Fallback
+        const el = document.getElementById('unlockCodeDisplay');
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+    const btn = document.querySelector('.unlock-code-copy');
+    btn.textContent = '✓ Kopiert!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+        btn.textContent = '📋 Kopieren';
+        btn.classList.remove('copied');
+    }, 2000);
 }
 
 function selectMode(mode) {
