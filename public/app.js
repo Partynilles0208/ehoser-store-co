@@ -1,11 +1,13 @@
 const API_BASE = `${window.location.origin}/api`;
 let currentUser = null;
+let currentProfile = null;
 let allApps = [];
 let currentCategory = 'all';
 let resetRequestId = null;
 let resetLookupToken = null;
 let resetToken = null;
 let resetPollInterval = null;
+let pendingReferral = null;
 
 function switchAuthTab(tab, btn) {
     document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
@@ -156,6 +158,8 @@ async function handleLogin(event) {
 
         localStorage.setItem('token', data.token);
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
+        currentProfile = data.profile || null;
+        applyProfileSettings();
         showAlert('Erfolgreich angemeldet!', 'success');
 
         if (data.redirectToAdmin) {
@@ -174,6 +178,14 @@ async function handleLogin(event) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    const ref = new URLSearchParams(window.location.search).get('ref');
+    pendingReferral = ref || localStorage.getItem('pendingReferralCode') || null;
+    if (pendingReferral) {
+        localStorage.setItem('pendingReferralCode', pendingReferral);
+        const referralInput = document.getElementById('referralCode');
+        if (referralInput) referralInput.value = pendingReferral;
+    }
+
     const token = localStorage.getItem('token');
     if (token) {
         verifyToken(token);
@@ -196,7 +208,10 @@ async function verifyToken(token) {
         }
 
         const data = await response.json();
+        if (data.token) localStorage.setItem('token', data.token);
         currentUser = data.user;
+        currentProfile = data.profile || null;
+        applyProfileSettings();
         showLoggedInUI();
         await loadApps();
         showSection('mode-select');
@@ -218,7 +233,7 @@ async function handleRegister(event) {
         const response = await fetch(`${API_BASE}/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ unlockCode, username, email })
+            body: JSON.stringify({ unlockCode, username, email, referralCode: pendingReferral })
         });
 
         const data = await response.json();
@@ -230,7 +245,14 @@ async function handleRegister(event) {
 
         localStorage.setItem('token', data.token);
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
+        currentProfile = data.profile || null;
+        applyProfileSettings();
         window.alert(`Dein Login-Code: ${data.loginCode}\nDiesen Code sicher speichern. Du brauchst ihn fuer jede Anmeldung.`);
+        if (data.referralApplied) {
+            showAlert('Referral erfolgreich: Ihr habt beide 2 Tage Pro erhalten.', 'success');
+            localStorage.removeItem('pendingReferralCode');
+            pendingReferral = null;
+        }
         showAlert('Willkommen bei ehoser.', 'success');
 
         if (data.redirectToAdmin) {
@@ -251,10 +273,13 @@ async function handleRegister(event) {
 function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
     const adminLabel = currentUser?.isAdmin ? 'Admin' : 'App hochladen';
+    const plan = currentProfile?.isPro ? 'PRO' : 'Gratis';
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('store')" class="nav-link">Store</a>
         <a href="#" onclick="showSection('my-apps')" class="nav-link">Meine Apps</a>
         <a href="admin.html" class="nav-link">${adminLabel}</a>
+        <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
+        <span class="plan-badge ${currentProfile?.isPro ? 'pro' : ''}">${plan}</span>
         <span class="hello-user">Hallo, ${escapeHtml(currentUser.username)}.</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
     `;
@@ -355,6 +380,7 @@ async function installApp(appId, button) {
     }
 
     const app = allApps.find((item) => item.id === appId);
+    const isPro = Boolean(currentProfile?.isPro);
     const token = localStorage.getItem('token');
 
     try {
@@ -377,6 +403,11 @@ async function installApp(appId, button) {
             button.textContent = 'Installiert';
             button.classList.add('btn-installed');
             button.disabled = true;
+        }
+
+        if (!isPro) {
+            showAlert('Gratis-Modus: Download startet in 5 Sekunden. Mit PRO sofort.', 'success');
+            await new Promise((resolve) => setTimeout(resolve, 5000));
         }
 
         // APK direkt herunterladen
@@ -539,7 +570,7 @@ function selectMode(mode) {
     } else if (mode === 'games') {
         showSection('games');
     } else if (mode === 'facewarp') {
-        window.location.href = '/facewarp/';
+        openFacewarpModeModal();
     } else if (mode === 'chat') {
         window.location.href = '/chat/';
     } else {
@@ -550,6 +581,7 @@ function selectMode(mode) {
 function logout() {
     localStorage.removeItem('token');
     currentUser = null;
+    currentProfile = null;
     allApps = [];
     stopOnlinePolling();
     stopResetStatusPolling();
@@ -602,6 +634,132 @@ async function fetchOnlineUsers() {
     } catch {}
 }
 
+function applyProfileSettings() {
+    const settings = currentProfile?.settings;
+    if (!settings) return;
+
+    document.documentElement.dataset.design = settings.design || 'standard';
+    if (settings.energySaver) {
+        document.body.classList.add('energy-saver');
+    } else {
+        document.body.classList.remove('energy-saver');
+    }
+}
+
+function updatePlanBadge() {
+    const el = document.getElementById('planBadge');
+    if (!el) return;
+
+    if (currentProfile?.isPro) {
+        const until = currentProfile.proUntil ? new Date(currentProfile.proUntil).toLocaleDateString('de-DE') : '';
+        el.textContent = until ? `Plan: PRO bis ${until}` : 'Plan: PRO';
+        el.classList.add('pro');
+    } else {
+        el.textContent = 'Plan: Gratis';
+        el.classList.remove('pro');
+    }
+}
+
+function openSettingsModal() {
+    if (!currentUser) {
+        showAlert('Bitte zuerst anmelden.', 'error');
+        return;
+    }
+
+    const modal = document.getElementById('settingsModal');
+    const p = currentProfile || { settings: { language: 'de', design: 'standard', energySaver: false }, isPro: false };
+    document.getElementById('settingLanguage').value = p.settings?.language || 'de';
+    document.getElementById('settingDesign').value = p.settings?.design || 'standard';
+    document.getElementById('settingEnergySaver').checked = Boolean(p.settings?.energySaver);
+    document.getElementById('inviteLinkWrap').style.display = 'none';
+    updatePlanBadge();
+    modal.classList.add('show');
+}
+
+function closeSettingsModal() {
+    document.getElementById('settingsModal').classList.remove('show');
+}
+
+async function saveAccountSettings() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const payload = {
+        language: document.getElementById('settingLanguage').value,
+        design: document.getElementById('settingDesign').value,
+        energySaver: document.getElementById('settingEnergySaver').checked
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/me/settings`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showAlert(data.error || 'Einstellungen konnten nicht gespeichert werden.', 'error');
+            return;
+        }
+        currentProfile = data.profile;
+        applyProfileSettings();
+        showLoggedInUI();
+        closeSettingsModal();
+        showAlert('Einstellungen gespeichert.', 'success');
+    } catch {
+        showAlert('Netzwerkfehler beim Speichern.', 'error');
+    }
+}
+
+async function createReferralInvite() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const response = await fetch(`${API_BASE}/referral/create`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showAlert(data.error || 'Referral-Link konnte nicht erstellt werden.', 'error');
+            return;
+        }
+        document.getElementById('inviteLinkWrap').style.display = 'grid';
+        document.getElementById('inviteLinkInput').value = data.inviteUrl;
+        showAlert('Link erstellt. Wenn 1 Person registriert, bekommt ihr beide 2 Tage PRO.', 'success');
+    } catch {
+        showAlert('Referral-Link konnte nicht erstellt werden.', 'error');
+    }
+}
+
+async function copyInviteLink() {
+    const input = document.getElementById('inviteLinkInput');
+    if (!input?.value) return;
+    try {
+        await navigator.clipboard.writeText(input.value);
+        showAlert('Einladungslink kopiert.', 'success');
+    } catch {
+        input.select();
+        document.execCommand('copy');
+    }
+}
+
+function openFacewarpModeModal() {
+    document.getElementById('facewarpModeModal').classList.add('show');
+}
+
+function closeFacewarpModeModal() {
+    document.getElementById('facewarpModeModal').classList.remove('show');
+}
+
+function openFacewarpWithTier(tier) {
+    const safeTier = tier === 'pro' ? 'pro' : 'basic';
+    window.location.href = `/facewarp/?tier=${safeTier}`;
+}
+
 function showAlert(message, type) {
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${type}`;
@@ -617,6 +775,14 @@ window.onclick = function onWindowClick(evt) {
     const modal = document.getElementById('appModal');
     if (evt.target === modal) {
         modal.classList.remove('show');
+    }
+    const settingsModal = document.getElementById('settingsModal');
+    if (evt.target === settingsModal) {
+        closeSettingsModal();
+    }
+    const facewarpModeModal = document.getElementById('facewarpModeModal');
+    if (evt.target === facewarpModeModal) {
+        closeFacewarpModeModal();
     }
     const gameModal = document.getElementById('gameModal');
     if (evt.target === gameModal) {

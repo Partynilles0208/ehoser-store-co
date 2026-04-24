@@ -66,6 +66,25 @@ body {
     min-height: 100vh;
 }
 
+html[data-design="ocean"] body {
+    background:
+        radial-gradient(circle at 18% 8%, rgba(34, 197, 220, 0.28), transparent 32%),
+        radial-gradient(circle at 84% 26%, rgba(14, 138, 155, 0.28), transparent 30%),
+        linear-gradient(160deg, #03111a 0%, #0b2a39 55%, #12475d 100%);
+}
+
+html[data-design="sunset"] body {
+    background:
+        radial-gradient(circle at 22% 10%, rgba(255, 178, 94, 0.25), transparent 30%),
+        radial-gradient(circle at 84% 20%, rgba(255, 110, 72, 0.24), transparent 28%),
+        linear-gradient(160deg, #1a0f16 0%, #3d1d26 52%, #6d2a2a 100%);
+}
+
+body.energy-saver * {
+    animation: none !important;
+    transition: none !important;
+}
+
 .bg-shape {
     position: fixed;
     border-radius: 50%;
@@ -506,6 +525,49 @@ textarea:focus {
     width: min(620px, 92vw);
     padding: 22px;
     position: relative;
+}
+
+.settings-modal-content {
+    max-width: 520px;
+}
+
+.settings-pro-box {
+    margin-top: 14px;
+    border: 1px dashed var(--line);
+    background: #f1f7fb;
+    border-radius: 12px;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+}
+
+.plan-badge {
+    display: inline-block;
+    width: fit-content;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #173948;
+    background: #d4eef2;
+    border: 1px solid #9fd4db;
+}
+
+.plan-badge.pro {
+    color: #5a3600;
+    background: #ffe7ba;
+    border-color: #f0be67;
+}
+
+.invite-link-wrap {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.invite-link-wrap input {
+    font-size: 0.84rem;
 }
 
 .close {

@@ -12,6 +12,8 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const UNLOCK_CODE = '020818';
 const ADMIN_UPLOAD_KEY = 'nils2014!';
+const TOKEN_EXPIRES_IN = '30d';
+const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -61,6 +63,143 @@ const createLoginCode = () => {
 
 const createSecureToken = () => crypto.randomBytes(24).toString('hex');
 
+// Fallback für Serverless/fehlende Tabellen
+const memoryProfiles = new Map();
+const memoryReferralCodes = new Map();
+
+function readAuthUser(req, res) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    res.status(401).json({ error: 'Nicht angemeldet' });
+    return null;
+  }
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch {
+    res.status(401).json({ error: 'Ungültiger Token' });
+    return null;
+  }
+}
+
+function normalizeSettings(raw) {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  return {
+    language: typeof src.language === 'string' ? src.language : 'de',
+    design: typeof src.design === 'string' ? src.design : 'standard',
+    energySaver: Boolean(src.energySaver)
+  };
+}
+
+function normalizeProfileRow(username, row) {
+  const profile = row || memoryProfiles.get(username) || {};
+  const proUntil = profile.pro_until || profile.proUntil || null;
+  const ms = proUntil ? Date.parse(proUntil) : 0;
+  return {
+    username,
+    settings: normalizeSettings(profile.settings || profile.user_settings),
+    proUntil: proUntil || null,
+    isPro: Number.isFinite(ms) && ms > Date.now()
+  };
+}
+
+async function getProfile(username) {
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('username, settings, pro_until')
+      .eq('username', username)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    if (!data) return normalizeProfileRow(username, null);
+    return normalizeProfileRow(username, data);
+  } catch {
+    return normalizeProfileRow(username, null);
+  }
+}
+
+async function upsertProfile(username, patch) {
+  const current = await getProfile(username);
+  const payload = {
+    username,
+    settings: patch.settings ? normalizeSettings(patch.settings) : current.settings,
+    pro_until: Object.prototype.hasOwnProperty.call(patch, 'proUntil') ? patch.proUntil : current.proUntil
+  };
+
+  try {
+    await supabase.from('user_profiles').upsert(payload);
+  } catch {
+    memoryProfiles.set(username, {
+      settings: payload.settings,
+      proUntil: payload.pro_until,
+      pro_until: payload.pro_until
+    });
+  }
+
+  return normalizeProfileRow(username, {
+    settings: payload.settings,
+    pro_until: payload.pro_until
+  });
+}
+
+async function extendProFor(username, ms = PRO_BONUS_MS) {
+  const profile = await getProfile(username);
+  const from = profile.proUntil ? Date.parse(profile.proUntil) : 0;
+  const base = Number.isFinite(from) && from > Date.now() ? from : Date.now();
+  const next = new Date(base + ms).toISOString();
+  return upsertProfile(username, { proUntil: next });
+}
+
+async function createReferralCode(inviterUsername) {
+  const code = crypto.randomBytes(5).toString('hex');
+  memoryReferralCodes.set(code, {
+    inviter: inviterUsername,
+    usedBy: null,
+    createdAt: Date.now()
+  });
+
+  try {
+    await supabase.from('referral_invites').insert({
+      code,
+      inviter_username: inviterUsername
+    });
+  } catch {
+    // Fallback bleibt in memoryReferralCodes
+  }
+
+  return code;
+}
+
+async function consumeReferralCode(code, newUsername) {
+  if (!code) return null;
+  const normalized = String(code).trim();
+  if (!normalized) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('referral_invites')
+      .select('code, inviter_username, used_by')
+      .eq('code', normalized)
+      .single();
+
+    if (!error && data && !data.used_by && data.inviter_username !== newUsername) {
+      await supabase
+        .from('referral_invites')
+        .update({ used_by: newUsername, used_at: new Date().toISOString() })
+        .eq('code', normalized)
+        .is('used_by', null);
+      return data.inviter_username;
+    }
+  } catch {
+    // In-memory fallback unten
+  }
+
+  const local = memoryReferralCodes.get(normalized);
+  if (!local || local.usedBy || local.inviter === newUsername) return null;
+  local.usedBy = newUsername;
+  return local.inviter;
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -71,7 +210,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Registrierung
 app.post('/api/register', async (req, res) => {
-  const { unlockCode, username, email } = req.body;
+  const { unlockCode, username, email, referralCode } = req.body;
   const clientKey = `register:${req.ip || 'unknown'}`;
 
   if (isRateLimited(clientKey)) {
@@ -115,8 +254,18 @@ app.post('/api/register', async (req, res) => {
     const token = jwt.sign(
       { id: userId, username, isAdmin: false },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: TOKEN_EXPIRES_IN }
     );
+
+    const inviterUsername = await consumeReferralCode(referralCode, username);
+    if (inviterUsername) {
+      await Promise.all([
+        extendProFor(username, PRO_BONUS_MS),
+        extendProFor(inviterUsername, PRO_BONUS_MS)
+      ]);
+    }
+
+    const profile = await getProfile(username);
 
     res.json({
       success: true,
@@ -124,6 +273,8 @@ app.post('/api/register', async (req, res) => {
       token,
       userId,
       loginCode,
+      profile,
+      referralApplied: Boolean(inviterUsername),
       redirectToAdmin: false
     });
   } catch (error) {
@@ -172,13 +323,16 @@ app.post('/api/login', async (req, res) => {
     const token = jwt.sign(
       { id: data.id, username: data.username, isAdmin },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: TOKEN_EXPIRES_IN }
     );
+
+    const profile = await getProfile(data.username);
 
     res.json({
       success: true,
       token,
       userId: data.id,
+      profile,
       redirectToAdmin: isAdmin
     });
   } catch (error) {
@@ -332,10 +486,73 @@ app.post('/api/verify-token', async (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     // last_seen aktualisieren (Fehler ignorieren)
     await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id).catch(() => {});
-    res.json({ valid: true, user: decoded });
+    const refreshedToken = jwt.sign(
+      { id: decoded.id, username: decoded.username, isAdmin: Boolean(decoded.isAdmin) },
+      JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRES_IN }
+    );
+    const profile = await getProfile(decoded.username);
+    res.json({ valid: true, user: decoded, token: refreshedToken, profile });
   } catch (err) {
     res.status(401).json({ error: 'Ungültiger Token' });
   }
+});
+
+// Eigenes Profil (inkl. Pro + Einstellungen)
+app.get('/api/me', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const profile = await getProfile(auth.username);
+  res.json({
+    user: {
+      id: auth.id,
+      username: auth.username,
+      isAdmin: Boolean(auth.isAdmin)
+    },
+    profile
+  });
+});
+
+// Einstellungen speichern
+app.put('/api/me/settings', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const settings = normalizeSettings(req.body || {});
+  const profile = await upsertProfile(auth.username, { settings });
+  res.json({ ok: true, profile });
+});
+
+// Referral-Link erstellen
+app.post('/api/referral/create', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const code = await createReferralCode(auth.username);
+  const inviteUrl = `${req.protocol}://${req.get('host')}/?ref=${encodeURIComponent(code)}`;
+  res.json({ code, inviteUrl, rewardDays: 2 });
+});
+
+// Pro-Status für mehrere Nutzer
+app.get('/api/users/pro-badges', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const raw = String(req.query.usernames || '').trim();
+  const users = raw
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean)
+    .slice(0, 100);
+
+  const map = {};
+  for (const username of users) {
+    const profile = await getProfile(username);
+    map[username] = {
+      isPro: profile.isPro,
+      proUntil: profile.proUntil
+    };
+  }
+
+  res.json({ users: map });
 });
 
 // Online-Nutzer (letzte 5 Minuten)
@@ -473,10 +690,57 @@ app.get('/api/admin/users', async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    res.json(data || []);
+
+    const users = [];
+    for (const userRow of (data || [])) {
+      const profile = await getProfile(userRow.username);
+      users.push({
+        ...userRow,
+        pro_until: profile.proUntil,
+        is_pro: profile.isPro
+      });
+    }
+    res.json(users);
   } catch (error) {
     console.error('Admin Users Error:', error);
     res.status(500).json({ error: 'Nutzer konnten nicht geladen werden' });
+  }
+});
+
+// Admin: Pro aktivieren/deaktivieren
+app.post('/api/admin/users/:id/pro', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  const enabled = Boolean(req.body?.enabled);
+  const days = Math.max(1, Math.min(30, Number(req.body?.days) || 2));
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('username')
+      .eq('id', userId)
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const username = data.username;
+    if (enabled) {
+      const profile = await extendProFor(username, days * 24 * 60 * 60 * 1000);
+      return res.json({ ok: true, profile });
+    }
+
+    const profile = await upsertProfile(username, { proUntil: null });
+    return res.json({ ok: true, profile });
+  } catch (error) {
+    console.error('Admin Pro Toggle Error:', error);
+    return res.status(500).json({ error: 'Pro-Status konnte nicht geändert werden' });
   }
 });
 
@@ -844,7 +1108,8 @@ app.post('/api/chat/upload', chatUpload.single('file'), async (req, res) => {
   res.json({ url: publicUrl, mime: req.file.mimetype, size: req.file.size, name: req.file.originalname });
 });
 
-// POST /api/chat/key — eigenen ECDH Public Key hochladen/aktualisierenapp.post('/api/chat/key', async (req, res) => {
+// POST /api/chat/key — eigenen ECDH Public Key hochladen/aktualisieren
+app.post('/api/chat/key', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { publicKey } = req.body;
   if (!publicKey || typeof publicKey !== 'string' || publicKey.length > 4096) {
