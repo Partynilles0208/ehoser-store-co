@@ -191,10 +191,10 @@ async function handleLogin(event) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Splash Screen nach Animation entfernen
+    // Splash Screen nach Animation entfernen (24s Gesamt + 0.6s Puffer)
     const splash = document.getElementById('introSplash');
     if (splash) {
-        setTimeout(() => splash.remove(), 3700);
+        setTimeout(() => splash.remove(), 24600);
     }
 
     const ref = new URLSearchParams(window.location.search).get('ref');
