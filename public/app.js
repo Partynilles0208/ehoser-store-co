@@ -497,11 +497,7 @@ function selectMode(mode) {
     } else if (mode === 'games') {
         showSection('games');
     } else if (mode === 'facewarp') {
-        const frame = document.getElementById('facewarpFrame');
-        if (frame && !frame.src) {
-            frame.src = '/facewarp/index.html';
-        }
-        showSection('facewarp');
+        window.location.href = '/facewarp/';
     } else {
         showSection('mode-select');
     }
