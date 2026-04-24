@@ -1699,7 +1699,15 @@ textarea:focus {
 
  
  
-/* ── Intro Splash Screen (Roll-Animation) ────────────────────────────────────── */
+/* ── Intro Splash (Neue Sequenz) ─────────────────────────────────────────────
+   0s  – 5s  : E rollt von rechts rein          (5s)
+   5s         : E stoppt, Name schießt raus
+   5s  – 11s : Name sichtbar                    (6s)
+   11s – 15s : E + Name glänzen                 (4s)
+   15s – 19s : E + Name verschwinden            (4s)
+   19s – 24s : Schwarz → hell, Webseite taucht auf (5s)
+   Total: 24s
+───────────────────────────────────────────────────────────────────────────── */
 .intro-splash {
     position: fixed;
     inset: 0;
@@ -1709,10 +1717,10 @@ textarea:focus {
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    animation: splash-fade-out 0.35s ease-in 3.2s forwards;
+    /* Letzter Schritt: Schwarz blendet aus → Website taucht auf */
+    animation: splash-brighten 5s ease-in-out 19s forwards;
 }
 
-/* Wrapper: relativ, damit intro-text absolut darüber positioniert werden kann */
 .intro-scene {
     position: relative;
     display: flex;
@@ -1720,78 +1728,107 @@ textarea:focus {
     justify-content: center;
 }
 
-/* Das rollende E */
+/* ─── Das rollende E ─── */
 .intro-logo {
     font-family: "Space Grotesk", sans-serif;
     font-size: 4.5rem;
     font-weight: 700;
-    width: 100px;
-    height: 100px;
+    width: 110px;
+    height: 110px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 28px;
     background: linear-gradient(135deg, #0e8a9b, #f47c2a);
     color: #fff;
-    box-shadow: 0 0 50px rgba(14, 138, 155, 0.55);
-    /* Einrollen → pausieren → Ausrollen */
-    animation: e-journey 3.2s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+    transform: translateX(110vw) rotate(0deg);
+    animation:
+        e-roll-in  5s ease-out           0s  forwards,
+        e-glow     4s ease-in-out        11s forwards,
+        e-fade-out 4s ease-in            15s forwards;
 }
 
-/* Name erscheint über dem E, wird nach oben gespuckt */
+/* ─── Name über dem E ─── */
 .intro-text {
     position: absolute;
-    bottom: calc(100% + 20px);
+    bottom: calc(100% + 22px);
     left: 50%;
-    transform: translateX(-50%);
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     white-space: nowrap;
-    opacity: 0;
-    /* erscheint wenn E pausiert, verschwindet kurz bevor E losfährt */
-    animation: name-spit 0.45s cubic-bezier(0.22, 1, 0.36, 1) 1.05s forwards,
-               name-fade  0.3s ease-in 2.3s forwards;
+    animation:
+        name-spit  0.55s cubic-bezier(0.22, 1, 0.36, 1) 5s  forwards,
+        name-shine 4s   ease-in-out                     11s forwards,
+        name-fade  4s   ease-in                         15s forwards;
 }
 
 .intro-developed {
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     font-weight: 500;
     color: #4d8899;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
 }
 
 .intro-name {
     font-family: "Space Grotesk", sans-serif;
-    font-size: 2rem;
+    font-size: 2.1rem;
     font-weight: 700;
     color: #e9f6ff;
     letter-spacing: 0.03em;
 }
 
-/* E rollt von rechts rein (0–33%), pausiert (33–70%), rollt nach links raus (70–100%) */
-@keyframes e-journey {
-    0%   { transform: translateX(110vw) rotate(0deg); }
-    33%  { transform: translateX(0)     rotate(630deg); }
-    70%  { transform: translateX(0)     rotate(630deg); }
-    100% { transform: translateX(-110vw) rotate(1260deg); }
+/* ─── Keyframes ─── */
+
+/* E rollt von rechts rein, 6 volle Drehungen */
+@keyframes e-roll-in {
+    0%   { transform: translateX(110vw)  rotate(0deg); }
+    100% { transform: translateX(0)      rotate(2160deg); }
 }
 
-/* Name schießt aus dem E hoch */
+/* E leuchtet / glüht */
+@keyframes e-glow {
+    0%   { box-shadow: 0 0 20px rgba(14,138,155,0.3); }
+    40%  { box-shadow: 0 0 80px #0e8a9b, 0 0 160px rgba(244,124,42,0.7), 0 0 40px #fff; }
+    70%  { box-shadow: 0 0 120px #f47c2a, 0 0 200px rgba(14,138,155,0.9), 0 0 60px #fff; }
+    100% { box-shadow: 0 0 20px rgba(14,138,155,0.3); }
+}
+
+/* E blendet aus */
+@keyframes e-fade-out {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/* Name schießt aus dem E nach oben */
 @keyframes name-spit {
-    0%   { opacity: 0; transform: translateX(-50%) translateY(30px) scale(0.7); }
-    60%  { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1.04); }
-    100% { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1); }
+    0%   { opacity: 0; transform: translateX(-50%) translateY(40px)  scale(0.7);  }
+    60%  { opacity: 1; transform: translateX(-50%) translateY(-12px) scale(1.07); }
+    100% { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1);    }
 }
 
-/* Name blendet aus bevor E losrollt */
+/* Name glänzt/schimmert */
+@keyframes name-shine {
+    0%   { filter: brightness(1)   drop-shadow(0 0 0   transparent); }
+    30%  { filter: brightness(1.7) drop-shadow(0 0 12px #7de8f7) drop-shadow(0 0 30px #0e8a9b); }
+    60%  { filter: brightness(2.3) drop-shadow(0 0 22px #fff)    drop-shadow(0 0 55px #f47c2a); }
+    85%  { filter: brightness(1.5) drop-shadow(0 0 14px #7de8f7); }
+    100% { filter: brightness(1)   drop-shadow(0 0 0   transparent); }
+}
+
+/* Name blendet aus */
 @keyframes name-fade {
-    to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+    from { opacity: 1; }
+    to   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
 }
 
-/* Ganzer Splash blendet weg */
-@keyframes splash-fade-out {
-    to { opacity: 0; }
+/* Schwarzer Bildschirm wird hell → Website taucht auf */
+@keyframes splash-brighten {
+    0%   { opacity: 1; background: #000; }
+    40%  { opacity: 0.7; background: #060d12; }
+    100% { opacity: 0; }
 }
