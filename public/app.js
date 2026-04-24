@@ -194,7 +194,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Splash Screen nach Animation entfernen (21s Gesamt + 0.5s Puffer)
     const splash = document.getElementById('introSplash');
     if (splash) {
-        setTimeout(() => splash.remove(), 21500);
+        setTimeout(() => {
+            splash.remove();
+            document.body.style.overflow = '';
+            document.documentElement.style.background = '';
+            document.body.style.background = '';
+        }, 21500);
     }
 
     const ref = new URLSearchParams(window.location.search).get('ref');
