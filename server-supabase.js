@@ -314,6 +314,11 @@ app.post('/api/code-reset-complete', async (req, res) => {
   }
 });
 
+// Öffentlicher Endpoint: Zugangscode abrufen
+app.get('/api/unlock-code', (req, res) => {
+  res.json({ code: UNLOCK_CODE });
+});
+
 // Token verifizieren + last_seen aktualisieren
 app.post('/api/verify-token', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
