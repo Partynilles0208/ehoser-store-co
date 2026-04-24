@@ -1699,14 +1699,14 @@ textarea:focus {
 
  
  
-/* ── Intro Splash (Neue Sequenz) ─────────────────────────────────────────────
-   0s  – 5s  : E rollt von rechts rein          (5s)
-   5s         : E stoppt, Name schießt raus
-   5s  – 11s : Name sichtbar                    (6s)
-   11s – 15s : E + Name glänzen                 (4s)
-   15s – 19s : E + Name verschwinden            (4s)
-   19s – 24s : Schwarz → hell, Webseite taucht auf (5s)
-   Total: 24s
+/* ── Intro Splash ────────────────────────────────────────────────────────────
+   0s  – 3s  : E rollt von rechts in die Mitte
+   3s         : Name erscheint über dem E
+   3s  – 5s  : E + Name kurz sichtbar
+   5s  – 8s  : E rollt nach links weg
+   8s  – 12s : Name leuchtet / glänzt (4s)
+   12s – 16s : Name verschwindet      (4s)
+   16s – 21s : Schwarz → hell, Website taucht auf (5s)
 ───────────────────────────────────────────────────────────────────────────── */
 .intro-splash {
     position: fixed;
@@ -1717,8 +1717,7 @@ textarea:focus {
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    /* Letzter Schritt: Schwarz blendet aus → Website taucht auf */
-    animation: splash-brighten 5s ease-in-out 19s forwards;
+    animation: splash-brighten 5s ease-in-out 16s forwards;
 }
 
 .intro-scene {
@@ -1743,9 +1742,8 @@ textarea:focus {
     color: #fff;
     transform: translateX(110vw) rotate(0deg);
     animation:
-        e-roll-in  5s ease-out           0s  forwards,
-        e-glow     4s ease-in-out        11s forwards,
-        e-fade-out 4s ease-in            15s forwards;
+        e-roll-in  3s ease-out  0s forwards,
+        e-roll-out 3s ease-in   5s forwards;
 }
 
 /* ─── Name über dem E ─── */
@@ -1761,9 +1759,9 @@ textarea:focus {
     gap: 5px;
     white-space: nowrap;
     animation:
-        name-spit  0.55s cubic-bezier(0.22, 1, 0.36, 1) 5s  forwards,
-        name-shine 4s   ease-in-out                     11s forwards,
-        name-fade  4s   ease-in                         15s forwards;
+        name-spit  0.6s  cubic-bezier(0.22, 1, 0.36, 1) 3s  forwards,
+        name-shine 4s    ease-in-out                     8s  forwards,
+        name-fade  4s    ease-in                         12s forwards;
 }
 
 .intro-developed {
@@ -1784,51 +1782,42 @@ textarea:focus {
 
 /* ─── Keyframes ─── */
 
-/* E rollt von rechts rein, 6 volle Drehungen */
+/* E rollt von rechts rein → Mitte (4 Drehungen) */
 @keyframes e-roll-in {
-    0%   { transform: translateX(110vw)  rotate(0deg); }
-    100% { transform: translateX(0)      rotate(2160deg); }
+    0%   { transform: translateX(110vw) rotate(0deg); }
+    100% { transform: translateX(0)     rotate(1440deg); }
 }
 
-/* E leuchtet / glüht */
-@keyframes e-glow {
-    0%   { box-shadow: 0 0 20px rgba(14,138,155,0.3); }
-    40%  { box-shadow: 0 0 80px #0e8a9b, 0 0 160px rgba(244,124,42,0.7), 0 0 40px #fff; }
-    70%  { box-shadow: 0 0 120px #f47c2a, 0 0 200px rgba(14,138,155,0.9), 0 0 60px #fff; }
-    100% { box-shadow: 0 0 20px rgba(14,138,155,0.3); }
-}
-
-/* E blendet aus */
-@keyframes e-fade-out {
-    from { opacity: 1; }
-    to   { opacity: 0; }
+/* E rollt aus der Mitte nach links weg (4 weitere Drehungen) */
+@keyframes e-roll-out {
+    0%   { transform: translateX(0)      rotate(1440deg); opacity: 1; }
+    100% { transform: translateX(-110vw) rotate(2880deg); opacity: 1; }
 }
 
 /* Name schießt aus dem E nach oben */
 @keyframes name-spit {
     0%   { opacity: 0; transform: translateX(-50%) translateY(40px)  scale(0.7);  }
-    60%  { opacity: 1; transform: translateX(-50%) translateY(-12px) scale(1.07); }
+    60%  { opacity: 1; transform: translateX(-50%) translateY(-14px) scale(1.08); }
     100% { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1);    }
 }
 
-/* Name glänzt/schimmert */
+/* Name leuchtet / glänzt */
 @keyframes name-shine {
     0%   { filter: brightness(1)   drop-shadow(0 0 0   transparent); }
-    30%  { filter: brightness(1.7) drop-shadow(0 0 12px #7de8f7) drop-shadow(0 0 30px #0e8a9b); }
-    60%  { filter: brightness(2.3) drop-shadow(0 0 22px #fff)    drop-shadow(0 0 55px #f47c2a); }
-    85%  { filter: brightness(1.5) drop-shadow(0 0 14px #7de8f7); }
+    25%  { filter: brightness(1.8) drop-shadow(0 0 14px #7de8f7) drop-shadow(0 0 35px #0e8a9b); }
+    55%  { filter: brightness(2.5) drop-shadow(0 0 26px #fff)    drop-shadow(0 0 60px #f47c2a); }
+    80%  { filter: brightness(1.6) drop-shadow(0 0 16px #7de8f7); }
     100% { filter: brightness(1)   drop-shadow(0 0 0   transparent); }
 }
 
-/* Name blendet aus */
+/* Name verschwindet */
 @keyframes name-fade {
-    from { opacity: 1; }
-    to   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    from { opacity: 1; transform: translateX(-50%) translateY(0); }
+    to   { opacity: 0; transform: translateX(-50%) translateY(-12px); }
 }
 
 /* Schwarzer Bildschirm wird hell → Website taucht auf */
 @keyframes splash-brighten {
-    0%   { opacity: 1; background: #000; }
-    40%  { opacity: 0.7; background: #060d12; }
+    0%   { opacity: 1; }
     100% { opacity: 0; }
 }
