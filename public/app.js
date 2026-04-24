@@ -196,9 +196,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (splash) {
         setTimeout(() => {
             splash.remove();
+            document.body.classList.remove('splash-active');
             document.body.style.overflow = '';
-            document.documentElement.style.background = '';
-            document.body.style.background = '';
         }, 21500);
     }
 
