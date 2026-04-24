@@ -142,9 +142,47 @@ async function loadRegisteredUsers() {
             return;
         }
 
-        usersList.innerHTML = users.map((user) => `<li>${escapeHtml(user.username)}</li>`).join('');
+        usersList.innerHTML = users
+            .map(
+                (user) => `
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                    <span>${escapeHtml(user.username)}</span>
+                    <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
+                </li>`
+            )
+            .join('');
     } catch (error) {
         setStatus(`Fehler beim Laden der Nutzer: ${error.message}`, 'error');
+    }
+}
+
+async function deleteUser(userId, username) {
+    if (!activeAdminCode) {
+        setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
+        return;
+    }
+
+    const confirmed = window.confirm(`Nutzer "${username}" wirklich loeschen?`);
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}`, {
+            method: 'DELETE',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Nutzer konnte nicht geloescht werden.', 'error');
+            return;
+        }
+
+        setStatus(`Nutzer ${username} wurde geloescht.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler beim Loeschen: ${error.message}`, 'error');
     }
 }
 
@@ -164,4 +202,8 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function escapeJs(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }

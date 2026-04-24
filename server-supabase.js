@@ -334,6 +334,31 @@ app.get('/api/admin/users', async (req, res) => {
   }
 });
 
+// Admin: Nutzerkonto loeschen
+app.delete('/api/admin/users/:id', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+  }
+
+  try {
+    await supabase.from('installations').delete().eq('user_id', userId);
+
+    const { error } = await supabase.from('users').delete().eq('id', userId);
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Admin Delete User Error:', error);
+    res.status(500).json({ error: 'Nutzer konnte nicht gelöscht werden' });
+  }
+});
+
 // Neue App speichern (nur Metadaten, Dateien wurden direkt zu Supabase hochgeladen)
 app.post('/api/admin/apps', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
