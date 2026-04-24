@@ -140,13 +140,24 @@ async function handleLogin(event) {
     event.preventDefault();
     const unlockCode = document.getElementById('loginUnlockCode').value.trim();
     const username = document.getElementById('loginUsername').value.trim();
-    const loginCode = document.getElementById('loginCode').value.trim();
+    const password = document.getElementById('loginPassword')?.value.trim() || '';
+    const loginCode = document.getElementById('loginCode')?.value.trim() || '';
+
+    if (!password && !loginCode) {
+        showAlert('Bitte Passwort oder Login-Code eingeben.', 'error');
+        return;
+    }
 
     try {
         const response = await fetch(`${API_BASE}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, loginCode, unlockCode })
+            body: JSON.stringify({
+                username,
+                unlockCode,
+                password: password || undefined,
+                loginCode: loginCode || undefined
+            })
         });
 
         const data = await response.json();
@@ -239,12 +250,23 @@ async function handleRegister(event) {
     const unlockCode = document.getElementById('unlockCode').value.trim();
     const username = document.getElementById('username').value.trim();
     const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('registerPassword').value.trim();
+    const passwordConfirm = document.getElementById('registerPasswordConfirm').value.trim();
+
+    if (!password || password.length < 6) {
+        showAlert('Passwort muss mindestens 6 Zeichen lang sein.', 'error');
+        return;
+    }
+    if (password !== passwordConfirm) {
+        showAlert('Passwörter stimmen nicht überein.', 'error');
+        return;
+    }
 
     try {
         const response = await fetch(`${API_BASE}/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ unlockCode, username, email, referralCode: pendingReferral })
+            body: JSON.stringify({ unlockCode, username, email, password, referralCode: pendingReferral })
         });
 
         const data = await response.json();
@@ -259,7 +281,7 @@ async function handleRegister(event) {
         currentProfile = data.profile || null;
         localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
         applyProfileSettings();
-        window.alert(`Dein Login-Code: ${data.loginCode}\nDiesen Code sicher speichern. Du brauchst ihn fuer jede Anmeldung.`);
+        window.alert(`Dein Login-Code: ${data.loginCode}\nDiesen Code sicher speichern. Du kannst ihn als Backup zum Anmelden nutzen.`);
         if (data.referralApplied) {
             showAlert('Referral erfolgreich: Ihr habt beide 2 Tage Pro erhalten.', 'success');
             localStorage.removeItem('pendingReferralCode');

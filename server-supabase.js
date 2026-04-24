@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
@@ -210,7 +211,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Registrierung
 app.post('/api/register', async (req, res) => {
-  const { unlockCode, username, email, referralCode } = req.body;
+  const { unlockCode, username, email, referralCode, password } = req.body;
   const clientKey = `register:${req.ip || 'unknown'}`;
 
   if (isRateLimited(clientKey)) {
@@ -226,7 +227,12 @@ app.post('/api/register', async (req, res) => {
     return res.status(400).json({ error: 'Benutzername muss mindestens 3 Zeichen lang sein' });
   }
 
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein' });
+  }
+
   const loginCode = createLoginCode();
+  const passwordHash = await bcrypt.hash(password, 12);
 
   try {
     const { data, error } = await supabase
@@ -236,6 +242,7 @@ app.post('/api/register', async (req, res) => {
           username,
           email: email || null,
           access_code: loginCode,
+          password_hash: passwordHash,
           verified: 1
         }
       ])
@@ -286,7 +293,7 @@ app.post('/api/register', async (req, res) => {
 
 // Login
 app.post('/api/login', async (req, res) => {
-  const { username, loginCode, unlockCode } = req.body;
+  const { username, loginCode, unlockCode, password } = req.body;
   const clientKey = `login:${req.ip || 'unknown'}`;
 
   if (isRateLimited(clientKey)) {
@@ -298,8 +305,13 @@ app.post('/api/login', async (req, res) => {
     return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
   }
 
-  if (!username || !loginCode) {
-    return res.status(400).json({ error: 'Benutzername und Login-Code erforderlich' });
+  if (!username) {
+    return res.status(400).json({ error: 'Benutzername erforderlich' });
+  }
+
+  // Mindestens Passwort oder Login-Code muss angegeben sein
+  if (!password && !loginCode) {
+    return res.status(400).json({ error: 'Passwort oder Login-Code erforderlich' });
   }
 
   try {
@@ -307,12 +319,30 @@ app.post('/api/login', async (req, res) => {
       .from('users')
       .select('*')
       .eq('username', username)
-      .eq('access_code', loginCode)
       .single();
 
     if (error || !data) {
       registerFailedAttempt(clientKey);
-      return res.status(401).json({ error: 'Benutzername oder Login-Code falsch' });
+      return res.status(401).json({ error: 'Benutzername oder Passwort falsch' });
+    }
+
+    // Passwort-basierte Authentifizierung (neue User)
+    if (password) {
+      if (!data.password_hash) {
+        // Alter Account ohne Passwort: nur Login-Code möglich
+        return res.status(401).json({ error: 'Dieses Konto hat kein Passwort. Bitte mit Login-Code anmelden.' });
+      }
+      const passwordOk = await bcrypt.compare(password, data.password_hash);
+      if (!passwordOk) {
+        registerFailedAttempt(clientKey);
+        return res.status(401).json({ error: 'Benutzername oder Passwort falsch' });
+      }
+    } else if (loginCode) {
+      // Login-Code-Authentifizierung (alte User / Backup)
+      if (data.access_code !== loginCode) {
+        registerFailedAttempt(clientKey);
+        return res.status(401).json({ error: 'Benutzername oder Login-Code falsch' });
+      }
     }
 
     clearAttempts(clientKey);
