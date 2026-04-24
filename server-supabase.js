@@ -712,6 +712,32 @@ app.post('/api/referral/create', async (req, res) => {
   res.json({ code, inviteUrl, rewardDays: 2 });
 });
 
+// Pixabay Proxy (verhindert CORS-Fehler im Browser)
+app.get('/api/pixabay', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const PIXABAY_KEY = process.env.PIXABAY_KEY || '50190970-65ec83f509b70f19f8665f4a1';
+  const query = String(req.query.q || '').trim().slice(0, 200);
+  if (!query) return res.status(400).json({ error: 'Kein Suchbegriff' });
+
+  try {
+    const params = new URLSearchParams({
+      key: PIXABAY_KEY,
+      q: query,
+      image_type: 'all',
+      safesearch: 'true',
+      per_page: '18'
+    });
+    const response = await fetch(`https://pixabay.com/api/?${params.toString()}`);
+    if (!response.ok) throw new Error(`Pixabay HTTP ${response.status}`);
+    const data = await response.json();
+    res.json({ hits: Array.isArray(data.hits) ? data.hits : [], total: data.totalHits || 0 });
+  } catch (err) {
+    res.status(502).json({ error: `Pixabay Fehler: ${err.message}` });
+  }
+});
+
 // Pro-Status für mehrere Nutzer
 app.get('/api/users/pro-badges', async (req, res) => {
   const auth = readAuthUser(req, res);
