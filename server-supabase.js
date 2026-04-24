@@ -676,6 +676,122 @@ app.use((err, req, res, next) => {
   next();
 });
 
+// ─── Screen Share Signaling ───────────────────────────────────────────────────
+
+// POST /api/admin/screenshare/request  { username, offer }
+app.post('/api/admin/screenshare/request', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
+
+  const { username, offer } = req.body;
+  if (!username || !offer) return res.status(400).json({ error: 'username und offer erforderlich' });
+
+  // End existing sessions for this user
+  await supabase.from('screen_sessions')
+    .update({ status: 'ended' })
+    .eq('username', username)
+    .in('status', ['pending', 'active']);
+
+  const sessionId = crypto.randomUUID();
+  const { error } = await supabase.from('screen_sessions').insert({
+    id: sessionId, username, status: 'pending', offer: JSON.stringify(offer)
+  });
+
+  if (error) {
+    console.error('Screen session error:', error);
+    return res.status(500).json({ error: 'Tabelle screen_sessions fehlt. Bitte in Supabase anlegen.' });
+  }
+  res.json({ sessionId });
+});
+
+// GET /api/screenshare/pending  — Nutzer fragt ob Anfrage vorliegt
+app.get('/api/screenshare/pending', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    const { data } = await supabase
+      .from('screen_sessions')
+      .select('id, offer, status')
+      .eq('username', decoded.username)
+      .in('status', ['pending'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (!data || !data.length) return res.json({ pending: false });
+    const s = data[0];
+    res.json({ pending: true, sessionId: s.id, offer: JSON.parse(s.offer) });
+  } catch {
+    return res.status(401).json({ error: 'Ungültiges Token' });
+  }
+});
+
+// POST /api/screenshare/respond  { sessionId, answer, accept }
+app.post('/api/screenshare/respond', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const { sessionId, answer, accept } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'sessionId fehlt' });
+
+    const { data: session } = await supabase
+      .from('screen_sessions').select('username').eq('id', sessionId).single();
+    if (!session || session.username !== decoded.username)
+      return res.status(403).json({ error: 'Session nicht gefunden' });
+
+    if (!accept) {
+      await supabase.from('screen_sessions').update({ status: 'declined' }).eq('id', sessionId);
+      return res.json({ ok: true });
+    }
+    await supabase.from('screen_sessions')
+      .update({ status: 'active', answer: JSON.stringify(answer) }).eq('id', sessionId);
+    res.json({ ok: true });
+  } catch {
+    return res.status(401).json({ error: 'Fehler' });
+  }
+});
+
+// GET /api/admin/screenshare/session/:sessionId  — Admin fragt Status ab
+app.get('/api/admin/screenshare/session/:sessionId', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
+
+  const { data } = await supabase
+    .from('screen_sessions').select('status, answer').eq('id', req.params.sessionId).single();
+  if (!data) return res.status(404).json({ error: 'Session nicht gefunden' });
+  res.json({ status: data.status, answer: data.answer ? JSON.parse(data.answer) : null });
+});
+
+// POST /api/admin/screenshare/end/:sessionId  — Admin beendet Session
+app.post('/api/admin/screenshare/end/:sessionId', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
+  await supabase.from('screen_sessions').update({ status: 'ended' }).eq('id', req.params.sessionId);
+  res.json({ ok: true });
+});
+
+// POST /api/screenshare/end  — Nutzer beendet Session
+app.post('/api/screenshare/end', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const { sessionId } = req.body;
+    if (sessionId) {
+      await supabase.from('screen_sessions')
+        .update({ status: 'ended' }).eq('id', sessionId).eq('username', decoded.username);
+    }
+    res.json({ ok: true });
+  } catch {
+    return res.status(401).json({ error: 'Fehler' });
+  }
+});
+
 // ─── VirusTotal Integration ───────────────────────────────────────────────────
 const VT_API_KEY = process.env.VIRUSTOTAL_API_KEY;
 const VT_BASE = 'https://www.virustotal.com/api/v3';

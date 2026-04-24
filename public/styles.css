@@ -1164,3 +1164,191 @@ textarea:focus {
     color: var(--muted, #8ab0c0);
 }
 
+/* ── Bildschirmübertragung (Nutzer-Popup) ────────────────────────────────────── */
+.sr-popup {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9000;
+    backdrop-filter: blur(4px);
+}
+
+.sr-popup-content {
+    background: #0f2535;
+    border: 1px solid #1e3d55;
+    border-radius: 18px;
+    padding: 32px 28px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+}
+
+.sr-popup-icon { font-size: 3rem; margin-bottom: 12px; }
+
+.sr-popup-content h3 {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 1.3rem;
+    color: #e0f0ff;
+    margin: 0 0 10px;
+}
+
+.sr-popup-content p {
+    color: #a8c8d8;
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+}
+
+.sr-popup-note {
+    background: rgba(255,200,0,0.08);
+    border: 1px solid rgba(255,200,0,0.2);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.85rem !important;
+    color: #ffe080 !important;
+    line-height: 1.5;
+    margin-bottom: 20px !important;
+}
+
+.sr-popup-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+/* ── Bildschirmübertragung (Aktiv-Indikator) ─────────────────────────────────── */
+.sr-indicator {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #c00;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 10px 20px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    z-index: 8999;
+    animation: sr-pulse 2s ease-in-out infinite;
+}
+
+.sr-indicator button {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.4);
+    color: #fff;
+    border-radius: 6px;
+    padding: 4px 14px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.sr-indicator button:hover { background: rgba(255,255,255,0.35); }
+
+@keyframes sr-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+}
+
+/* ── Bildschirmübertragung (Admin Viewer Modal) ───────────────────────────────── */
+.sv-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9500;
+    backdrop-filter: blur(6px);
+}
+
+.sv-content {
+    background: #091820;
+    border: 1px solid #1e3d55;
+    border-radius: 18px;
+    padding: 0;
+    width: 92vw;
+    max-width: 1200px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.8);
+}
+
+.sv-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: #0d2233;
+    border-bottom: 1px solid #1e3d55;
+    flex-shrink: 0;
+}
+
+.sv-header span {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #c084fc;
+}
+
+.sv-close {
+    background: rgba(255,80,80,0.15);
+    border: 1px solid rgba(255,80,80,0.4);
+    color: #ff8080;
+    border-radius: 8px;
+    padding: 6px 16px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: background 0.15s;
+}
+
+.sv-close:hover { background: rgba(255,80,80,0.3); }
+
+.sv-status {
+    text-align: center;
+    padding: 48px;
+    color: #8ab0c0;
+    font-size: 1rem;
+}
+
+.sv-video-wrap {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    background: #000;
+}
+
+.sv-video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+}
+
+.sv-cursor {
+    position: absolute;
+    pointer-events: none;
+    transform: translate(-2px, -2px);
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
+    transition: left 0.05s, top 0.05s;
+}
+
+.sv-note {
+    font-size: 0.75rem;
+    color: #4a7a90;
+    text-align: center;
+    padding: 8px;
+    margin: 0;
+    border-top: 1px solid #1e3d55;
+    flex-shrink: 0;
+}
+

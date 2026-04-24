@@ -162,7 +162,10 @@ async function loadRegisteredUsers() {
                 (user) => `
                 <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
                     <span>${escapeHtml(user.username)}</span>
-                    <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
+                    <span style="display:flex;gap:6px;">
+                        <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
+                        <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
+                    </span>
                 </li>`
             )
             .join('');
@@ -411,3 +414,134 @@ function renderVtResult(stats, resultArea) {
         <span class="vt-stats">${malicious} bösartig · ${suspicious} verdächtig · ${stats.harmless || 0} harmlos · ${stats.undetected || 0} unbekannt (von ${total})</span>
     `;
 }
+
+// ─── Bildschirmübertragung (Admin = Viewer / WebRTC Offerer) ──────────────────
+let svPc = null;
+let svSession = null;
+let svPoll = null;
+
+async function requestScreenShare(username) {
+    if (!activeAdminCode) { setStatus('Bitte zuerst einloggen.', 'error'); return; }
+
+    const modal = document.getElementById('screenViewerModal');
+    const title = document.getElementById('screenViewerTitle');
+    const statusEl = document.getElementById('screenViewerStatus');
+    const videoWrap = document.getElementById('screenVideoWrap');
+
+    // STUN servers für NAT-Traversal
+    const pc = new RTCPeerConnection({
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+    });
+    svPc = pc;
+
+    // Data channel: Nutzer sendet Mausposition hierher
+    const mouseChannel = pc.createDataChannel('mouse');
+    mouseChannel.onmessage = (e) => {
+        try { const { x, y } = JSON.parse(e.data); updateScreenCursor(x, y); } catch {}
+    };
+
+    // Eingehender Video-Stream
+    pc.ontrack = (event) => {
+        const video = document.getElementById('screenVideo');
+        if (video && event.streams[0]) {
+            video.srcObject = event.streams[0];
+            videoWrap.style.display = '';
+            statusEl.style.display = 'none';
+        }
+    };
+
+    pc.onconnectionstatechange = () => {
+        if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) closeScreenShare();
+    };
+
+    // Video-Empfang anfordern
+    pc.addTransceiver('video', { direction: 'recvonly' });
+
+    // Offer erstellen + auf vollständiges ICE-Gathering warten
+    await pc.setLocalDescription(await pc.createOffer());
+    const offer = await waitIce(pc);
+
+    // Anfrage an Server senden
+    title.textContent = `🖥️ ${username}`;
+    statusEl.textContent = `Warte auf ${username}…`;
+    statusEl.style.display = '';
+    videoWrap.style.display = 'none';
+    document.getElementById('screenCursor').style.display = 'none';
+    modal.style.display = 'flex';
+
+    const res = await fetch(`${window.location.origin}/api/admin/screenshare/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
+        body: JSON.stringify({ username, offer })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+        setStatus(data.error || 'Fehler beim Senden', 'error');
+        closeScreenShare();
+        return;
+    }
+    svSession = data.sessionId;
+
+    // Auf Antwort des Nutzers warten (Polling)
+    svPoll = setInterval(async () => {
+        try {
+            const r = await fetch(`${window.location.origin}/api/admin/screenshare/session/${svSession}`, {
+                headers: { 'x-admin-key': activeAdminCode }
+            });
+            const d = await r.json();
+
+            if (d.status === 'declined') {
+                clearInterval(svPoll); svPoll = null;
+                closeScreenShare();
+                setStatus(`${username} hat die Übertragung abgelehnt.`, 'error');
+            } else if (d.status === 'ended') {
+                clearInterval(svPoll); svPoll = null;
+                closeScreenShare();
+            } else if (d.status === 'active' && d.answer) {
+                clearInterval(svPoll); svPoll = null;
+                await pc.setRemoteDescription(new RTCSessionDescription(d.answer));
+            }
+        } catch {}
+    }, 1500);
+}
+
+function waitIce(pc) {
+    return new Promise((resolve) => {
+        if (pc.iceGatheringState === 'complete') return resolve(pc.localDescription);
+        pc.onicegatheringstatechange = () => {
+            if (pc.iceGatheringState === 'complete') resolve(pc.localDescription);
+        };
+        setTimeout(() => resolve(pc.localDescription), 5000);
+    });
+}
+
+function updateScreenCursor(x, y) {
+    const cursor = document.getElementById('screenCursor');
+    const wrap = document.getElementById('screenVideoWrap');
+    if (!cursor || !wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    cursor.style.left = (x * 100) + '%';
+    cursor.style.top = (y * 100) + '%';
+    cursor.style.display = 'block';
+}
+
+async function closeScreenShare() {
+    if (svPoll) { clearInterval(svPoll); svPoll = null; }
+    if (svPc) { svPc.close(); svPc = null; }
+
+    if (svSession) {
+        await fetch(`${window.location.origin}/api/admin/screenshare/end/${svSession}`, {
+            method: 'POST', headers: { 'x-admin-key': activeAdminCode }
+        }).catch(() => {});
+        svSession = null;
+    }
+
+    const modal = document.getElementById('screenViewerModal');
+    if (modal) modal.style.display = 'none';
+    const video = document.getElementById('screenVideo');
+    if (video) video.srcObject = null;
+}
+
