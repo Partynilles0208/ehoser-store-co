@@ -1696,27 +1696,34 @@ textarea:focus {
     flex-shrink: 0;
 }
 
- 
+
  
-/* ── Intro Splash Screen ─────────────────────────────────────────────────────── */
+ 
+/* ── Intro Splash Screen (Roll-Animation) ────────────────────────────────────── */
 .intro-splash {
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background: #081218;
+    background: #000;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 20px;
-    animation: splash-out 0.6s ease-in forwards;
-    animation-delay: 2.4s;
     pointer-events: none;
+    animation: splash-fade-out 0.35s ease-in 3.2s forwards;
 }
 
+/* Wrapper: relativ, damit intro-text absolut darüber positioniert werden kann */
+.intro-scene {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Das rollende E */
 .intro-logo {
     font-family: "Space Grotesk", sans-serif;
-    font-size: 5rem;
+    font-size: 4.5rem;
     font-weight: 700;
     width: 100px;
     height: 100px;
@@ -1726,47 +1733,65 @@ textarea:focus {
     border-radius: 28px;
     background: linear-gradient(135deg, #0e8a9b, #f47c2a);
     color: #fff;
-    box-shadow: 0 0 60px rgba(14,138,155,0.5);
-    animation: splash-logo-in 0.6s cubic-bezier(0.22,1,0.36,1) forwards;
-    opacity: 0;
-    transform: scale(0.6);
+    box-shadow: 0 0 50px rgba(14, 138, 155, 0.55);
+    /* Einrollen → pausieren → Ausrollen */
+    animation: e-journey 3.2s cubic-bezier(0.4, 0, 0.6, 1) forwards;
 }
 
+/* Name erscheint über dem E, wird nach oben gespuckt */
 .intro-text {
+    position: absolute;
+    bottom: calc(100% + 20px);
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    animation: splash-text-in 0.5s ease forwards;
-    animation-delay: 0.5s;
+    gap: 4px;
+    white-space: nowrap;
     opacity: 0;
+    /* erscheint wenn E pausiert, verschwindet kurz bevor E losfährt */
+    animation: name-spit 0.45s cubic-bezier(0.22, 1, 0.36, 1) 1.05s forwards,
+               name-fade  0.3s ease-in 2.3s forwards;
 }
 
 .intro-developed {
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     font-weight: 500;
     color: #4d8899;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
 }
 
 .intro-name {
     font-family: "Space Grotesk", sans-serif;
-    font-size: 1.8rem;
+    font-size: 2rem;
     font-weight: 700;
     color: #e9f6ff;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
 }
 
-@keyframes splash-logo-in {
-    to { opacity: 1; transform: scale(1); }
+/* E rollt von rechts rein (0–33%), pausiert (33–70%), rollt nach links raus (70–100%) */
+@keyframes e-journey {
+    0%   { transform: translateX(110vw) rotate(0deg); }
+    33%  { transform: translateX(0)     rotate(630deg); }
+    70%  { transform: translateX(0)     rotate(630deg); }
+    100% { transform: translateX(-110vw) rotate(1260deg); }
 }
 
-@keyframes splash-text-in {
-    to { opacity: 1; }
+/* Name schießt aus dem E hoch */
+@keyframes name-spit {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(30px) scale(0.7); }
+    60%  { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1.04); }
+    100% { opacity: 1; transform: translateX(-50%) translateY(0)    scale(1); }
 }
 
-@keyframes splash-out {
-    0% { opacity: 1; transform: scale(1); }
-    100% { opacity: 0; transform: scale(1.04); pointer-events: none; }
+/* Name blendet aus bevor E losrollt */
+@keyframes name-fade {
+    to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}
+
+/* Ganzer Splash blendet weg */
+@keyframes splash-fade-out {
+    to { opacity: 0; }
 }

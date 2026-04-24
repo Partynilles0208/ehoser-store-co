@@ -194,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Splash Screen nach Animation entfernen
     const splash = document.getElementById('introSplash');
     if (splash) {
-        setTimeout(() => splash.remove(), 3100);
+        setTimeout(() => splash.remove(), 3700);
     }
 
     const ref = new URLSearchParams(window.location.search).get('ref');
