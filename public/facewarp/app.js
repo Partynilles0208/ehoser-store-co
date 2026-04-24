@@ -307,7 +307,6 @@ async function resolveTierFromServer() {
 
 function setStickerImageFromUrl(url) {
   const img = new Image();
-  img.crossOrigin = "anonymous";
   img.onload = () => {
     const base = Math.min(canvas.width || img.width, canvas.height || img.height) * 0.35;
     const ratio = img.width / img.height;
