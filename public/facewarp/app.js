@@ -478,9 +478,7 @@ async function searchPixabay(query) {
 
   try {
     const token = localStorage.getItem('token') || '';
-    const params = new URLSearchParams({
-      q: `${query} transparent png sticker`,
-    });
+    const params = new URLSearchParams({ q: query });
     const response = await fetch(`${window.location.origin}/api/pixabay?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
