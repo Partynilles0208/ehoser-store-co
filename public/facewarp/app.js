@@ -727,7 +727,7 @@ pixabayQuery.addEventListener("keydown", (event) => {
 
 pixabayUseBtn.addEventListener("click", () => {
   if (!selectedPixabay) return;
-  const rawUrl = selectedPixabay.largeImageURL || selectedPixabay.webformatURL;
+  const rawUrl = selectedPixabay.webformatURL || selectedPixabay.previewURL;
   const proxyUrl = `${window.location.origin}/api/pixabay/image?url=${encodeURIComponent(rawUrl)}`;
   setPixabayStatus("Bild wird geladen...");
   if (editorMode === "sticker") {

@@ -741,7 +741,8 @@ app.get('/api/pixabay', async (req, res) => {
 // Pixabay Bild-Proxy (für Canvas – CORS-freies Laden)
 app.get('/api/pixabay/image', async (req, res) => {
   const url = String(req.query.url || '').trim();
-  if (!url || !url.startsWith('https://cdn.pixabay.com/')) {
+  const isAllowed = url.startsWith('https://cdn.pixabay.com/') || url.startsWith('https://pixabay.com/');
+  if (!url || !isAllowed) {
     return res.status(400).json({ error: 'Ungültige Bild-URL' });
   }
 
