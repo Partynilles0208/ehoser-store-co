@@ -1169,6 +1169,34 @@ textarea:focus {
     height: calc(96vh - 48px);
 }
 
+@media (max-width: 820px) {
+    .nav-links {
+        gap: 8px;
+    }
+
+    .hello-user {
+        width: 100%;
+    }
+
+    .unlock-code-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .unlock-code-value {
+        font-size: 1.25rem;
+        letter-spacing: 0.12em;
+    }
+
+    .settings-modal-content {
+        width: 94vw;
+    }
+
+    .invite-link-wrap {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width: 720px) {
     .games-grid {
         grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
@@ -1176,6 +1204,52 @@ textarea:focus {
     }
     .game-frame {
         height: calc(96vh - 44px);
+    }
+
+    .navbar-content {
+        gap: 10px;
+    }
+
+    .nav-links {
+        width: 100%;
+    }
+
+    .nav-link,
+    .logout-btn,
+    .btn-small {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .mode-card {
+        padding: 20px 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .mode-select-container {
+        padding: 20px 10px;
+    }
+
+    .mode-logo {
+        width: 58px;
+        height: 58px;
+        font-size: 1.6rem;
+    }
+
+    .mode-title {
+        font-size: 1.45rem;
+    }
+
+    .auth-card,
+    .hero-copy,
+    .store-header {
+        padding: 16px;
+    }
+
+    .games-pagination {
+        flex-wrap: wrap;
+        gap: 8px;
     }
 }
 

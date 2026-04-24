@@ -17,7 +17,24 @@ let _attachOpen = false;
     _token = localStorage.getItem('token');
     if (!_token) { show('loginWall'); return; }
     try {
-        const r = await api('/verify-token', 'POST');
+        // Raw fetch statt api() – wir brauchen den genauen Status-Code
+        const resp = await fetch(API + '/verify-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _token }
+        });
+        if (resp.status === 401) {
+            // Token abgelaufen oder ungültig → LoginWall zeigen
+            show('loginWall');
+            return;
+        }
+        if (!resp.ok) {
+            // Server-Fehler: Token behalten, Retry anbieten
+            const wall = document.getElementById('loginWall');
+            wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">⚠️</div><h2>Verbindungsfehler</h2><p>Der Server antwortet nicht. Bitte versuche es erneut.</p><button class="btn-primary" onclick="location.reload()">Neu laden</button><a href="/" class="btn-secondary" style="margin-top:8px;display:block">Zurück zum Store</a></div>`;
+            show('loginWall');
+            return;
+        }
+        const r = await resp.json();
         _me = r.user;
         if (r.token) {
             _token = r.token;
@@ -32,7 +49,13 @@ let _attachOpen = false;
                 _meProfile = null;
             }
         }
-    } catch { show('loginWall'); return; }
+    } catch {
+        // Netzwerkfehler: Token behalten, Retry anbieten
+        const wall = document.getElementById('loginWall');
+        wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">⚠️</div><h2>Keine Verbindung</h2><p>Netzwerkfehler. Bitte überprüfe deine Verbindung.</p><button class="btn-primary" onclick="location.reload()">Neu laden</button><a href="/" class="btn-secondary" style="margin-top:8px;display:block">Zurück zum Store</a></div>`;
+        show('loginWall');
+        return;
+    }
     show('chatApp');
     document.getElementById('sidebarMe').textContent = '👤 ' + _me.username;
     if (_meProfile?.isPro) {
