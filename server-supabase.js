@@ -738,6 +738,29 @@ app.get('/api/pixabay', async (req, res) => {
   }
 });
 
+// Pixabay Bild-Proxy (für Canvas – CORS-freies Laden)
+app.get('/api/pixabay/image', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const url = String(req.query.url || '').trim();
+  if (!url || !url.startsWith('https://cdn.pixabay.com/')) {
+    return res.status(400).json({ error: 'Ungültige Bild-URL' });
+  }
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const buffer = await response.arrayBuffer();
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    res.status(502).json({ error: `Bild konnte nicht geladen werden: ${err.message}` });
+  }
+});
+
 // Pro-Status für mehrere Nutzer
 app.get('/api/users/pro-badges', async (req, res) => {
   const auth = readAuthUser(req, res);
