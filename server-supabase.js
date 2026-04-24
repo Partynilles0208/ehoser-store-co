@@ -667,6 +667,104 @@ app.use((err, req, res, next) => {
   next();
 });
 
+// ─── VirusTotal Integration ───────────────────────────────────────────────────
+const VT_API_KEY = process.env.VIRUSTOTAL_API_KEY;
+const VT_BASE = 'https://www.virustotal.com/api/v3';
+
+// POST /api/admin/vt-scan  { url: <string> }
+app.post('/api/admin/vt-scan', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(403).json({ error: 'Nicht autorisiert' });
+  }
+
+  if (!VT_API_KEY) {
+    return res.status(503).json({ error: 'VIRUSTOTAL_API_KEY nicht konfiguriert' });
+  }
+
+  const { url } = req.body;
+  if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    return res.status(400).json({ error: 'Ungültige URL' });
+  }
+
+  try {
+    const body = new URLSearchParams({ url });
+    const response = await fetch(`${VT_BASE}/urls`, {
+      method: 'POST',
+      headers: {
+        'x-apikey': VT_API_KEY,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: body.toString(),
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('VT submit error:', errText);
+      return res.status(502).json({ error: 'VirusTotal Anfrage fehlgeschlagen' });
+    }
+
+    const data = await response.json();
+    const analysisId = data?.data?.id;
+    if (!analysisId) {
+      return res.status(502).json({ error: 'Keine Analyse-ID erhalten' });
+    }
+
+    res.json({ analysisId });
+  } catch (err) {
+    console.error('VT scan error:', err.message);
+    res.status(502).json({ error: 'VirusTotal nicht erreichbar' });
+  }
+});
+
+// GET /api/admin/vt-result/:analysisId
+app.get('/api/admin/vt-result/:analysisId', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(403).json({ error: 'Nicht autorisiert' });
+  }
+
+  if (!VT_API_KEY) {
+    return res.status(503).json({ error: 'VIRUSTOTAL_API_KEY nicht konfiguriert' });
+  }
+
+  const { analysisId } = req.params;
+  if (!analysisId || !/^[A-Za-z0-9_\-=+]+$/.test(analysisId)) {
+    return res.status(400).json({ error: 'Ungültige Analyse-ID' });
+  }
+
+  try {
+    const response = await fetch(`${VT_BASE}/analyses/${encodeURIComponent(analysisId)}`, {
+      headers: { 'x-apikey': VT_API_KEY },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!response.ok) {
+      return res.status(502).json({ error: 'Ergebnis nicht verfügbar' });
+    }
+
+    const data = await response.json();
+    const attrs = data?.data?.attributes || {};
+    const stats = attrs.stats || {};
+    const status = attrs.status || 'unknown';
+
+    res.json({
+      status,
+      stats: {
+        malicious: stats.malicious || 0,
+        suspicious: stats.suspicious || 0,
+        harmless: stats.harmless || 0,
+        undetected: stats.undetected || 0,
+        timeout: stats.timeout || 0
+      }
+    });
+  } catch (err) {
+    console.error('VT result error:', err.message);
+    res.status(502).json({ error: 'Ergebnis konnte nicht abgerufen werden' });
+  }
+});
+
 // ─── Games Feed Proxy ────────────────────────────────────────────────────────
 let gamesCache = null;
 let gamesCacheTime = 0;
