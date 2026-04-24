@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
@@ -799,6 +800,21 @@ app.post('/api/screenshare/end', async (req, res) => {
 
 // ─── Chat API (E2E verschlüsselt) ────────────────────────────────────────────
 
+// Multer – memory storage für Supabase-Upload
+const CHAT_ALLOWED_MIME = new Set([
+  'image/jpeg','image/png','image/gif','image/webp',
+  'video/mp4','video/webm','video/quicktime',
+  'audio/webm','audio/ogg','audio/mpeg','audio/wav',
+  'application/pdf'
+]);
+const chatUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    cb(null, CHAT_ALLOWED_MIME.has(file.mimetype));
+  }
+});
+
 // Helper: JWT aus Request lesen + verifizieren
 function chatAuth(req, res) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -807,8 +823,28 @@ function chatAuth(req, res) {
   catch { res.status(401).json({ error: 'Ungültiger Token' }); return null; }
 }
 
-// POST /api/chat/key — eigenen ECDH Public Key hochladen/aktualisieren
-app.post('/api/chat/key', async (req, res) => {
+// POST /api/chat/upload — Mediendatei hochladen (Bild / Video / Audio)
+app.post('/api/chat/upload', chatUpload.single('file'), async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  if (!req.file) return res.status(400).json({ error: 'Keine Datei oder Typ nicht erlaubt (max 50 MB)' });
+
+  const ext = req.file.originalname.split('.').pop().replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
+  const filename = `${crypto.randomUUID()}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('chat-media')
+    .upload(filename, req.file.buffer, {
+      contentType: req.file.mimetype,
+      upsert: false
+    });
+
+  if (error) return res.status(500).json({ error: 'Upload fehlgeschlagen: ' + error.message });
+
+  const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(filename);
+  res.json({ url: publicUrl, mime: req.file.mimetype, size: req.file.size, name: req.file.originalname });
+});
+
+// POST /api/chat/key — eigenen ECDH Public Key hochladen/aktualisierenapp.post('/api/chat/key', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { publicKey } = req.body;
   if (!publicKey || typeof publicKey !== 'string' || publicKey.length > 4096) {

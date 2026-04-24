@@ -68,6 +68,8 @@ function setHasImage(value) {
   canvasFrame.classList.toggle("has-image", value);
   resetBtn.disabled = !value;
   saveBtn.disabled = !value;
+  const saveToChatBtn = document.getElementById('saveToChatBtn');
+  if (saveToChatBtn) saveToChatBtn.disabled = !value;
   if (flipHBtn) flipHBtn.disabled = !value;
   if (flipVBtn) flipVBtn.disabled = !value;
 }
@@ -509,6 +511,39 @@ fileInput.addEventListener("change", (event) => {
 
 resetBtn.addEventListener("click", resetImage);
 saveBtn.addEventListener("click", exportImage);
+
+const saveToChatBtn = document.getElementById('saveToChatBtn');
+if (saveToChatBtn) {
+  saveToChatBtn.addEventListener('click', async () => {
+    if (!hasImage) return;
+    const token = localStorage.getItem('token');
+    if (!token) { alert('Nicht angemeldet – bitte zuerst einloggen'); return; }
+    const dataUrl = imgCanvas.toDataURL('image/png');
+    const blob = await (await fetch(dataUrl)).blob();
+    const formData = new FormData();
+    formData.append('file', new File([blob], 'facewarp.png', { type: 'image/png' }));
+    saveToChatBtn.textContent = '⏳ Speichern…';
+    saveToChatBtn.disabled = true;
+    try {
+      const res = await fetch('/api/chat/upload', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
+      const saved = JSON.parse(localStorage.getItem('chatSavedFacewarps') || '[]');
+      saved.unshift(data.url);
+      localStorage.setItem('chatSavedFacewarps', JSON.stringify(saved.slice(0, 20)));
+      saveToChatBtn.textContent = '✓ Gespeichert!';
+      setTimeout(() => { saveToChatBtn.textContent = '💬 In Chat speichern'; saveToChatBtn.disabled = false; }, 2500);
+    } catch (e) {
+      alert('Fehler: ' + e.message);
+      saveToChatBtn.textContent = '💬 In Chat speichern';
+      saveToChatBtn.disabled = false;
+    }
+  });
+}
 
 pixabaySearchBtn.addEventListener("click", () => {
   const query = pixabayQuery.value.trim();
