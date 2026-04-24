@@ -12,14 +12,15 @@ function switchAuthTab(tab, btn) {
 
 async function handleLogin(event) {
     event.preventDefault();
+    const unlockCode = document.getElementById('loginUnlockCode').value.trim();
     const username = document.getElementById('loginUsername').value.trim();
-    const accessCode = document.getElementById('loginCode').value.trim();
+    const loginCode = document.getElementById('loginCode').value.trim();
 
     try {
         const response = await fetch(`${API_BASE}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, accessCode })
+            body: JSON.stringify({ username, loginCode, unlockCode })
         });
 
         const data = await response.json();
@@ -85,7 +86,7 @@ async function verifyToken(token) {
 async function handleRegister(event) {
     event.preventDefault();
 
-    const accessCode = document.getElementById('accessCode').value.trim();
+    const unlockCode = document.getElementById('unlockCode').value.trim();
     const username = document.getElementById('username').value.trim();
     const email = document.getElementById('email').value.trim();
 
@@ -93,7 +94,7 @@ async function handleRegister(event) {
         const response = await fetch(`${API_BASE}/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accessCode, username, email })
+            body: JSON.stringify({ unlockCode, username, email })
         });
 
         const data = await response.json();
@@ -105,7 +106,8 @@ async function handleRegister(event) {
 
         localStorage.setItem('token', data.token);
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
-        showAlert('Willkommen im ehoser shop.', 'success');
+        window.alert(`Dein Login-Code: ${data.loginCode}\nDiesen Code sicher speichern. Du brauchst ihn fuer jede Anmeldung.`);
+        showAlert('Willkommen bei ehoser.', 'success');
 
         if (data.redirectToAdmin) {
             window.location.href = 'admin.html';

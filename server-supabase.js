@@ -1,16 +1,19 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 const jwt = require('jsonwebtoken');
-const multer = require('multer');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const ADMIN_UPLOAD_KEY = process.env.ADMIN_UPLOAD_KEY || 'change-this-admin-key';
+const UNLOCK_CODE = '020818';
+const ADMIN_UPLOAD_KEY = 'nils2014!';
+
+const authAttempts = new Map();
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_MAX_ATTEMPTS = 20;
 
 // Supabase Init
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -23,74 +26,64 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+const isRateLimited = (key) => {
+  const now = Date.now();
+  const current = authAttempts.get(key);
+  if (!current) return false;
+  if (now - current.first > AUTH_WINDOW_MS) {
+    authAttempts.delete(key);
+    return false;
+  }
+  return current.count >= AUTH_MAX_ATTEMPTS;
+};
+
+const registerFailedAttempt = (key) => {
+  const now = Date.now();
+  const current = authAttempts.get(key);
+  if (!current || (now - current.first > AUTH_WINDOW_MS)) {
+    authAttempts.set(key, { count: 1, first: now });
+    return;
+  }
+  current.count += 1;
+  authAttempts.set(key, current);
+};
+
+const clearAttempts = (key) => {
+  authAttempts.delete(key);
+};
+
+const createLoginCode = () => {
+  const value = Math.floor(100000 + Math.random() * 900000);
+  return String(value);
+};
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// File Upload (temp folder) — /tmp auf Vercel, lokaler Ordner sonst
-const uploadsRoot = process.env.VERCEL ? '/tmp' : path.join(__dirname, 'uploads');
-fs.mkdirSync(uploadsRoot, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsRoot);
-  },
-  filename: (req, file, cb) => {
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`;
-    cb(null, fileName);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 1024 * 1024 * 200
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.fieldname === 'icon') {
-      if (!file.mimetype.startsWith('image/')) {
-        cb(new Error('Icon muss ein Bild sein.'));
-        return;
-      }
-      cb(null, true);
-      return;
-    }
-
-    if (file.fieldname === 'apk') {
-      const allowed = [
-        'application/vnd.android.package-archive',
-        'application/octet-stream'
-      ];
-      const isApkName = file.originalname.toLowerCase().endsWith('.apk');
-      if (!isApkName && !allowed.includes(file.mimetype)) {
-        cb(new Error('Datei muss eine .apk sein.'));
-        return;
-      }
-      cb(null, true);
-      return;
-    }
-
-    cb(new Error('Ungültiger Dateityp.'));
-  }
-});
-
 // API Routes
 
 // Registrierung
 app.post('/api/register', async (req, res) => {
-  const { accessCode, username, email } = req.body;
-  const isAdmin = accessCode === ADMIN_UPLOAD_KEY;
+  const { unlockCode, username, email } = req.body;
+  const clientKey = `register:${req.ip || 'unknown'}`;
 
-  if (!accessCode || accessCode.length < 6) {
-    return res.status(400).json({ error: 'Ungültiger Zugangscode' });
+  if (isRateLimited(clientKey)) {
+    return res.status(429).json({ error: 'Zu viele Versuche. Bitte spaeter erneut probieren.' });
+  }
+
+  if (unlockCode !== UNLOCK_CODE) {
+    registerFailedAttempt(clientKey);
+    return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
   }
 
   if (!username || username.length < 3) {
     return res.status(400).json({ error: 'Benutzername muss mindestens 3 Zeichen lang sein' });
   }
+
+  const loginCode = createLoginCode();
 
   try {
     const { data, error } = await supabase
@@ -99,22 +92,24 @@ app.post('/api/register', async (req, res) => {
         {
           username,
           email: email || null,
-          access_code: accessCode,
+          access_code: loginCode,
           verified: 1
         }
       ])
       .select();
 
     if (error) {
-      if (error.message.includes('duplicate')) {
-        return res.status(400).json({ error: 'Benutzer oder Code existiert bereits' });
+      if (error.message.includes('duplicate') || error.message.includes('users_username_key')) {
+        return res.status(400).json({ error: 'Benutzername existiert bereits' });
       }
       throw error;
     }
 
+    clearAttempts(clientKey);
+
     const userId = data[0].id;
     const token = jwt.sign(
-      { id: userId, username, isAdmin },
+      { id: userId, username, isAdmin: false },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -124,7 +119,8 @@ app.post('/api/register', async (req, res) => {
       message: 'Erfolgreich registriert!',
       token,
       userId,
-      redirectToAdmin: isAdmin
+      loginCode,
+      redirectToAdmin: false
     });
   } catch (error) {
     console.error('Register Error:', error);
@@ -135,10 +131,20 @@ app.post('/api/register', async (req, res) => {
 
 // Login
 app.post('/api/login', async (req, res) => {
-  const { username, accessCode } = req.body;
+  const { username, loginCode, unlockCode } = req.body;
+  const clientKey = `login:${req.ip || 'unknown'}`;
 
-  if (!username || !accessCode) {
-    return res.status(400).json({ error: 'Benutzername und Zugangscode erforderlich' });
+  if (isRateLimited(clientKey)) {
+    return res.status(429).json({ error: 'Zu viele Versuche. Bitte spaeter erneut probieren.' });
+  }
+
+  if (unlockCode !== UNLOCK_CODE) {
+    registerFailedAttempt(clientKey);
+    return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
+  }
+
+  if (!username || !loginCode) {
+    return res.status(400).json({ error: 'Benutzername und Login-Code erforderlich' });
   }
 
   try {
@@ -146,14 +152,19 @@ app.post('/api/login', async (req, res) => {
       .from('users')
       .select('*')
       .eq('username', username)
-      .eq('access_code', accessCode)
+      .eq('access_code', loginCode)
       .single();
 
     if (error || !data) {
-      return res.status(401).json({ error: 'Benutzername oder Zugangscode falsch' });
+      registerFailedAttempt(clientKey);
+      return res.status(401).json({ error: 'Benutzername oder Login-Code falsch' });
     }
 
-    const isAdmin = accessCode === ADMIN_UPLOAD_KEY;
+    clearAttempts(clientKey);
+
+    await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', data.id).catch(() => {});
+
+    const isAdmin = false;
     const token = jwt.sign(
       { id: data.id, username: data.username, isAdmin },
       JWT_SECRET,
@@ -302,6 +313,27 @@ app.post('/api/admin/upload-url', async (req, res) => {
   }
 });
 
+// Admin: registrierte Nutzer anzeigen (nur Benutzername + Zeit)
+app.get('/api/admin/users', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, username, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) {
+    console.error('Admin Users Error:', error);
+    res.status(500).json({ error: 'Nutzer konnten nicht geladen werden' });
+  }
+});
+
 // Neue App speichern (nur Metadaten, Dateien wurden direkt zu Supabase hochgeladen)
 app.post('/api/admin/apps', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
@@ -394,10 +426,6 @@ app.get('/api/my-apps', async (req, res) => {
 
 // Error handling
 app.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    return res.status(400).json({ error: `Upload-Fehler: ${err.message}` });
-  }
-
   if (err) {
     return res.status(400).json({ error: err.message || 'Unbekannter Fehler' });
   }
@@ -408,7 +436,7 @@ app.use((err, req, res, next) => {
 // Server starten (lokal) oder als Vercel-Handler exportieren
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
-    console.log(`🚀 ehoser shop läuft auf http://localhost:${PORT}`);
+    console.log(`🚀 ehoser läuft auf http://localhost:${PORT}`);
     console.log(`📊 Connected to Supabase: ${SUPABASE_URL}`);
   });
 }

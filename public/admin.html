@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ehoser shop - Admin Upload</title>
+    <title>ehoser - Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -18,7 +18,7 @@
             <div class="navbar-content">
                 <div class="logo">
                     <span class="logo-icon">E</span>
-                    <h1>ehoser shop admin</h1>
+                    <h1>ehoser admin</h1>
                 </div>
                 <div class="nav-links">
                     <a class="nav-link" href="index.html">Zum Store</a>
@@ -28,15 +28,26 @@
 
         <main class="admin-wrapper">
             <section class="admin-card">
-                <h2>Neue App hochladen</h2>
-                <p class="admin-help">Hier lädst du Icon, APK, Beschreibung und Quellenlink hoch. Die App erscheint danach direkt im Store.</p>
+                <h2>Admin Bereich</h2>
+                <p class="admin-help">Zum Beitreten Code auswaehlen. Erst danach sind Upload und Nutzerliste sichtbar.</p>
 
-                <form id="uploadForm">
+                <form id="adminAccessForm">
                     <div class="form-group">
-                        <label for="accessCode">Admin Zugangscode*</label>
-                        <input id="accessCode" name="accessCode" type="password" placeholder="Nils2014!" required>
-                        <small>Nur mit diesem Code ist Upload erlaubt.</small>
+                        <label for="adminJoinCode">Zum Beitreten Code auswaehlen*</label>
+                        <input id="adminJoinCode" name="adminJoinCode" type="password" placeholder="nils2014!" required>
+                        <small>Nur mit diesem Code ist der Admin-Bereich freigeschaltet.</small>
                     </div>
+                    <div class="admin-actions">
+                        <button class="btn-primary" type="submit">Admin-Bereich oeffnen</button>
+                        <a href="index.html" class="btn-secondary">Zurueck zum Store</a>
+                    </div>
+                </form>
+
+                <section id="adminSecureArea" style="display:none; margin-top: 22px;">
+                    <h3>Neue App hochladen</h3>
+                    <p class="admin-help">Hier laedst du Icon, APK, Beschreibung und Quellenlink hoch. Die App erscheint danach direkt im Store.</p>
+
+                    <form id="uploadForm">
 
                     <div class="upload-row">
                         <div class="form-group">
@@ -84,11 +95,16 @@
                         </div>
                     </div>
 
-                    <div class="admin-actions">
-                        <button class="btn-primary" type="submit">App veröffentlichen</button>
-                        <a href="index.html" class="btn-secondary">Zurück zum Store</a>
+                        <div class="admin-actions">
+                            <button class="btn-primary" type="submit">App veroeffentlichen</button>
+                        </div>
+                    </form>
+
+                    <div style="margin-top: 24px;">
+                        <h3>Registrierte Nutzer</h3>
+                        <ul id="registeredUsersList" class="online-list"></ul>
                     </div>
-                </form>
+                </section>
 
                 <div id="uploadStatus"></div>
             </section>
