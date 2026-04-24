@@ -894,6 +894,30 @@ app.delete('/api/admin/users/:id', async (req, res) => {
   }
 });
 
+// App löschen
+app.delete('/api/admin/apps/:id', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const appId = Number(req.params.id);
+  if (!Number.isInteger(appId) || appId <= 0) {
+    return res.status(400).json({ error: 'Ungültige App-ID' });
+  }
+
+  try {
+    await supabase.from('installations').delete().eq('app_id', appId);
+    const { error } = await supabase.from('apps').delete().eq('id', appId);
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Admin Delete App Error:', error);
+    res.status(500).json({ error: 'App konnte nicht gelöscht werden' });
+  }
+});
+
 // Neue App speichern (nur Metadaten, Dateien wurden direkt zu Supabase hochgeladen)
 app.post('/api/admin/apps', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];

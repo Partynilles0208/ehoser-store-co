@@ -26,11 +26,12 @@ accessForm.addEventListener('submit', async (event) => {
         activeAdminCode = code;
         secureArea.style.display = '';
         setStatus('Admin-Bereich freigeschaltet.', 'success');
-        await Promise.all([loadRegisteredUsers(), loadResetRequests()]);
+        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadAdminApps()]);
         clearInterval(adminRefreshInterval);
         adminRefreshInterval = setInterval(() => {
             loadRegisteredUsers();
             loadResetRequests();
+            loadAdminApps();
         }, 8000);
     } catch (err) {
         setStatus('Verbindungsfehler.', 'error');
@@ -320,6 +321,57 @@ function escapeHtml(value) {
 
 function escapeJs(value) {
     return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// ─── Apps verwalten ───────────────────────────────────────────────────────────
+async function loadAdminApps() {
+    if (!activeAdminCode) return;
+    const list = document.getElementById('adminAppsList');
+    if (!list) return;
+    list.innerHTML = '<li style="color:var(--muted)">Lade Apps…</li>';
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/apps`);
+        if (!res.ok) throw new Error('Apps konnten nicht geladen werden');
+        const apps = await res.json();
+
+        if (!apps.length) {
+            list.innerHTML = '<li style="color:var(--muted)">Keine Apps im Store.</li>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+            <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                <span style="display:flex;align-items:center;gap:8px;">
+                    ${app.icon_url ? `<img src="${escapeHtml(app.icon_url)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover;">` : ''}
+                    <span>${escapeHtml(app.name)} <span style="color:var(--muted);font-size:0.8em">v${escapeHtml(app.version || '?')} · ${escapeHtml(app.category || '')}</span></span>
+                </span>
+                <button class="btn-small" style="background:#7f1d1d;color:#fff;" onclick="deleteApp(${app.id}, '${escapeJs(app.name)}')">Entfernen</button>
+            </li>`).join('');
+    } catch (err) {
+        if (list) list.innerHTML = `<li style="color:var(--muted)">Fehler: ${escapeHtml(err.message)}</li>`;
+    }
+}
+
+async function deleteApp(appId, appName) {
+    if (!activeAdminCode) return;
+    if (!confirm(`App "${appName}" wirklich aus dem Store entfernen?`)) return;
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/apps/${appId}`, {
+            method: 'DELETE',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            setStatus(data.error || 'App konnte nicht entfernt werden.', 'error');
+            return;
+        }
+        setStatus(`App "${appName}" wurde entfernt.`, 'success');
+        await loadAdminApps();
+    } catch (err) {
+        setStatus(`Fehler: ${err.message}`, 'error');
+    }
 }
 
 // ─── VirusTotal Scan ──────────────────────────────────────────────────────────
