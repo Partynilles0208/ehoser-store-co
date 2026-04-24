@@ -238,20 +238,26 @@ body {
     font-size: .7rem; font-weight: 700; color: #90c8e8;
     flex-shrink: 0; margin-top: 4px;
 }
+.msg-avatar.pro-av { box-shadow: 0 0 0 2px rgba(200, 150, 0, 0.6); }
 
 .msg-body { display: flex; flex-direction: column; gap: 2px; }
 .msg-sender { font-size: .7rem; color: var(--muted); padding: 0 4px; }
+.msg-sender.pro-sender { color: #c89030; }
 .msg-row.own .msg-sender { text-align: right; }
 .msg-pro-badge {
     display: inline-block;
     margin-left: 6px;
-    padding: 1px 7px;
+    padding: 2px 8px;
     border-radius: 999px;
-    font-size: .62rem;
-    font-weight: 700;
-    color: #6a3e00;
-    background: linear-gradient(135deg, #ffd277, #ffb84d);
-    border: 1px solid #d1922d;
+    font-size: .6rem;
+    font-weight: 800;
+    letter-spacing: .05em;
+    color: #fff8d0;
+    background: linear-gradient(135deg, #b07800, #e0a800);
+    border: 1px solid rgba(224, 168, 0, 0.55);
+    box-shadow: 0 0 10px rgba(224, 168, 0, 0.38), 0 0 0 1px rgba(255, 220, 0, 0.1);
+    text-shadow: 0 1px 2px rgba(80, 40, 0, 0.5);
+    vertical-align: middle;
 }
 
 .msg-bubble {
@@ -297,31 +303,39 @@ body {
 .msg-file-dl:hover { text-decoration: underline; }
 .msg-fw-label { font-size: .7rem; color: var(--accent2); margin-top: 4px; }
 .pro-sticker {
-    padding: 10px 14px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 194, 87, .5);
-    background: linear-gradient(120deg, rgba(255, 204, 94, .2), rgba(124, 58, 237, .25));
+    padding: 14px 18px;
+    border-radius: 16px;
+    border: 1px solid rgba(224, 168, 0, 0.35);
+    background: linear-gradient(135deg, rgba(160, 110, 0, 0.2), rgba(124, 58, 237, 0.28));
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     font-weight: 800;
-    letter-spacing: .03em;
-    animation: proPulse 1.2s ease-in-out infinite;
+    letter-spacing: .06em;
+    font-size: .95rem;
+    color: #ffe880;
+    box-shadow: 0 0 24px rgba(200, 150, 0, 0.18), inset 0 1px 0 rgba(255, 220, 80, 0.12);
+    animation: proPulse 2s ease-in-out infinite;
+    max-width: 280px;
 }
 .pro-sticker-logo {
-    width: 22px;
-    height: 22px;
-    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     background: linear-gradient(135deg, #7c3aed, #22c8dc);
     color: #fff;
-    font-size: .88rem;
+    font-size: 1.05rem;
+    font-weight: 900;
+    font-family: "Space Grotesk", sans-serif;
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.55);
+    flex-shrink: 0;
 }
 @keyframes proPulse {
-    0%,100% { transform: scale(1); filter: saturate(1); }
-    50% { transform: scale(1.03); filter: saturate(1.25); }
+    0%,100% { transform: scale(1); box-shadow: 0 0 24px rgba(200, 150, 0, 0.18), inset 0 1px 0 rgba(255, 220, 80, 0.12); }
+    50% { transform: scale(1.022); box-shadow: 0 0 38px rgba(200, 150, 0, 0.42), inset 0 1px 0 rgba(255, 220, 80, 0.22); }
 }
 
 /* ── Input Bar ───────────────────────────────────────────────────────────── */

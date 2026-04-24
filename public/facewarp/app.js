@@ -248,6 +248,7 @@ function setTier(nextTier) {
   isPro = nextTier === "pro";
   tierBasicBtn.classList.toggle("active", !isPro);
   tierProBtn.classList.toggle("active", isPro);
+  tierProBtn.classList.toggle("pro-active", isPro);
   editorStickerBtn.disabled = !isPro;
   pixabaySearchBtn.disabled = !isPro;
   pixabayUseBtn.disabled = true;
@@ -302,6 +303,20 @@ function setStickerImageFromUrl(url) {
     drawToScreen();
   };
   img.src = url;
+}
+
+function bakeStickerToImage() {
+  if (!stickerLayer?.img || !hasImage) return;
+  saveHistory();
+  const s = stickerLayer;
+  imgCtx.save();
+  imgCtx.translate(s.x, s.y);
+  imgCtx.rotate(s.rotation);
+  imgCtx.drawImage(s.img, -s.w / 2, -s.h / 2, s.w, s.h);
+  imgCtx.restore();
+  stickerLayer = null;
+  drawToScreen();
+  setPixabayStatus("Sticker eingebettet — jetzt warpbar!");
 }
 
 function resetImage() {
@@ -801,7 +816,28 @@ modeButtons.forEach((button) => {
 });
 
 tierBasicBtn.addEventListener("click", () => setTier("basic"));
-tierProBtn.addEventListener("click", () => setTier("pro"));
+tierProBtn.addEventListener("click", async () => {
+  if (isPro) { setTier("basic"); return; }
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert("Bitte melde dich im ehoser Store an, um Pro Face Warp zu nutzen.");
+    return;
+  }
+  tierProBtn.disabled = true;
+  try {
+    const res = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (data?.profile?.isPro) {
+      setTier("pro");
+    } else {
+      alert("Pro Face Warp ist nicht aktiv.\nLade eine Person ein — ihr erhaltet beide 2 Tage Pro!");
+    }
+  } catch {
+    alert("Verbindungsfehler. Bitte versuche es erneut.");
+  } finally {
+    tierProBtn.disabled = false;
+  }
+});
 editorWarpBtn.addEventListener("click", () => setEditorMode("warp"));
 editorStickerBtn.addEventListener("click", () => setEditorMode("sticker"));
 
@@ -819,6 +855,16 @@ if (removeStickerBtn) {
   removeStickerBtn.addEventListener("click", () => {
     stickerLayer = null;
     drawToScreen();
+  });
+}
+
+const bakeStickerBtn = document.getElementById("bakeStickerBtn");
+if (bakeStickerBtn) {
+  bakeStickerBtn.addEventListener("click", () => {
+    if (!stickerLayer) { setPixabayStatus("Kein Sticker aktiv."); return; }
+    if (!hasImage) { setPixabayStatus("Zuerst ein Bild laden."); return; }
+    bakeStickerToImage();
+    setEditorMode("warp");
   });
 }
 

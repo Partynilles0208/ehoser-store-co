@@ -257,11 +257,14 @@ function appendMessage(m, plainJson) {
     }
     const row = document.createElement('div');
     row.className = 'msg-row' + (own ? ' own' : '');
-    const senderBadge = _proBadgeCache[m.sender]?.isPro ? '<span class="msg-pro-badge">PRO</span>' : '';
+    const isSenderPro = _proBadgeCache[m.sender]?.isPro;
+    const senderBadge = isSenderPro ? '<span class="msg-pro-badge">⭐ PRO</span>' : '';
+    const senderClass = isSenderPro ? 'msg-sender pro-sender' : 'msg-sender';
+    const avatarClass = isSenderPro && !own ? 'msg-avatar pro-av' : 'msg-avatar';
     row.innerHTML = `
-        <div class="msg-avatar">${esc(m.sender.substring(0,2).toUpperCase())}</div>
+        <div class="${avatarClass}">${esc(m.sender.substring(0,2).toUpperCase())}</div>
         <div class="msg-body">
-            ${!own ? '<span class="msg-sender">' + esc(m.sender) + senderBadge + '</span>' : ''}
+            ${!own ? '<span class="' + senderClass + '">' + esc(m.sender) + senderBadge + '</span>' : ''}
             <div class="msg-bubble">${content}</div>
             <span class="msg-time">${time}</span>
         </div>`;
