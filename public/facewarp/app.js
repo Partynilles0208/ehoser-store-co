@@ -477,14 +477,13 @@ async function searchPixabay(query) {
   pixabayUseBtn.disabled = true;
 
   try {
+    const token = localStorage.getItem('token') || '';
     const params = new URLSearchParams({
-      key,
       q: `${query} transparent png sticker`,
-      image_type: "all",
-      safesearch: "true",
-      per_page: "18",
     });
-    const response = await fetch(`${PIXABAY_ENDPOINT}?${params.toString()}`);
+    const response = await fetch(`${window.location.origin}/api/pixabay?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
