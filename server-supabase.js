@@ -368,7 +368,7 @@ app.post('/api/login', async (req, res) => {
 
     clearAttempts(clientKey);
 
-    await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', data.id).catch(() => {});
+    try { await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', data.id); } catch {}
 
     const isAdmin = false;
     const token = jwt.sign(
@@ -537,7 +537,7 @@ app.post('/api/verify-token', async (req, res) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     // last_seen aktualisieren (Fehler ignorieren)
-    await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id).catch(() => {});
+    try { await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id); } catch {}
     const refreshedToken = jwt.sign(
       { id: decoded.id, username: decoded.username, isAdmin: Boolean(decoded.isAdmin) },
       JWT_SECRET,
