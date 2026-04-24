@@ -124,6 +124,31 @@
                             <button type="submit" class="btn-primary">Anmelden</button>
                         </form>
 
+                        <div class="auth-help-area">
+                            <button type="button" class="btn-secondary" onclick="toggleResetHelp()">Hilfe anfordern</button>
+                        </div>
+
+                        <form id="helpRequestForm" onsubmit="handleHelpRequest(event)" style="display:none; margin-top: 12px;">
+                            <div class="form-group">
+                                <label for="helpUsername">Benutzername*</label>
+                                <input type="text" id="helpUsername" placeholder="Dein Benutzername" required minlength="3">
+                            </div>
+                            <button type="submit" class="btn-primary">Senden</button>
+                        </form>
+
+                        <form id="resetCompleteForm" onsubmit="handleCompleteReset(event)" style="display:none; margin-top: 12px;">
+                            <h3>Neuen Login-Code setzen</h3>
+                            <div class="form-group">
+                                <label for="newLoginCode">Neuer Login-Code*</label>
+                                <input type="password" id="newLoginCode" required minlength="6" placeholder="Neuer Login-Code">
+                            </div>
+                            <div class="form-group">
+                                <label for="confirmLoginCode">Login-Code bestaetigen*</label>
+                                <input type="password" id="confirmLoginCode" required minlength="6" placeholder="Code erneut eingeben">
+                            </div>
+                            <button type="submit" class="btn-primary">Fertig</button>
+                        </form>
+
                         <div class="auth-info">
                             <h3>Warum ein Zugangscode?</h3>
                             <p>Du steuerst exakt, wer den Store nutzen darf. Nur freigegebene Nutzer sehen die Inhalte und App-Downloads.</p>

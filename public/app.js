@@ -2,12 +2,136 @@ const API_BASE = `${window.location.origin}/api`;
 let currentUser = null;
 let allApps = [];
 let currentCategory = 'all';
+let resetRequestId = null;
+let resetLookupToken = null;
+let resetToken = null;
+let resetPollInterval = null;
 
 function switchAuthTab(tab, btn) {
     document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
     document.getElementById('loginForm').style.display = tab === 'login' ? '' : 'none';
+    if (tab !== 'login') {
+        document.getElementById('helpRequestForm').style.display = 'none';
+        document.getElementById('resetCompleteForm').style.display = 'none';
+    }
     document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+}
+
+function toggleResetHelp() {
+    const form = document.getElementById('helpRequestForm');
+    form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+function stopResetStatusPolling() {
+    clearInterval(resetPollInterval);
+    resetPollInterval = null;
+}
+
+function startResetStatusPolling() {
+    stopResetStatusPolling();
+    pollResetStatus();
+    resetPollInterval = setInterval(pollResetStatus, 5000);
+}
+
+async function handleHelpRequest(event) {
+    event.preventDefault();
+    const username = document.getElementById('helpUsername').value.trim();
+
+    try {
+        const response = await fetch(`${API_BASE}/request-code-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            showAlert(`Fehler: ${data.error || 'Anfrage fehlgeschlagen'}`, 'error');
+            return;
+        }
+
+        resetRequestId = data.requestId;
+        resetLookupToken = data.lookupToken;
+        showAlert('Anfrage gesendet. Admin wurde benachrichtigt.', 'success');
+        startResetStatusPolling();
+    } catch (err) {
+        showAlert('Verbindungsfehler beim Senden der Anfrage.', 'error');
+    }
+}
+
+async function pollResetStatus() {
+    if (!resetRequestId || !resetLookupToken) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/code-reset-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestId: resetRequestId, lookupToken: resetLookupToken })
+        });
+
+        const data = await response.json();
+        if (!response.ok) return;
+
+        if (data.status === 'approved' && data.resetToken) {
+            resetToken = data.resetToken;
+            stopResetStatusPolling();
+            document.getElementById('helpRequestForm').style.display = 'none';
+            document.getElementById('resetCompleteForm').style.display = '';
+            showAlert('Anfrage angenommen. Du kannst jetzt einen neuen Login-Code setzen.', 'success');
+            return;
+        }
+
+        if (data.status === 'rejected') {
+            stopResetStatusPolling();
+            showAlert('Deine Anfrage wurde vom Admin abgelehnt.', 'error');
+        }
+    } catch {
+        // polling silent
+    }
+}
+
+async function handleCompleteReset(event) {
+    event.preventDefault();
+
+    const newCode = document.getElementById('newLoginCode').value.trim();
+    const confirmCode = document.getElementById('confirmLoginCode').value.trim();
+
+    if (!resetRequestId || !resetToken) {
+        showAlert('Reset-Sitzung fehlt. Bitte erneut Hilfe anfordern.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/code-reset-complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                requestId: resetRequestId,
+                resetToken,
+                newCode,
+                confirmCode
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            showAlert(`Fehler: ${data.error || 'Code konnte nicht aktualisiert werden'}`, 'error');
+            return;
+        }
+
+        document.getElementById('resetCompleteForm').style.display = 'none';
+        document.getElementById('helpRequestForm').style.display = 'none';
+        document.getElementById('helpRequestForm').reset();
+        document.getElementById('resetCompleteForm').reset();
+        resetRequestId = null;
+        resetLookupToken = null;
+        resetToken = null;
+
+        showAlert('Neuer Login-Code gespeichert. Du kannst dich jetzt anmelden.', 'success');
+    } catch (err) {
+        showAlert('Verbindungsfehler beim Speichern des neuen Codes.', 'error');
+    }
 }
 
 async function handleLogin(event) {
@@ -369,6 +493,7 @@ function logout() {
     currentUser = null;
     allApps = [];
     stopOnlinePolling();
+    stopResetStatusPolling();
     document.getElementById('onlineWidget').style.display = 'none';
     location.reload();
 }

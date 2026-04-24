@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
@@ -56,6 +57,8 @@ const createLoginCode = () => {
   const value = Math.floor(100000 + Math.random() * 900000);
   return String(value);
 };
+
+const createSecureToken = () => crypto.randomBytes(24).toString('hex');
 
 // Middleware
 app.use(cors());
@@ -180,6 +183,134 @@ app.post('/api/login', async (req, res) => {
   } catch (error) {
     console.error('Login Error:', error);
     res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
+  }
+});
+
+// Hilfe anfordern: Code-Reset an Admin senden
+app.post('/api/request-code-reset', async (req, res) => {
+  const { username } = req.body;
+  if (!username || username.length < 3) {
+    return res.status(400).json({ error: 'Benutzername erforderlich' });
+  }
+
+  try {
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id, username')
+      .eq('username', username)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ error: 'Benutzername nicht gefunden' });
+    }
+
+    await supabase
+      .from('code_reset_requests')
+      .update({ status: 'cancelled' })
+      .eq('username', username)
+      .eq('status', 'pending');
+
+    const lookupToken = createSecureToken();
+    const { data, error } = await supabase
+      .from('code_reset_requests')
+      .insert([{ username, status: 'pending', lookup_token: lookupToken }])
+      .select('id, lookup_token')
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      requestId: data.id,
+      lookupToken: data.lookup_token,
+      message: 'Anfrage wurde an den Admin gesendet.'
+    });
+  } catch (error) {
+    console.error('Request Code Reset Error:', error);
+    res.status(500).json({ error: 'Anfrage konnte nicht erstellt werden. Stelle sicher, dass die Tabelle code_reset_requests existiert.' });
+  }
+});
+
+// Status einer Reset-Anfrage (Nutzer-seitig polling)
+app.post('/api/code-reset-status', async (req, res) => {
+  const { requestId, lookupToken } = req.body;
+  if (!requestId || !lookupToken) {
+    return res.status(400).json({ error: 'requestId und lookupToken erforderlich' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('code_reset_requests')
+      .select('id, status, reset_token')
+      .eq('id', requestId)
+      .eq('lookup_token', lookupToken)
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({ error: 'Anfrage nicht gefunden' });
+    }
+
+    if (data.status === 'approved') {
+      return res.json({ status: 'approved', resetToken: data.reset_token });
+    }
+
+    return res.json({ status: data.status });
+  } catch (error) {
+    console.error('Code Reset Status Error:', error);
+    res.status(500).json({ error: 'Status konnte nicht geladen werden' });
+  }
+});
+
+// Nutzer setzt neuen Login-Code nach Admin-Freigabe
+app.post('/api/code-reset-complete', async (req, res) => {
+  const { requestId, resetToken, newCode, confirmCode } = req.body;
+
+  if (!requestId || !resetToken) {
+    return res.status(400).json({ error: 'requestId und resetToken erforderlich' });
+  }
+
+  if (!newCode || newCode.length < 6) {
+    return res.status(400).json({ error: 'Neuer Code muss mindestens 6 Zeichen haben' });
+  }
+
+  if (newCode !== confirmCode) {
+    return res.status(400).json({ error: 'Codes stimmen nicht ueberein' });
+  }
+
+  try {
+    const { data: requestData, error: requestError } = await supabase
+      .from('code_reset_requests')
+      .select('id, username, status, reset_token')
+      .eq('id', requestId)
+      .eq('reset_token', resetToken)
+      .single();
+
+    if (requestError || !requestData) {
+      return res.status(404).json({ error: 'Reset-Anfrage nicht gefunden' });
+    }
+
+    if (requestData.status !== 'approved') {
+      return res.status(400).json({ error: 'Anfrage ist nicht freigegeben' });
+    }
+
+    const { error: updateUserError } = await supabase
+      .from('users')
+      .update({ access_code: newCode })
+      .eq('username', requestData.username);
+
+    if (updateUserError) throw updateUserError;
+
+    const { error: completeError } = await supabase
+      .from('code_reset_requests')
+      .update({ status: 'completed' })
+      .eq('id', requestData.id);
+
+    if (completeError) throw completeError;
+
+    res.json({ success: true, message: 'Dein neuer Login-Code wurde gespeichert.' });
+  } catch (error) {
+    console.error('Code Reset Complete Error:', error);
+    res.status(500).json({ error: 'Code konnte nicht aktualisiert werden' });
   }
 });
 
@@ -331,6 +462,84 @@ app.get('/api/admin/users', async (req, res) => {
   } catch (error) {
     console.error('Admin Users Error:', error);
     res.status(500).json({ error: 'Nutzer konnten nicht geladen werden' });
+  }
+});
+
+// Admin: offene Code-Reset-Anfragen
+app.get('/api/admin/reset-requests', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('code_reset_requests')
+      .select('id, username, status, created_at')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) {
+    console.error('Admin Reset Requests Error:', error);
+    res.status(500).json({ error: 'Reset-Anfragen konnten nicht geladen werden' });
+  }
+});
+
+// Admin: Code-Reset annehmen
+app.post('/api/admin/reset-requests/:id/approve', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Anfrage-ID' });
+  }
+
+  const resetToken = createSecureToken();
+
+  try {
+    const { error } = await supabase
+      .from('code_reset_requests')
+      .update({ status: 'approved', reset_token: resetToken })
+      .eq('id', requestId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Approve Reset Error:', error);
+    res.status(500).json({ error: 'Anfrage konnte nicht angenommen werden' });
+  }
+});
+
+// Admin: Code-Reset ablehnen
+app.post('/api/admin/reset-requests/:id/reject', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const requestId = Number(req.params.id);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Anfrage-ID' });
+  }
+
+  try {
+    const { error } = await supabase
+      .from('code_reset_requests')
+      .update({ status: 'rejected' })
+      .eq('id', requestId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Reject Reset Error:', error);
+    res.status(500).json({ error: 'Anfrage konnte nicht abgelehnt werden' });
   }
 });
 
