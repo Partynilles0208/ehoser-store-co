@@ -444,6 +444,15 @@ app.post('/api/admin/upload-url', async (req, res) => {
   }
 });
 
+// Admin: Code verifizieren (ohne Passwort im Frontend zu speichern)
+app.post('/api/admin/verify', (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+  res.json({ ok: true });
+});
+
 // Admin: registrierte Nutzer anzeigen (nur Benutzername + Zeit)
 app.get('/api/admin/users', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
