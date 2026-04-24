@@ -1,576 +1,571 @@
-'use strict';
-
+﻿'use strict';
 const API = window.location.origin + '/api';
 
 // ─── State ────────────────────────────────────────────────────────────────────
-let _token = null;
-let _me = null;
-let _myKeys = null;          // { privateKey, publicKey }
-let _groups = [];            // [{ id, name, created_by }]
-let _activeGroupId = null;
-let _groupKeyCache = {};     // groupId → CryptoKey (AES-GCM)
-let _lastMsgId = {};         // groupId → number
-let _pollInterval = null;
-let _selectedNewMembers = {};  // username → publicKeyJwk string (für neue Gruppe)
+let _token = null, _me = null, _myKeys = null;
+let _groups = [], _activeGroupId = null;
+let _groupKeyCache = {}, _lastMsgId = {};
+let _poll = null;
+let _ngMembers = {}; // new-group selected members { username: pubKeyJwk }
+let _recorder = null, _recChunks = [], _recTimer = null, _recSecs = 0;
+let _attachOpen = false;
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-(async function init() {
+(async () => {
     _token = localStorage.getItem('token');
-    if (!_token) {
-        document.getElementById('loginWall').style.display = 'flex';
-        return;
-    }
-
-    // Token validieren
+    if (!_token) { show('loginWall'); return; }
     try {
-        const r = await apiFetch('/verify-token', { method: 'POST' });
+        const r = await api('/verify-token', 'POST');
         _me = r.user;
-    } catch {
-        document.getElementById('loginWall').style.display = 'flex';
-        return;
-    }
-
-    document.getElementById('chatApp').style.display = 'flex';
-
-    // Eigenes ECDH-Keypair laden oder erstellen
-    _myKeys = await getOrCreateUserKeys();
-    const pubJwk = await exportPublicKey(_myKeys.publicKey);
-    // Public Key auf Server hochladen/aktualisieren (fire-and-forget)
-    apiFetch('/chat/key', { method: 'POST', body: { publicKey: pubJwk } }).catch(() => {});
-
+    } catch { show('loginWall'); return; }
+    show('chatApp');
+    document.getElementById('sidebarMe').textContent = '👤 ' + _me.username;
+    _myKeys = await getOrCreateKeys();
+    api('/chat/key', 'POST', { publicKey: await exportPub(_myKeys.publicKey) }).catch(() => {});
     await loadGroups();
-    startPolling();
+    _poll = setInterval(pollMessages, 3000);
+    document.addEventListener('click', globalClickClose);
 })();
 
-// ─── API-Helper ───────────────────────────────────────────────────────────────
-async function apiFetch(path, opts = {}) {
-    const res = await fetch(API + path, {
-        method: opts.method || 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${_token}`
-        },
-        body: opts.body ? JSON.stringify(opts.body) : undefined
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
+function show(id) {
+    ['loginWall','chatApp'].forEach(i => document.getElementById(i).style.display = i === id ? (id === 'chatApp' ? 'flex' : 'flex') : 'none');
 }
 
-// ─── Kryptographie (ECDH P-256 + AES-GCM) ────────────────────────────────────
+// ─── API ──────────────────────────────────────────────────────────────────────
+async function api(path, method = 'GET', body = null) {
+    const opts = { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _token } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(API + path, opts);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    return d;
+}
 
-async function getOrCreateUserKeys() {
+async function uploadFile(file, onLabel) {
+    if (onLabel) document.getElementById('uploadLabel').textContent = onLabel;
+    const ov = document.getElementById('uploadOverlay');
+    ov.style.display = 'flex';
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch(API + '/chat/upload', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + _token },
+        body: fd
+    });
+    ov.style.display = 'none';
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Upload fehlgeschlagen'); }
+    return r.json();
+}
+
+// ─── Crypto ───────────────────────────────────────────────────────────────────
+async function getOrCreateKeys() {
     const stored = localStorage.getItem('chat_privkey_jwk');
     if (stored) {
         try {
             const jwk = JSON.parse(stored);
-            const privateKey = await crypto.subtle.importKey(
-                'jwk', jwk,
-                { name: 'ECDH', namedCurve: 'P-256' },
-                true, ['deriveKey', 'deriveBits']
-            );
-            // Public Key aus Private Key-JWK ableiten
-            const pubJwk = { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y, key_ops: [] };
-            const publicKey = await crypto.subtle.importKey(
-                'jwk', pubJwk,
-                { name: 'ECDH', namedCurve: 'P-256' },
-                true, []
-            );
+            const privateKey = await crypto.subtle.importKey('jwk', jwk, { name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']);
+            const { kty,crv,x,y } = jwk;
+            const publicKey = await crypto.subtle.importKey('jwk', { kty,crv,x,y,key_ops:[] }, { name:'ECDH', namedCurve:'P-256' }, true, []);
             return { privateKey, publicKey };
-        } catch { /* Schlüssel beschädigt → neu generieren */ }
+        } catch {}
     }
-
-    const kp = await crypto.subtle.generateKey(
-        { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
-    );
+    const kp = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']);
     const jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
     localStorage.setItem('chat_privkey_jwk', JSON.stringify(jwk));
     return { privateKey: kp.privateKey, publicKey: kp.publicKey };
 }
 
-async function exportPublicKey(publicKey) {
-    const jwk = await crypto.subtle.exportKey('jwk', publicKey);
-    // Nur den öffentlichen Teil (kein 'd')
-    const { kty, crv, x, y } = jwk;
-    return JSON.stringify({ kty, crv, x, y, key_ops: [] });
+async function exportPub(k) {
+    const { kty,crv,x,y } = await crypto.subtle.exportKey('jwk', k);
+    return JSON.stringify({ kty, crv, x, y, key_ops:[] });
 }
 
-async function importPublicKey(jwkStr) {
-    const jwk = typeof jwkStr === 'string' ? JSON.parse(jwkStr) : jwkStr;
-    return crypto.subtle.importKey(
-        'jwk', { ...jwk, key_ops: [] },
-        { name: 'ECDH', namedCurve: 'P-256' },
-        true, []
-    );
+async function importPub(jwkStr) {
+    const j = typeof jwkStr === 'string' ? JSON.parse(jwkStr) : jwkStr;
+    return crypto.subtle.importKey('jwk', { ...j, key_ops:[] }, { name:'ECDH', namedCurve:'P-256' }, true, []);
 }
 
-function b64enc(buf) {
-    return btoa(String.fromCharCode(...new Uint8Array(buf)));
-}
-function b64dec(str) {
-    const bin = atob(str);
-    const buf = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-    return buf.buffer;
-}
+const b64e = b => btoa(String.fromCharCode(...new Uint8Array(b)));
+const b64d = s => { const b = atob(s); const u = new Uint8Array(b.length); for (let i=0; i<b.length; i++) u[i]=b.charCodeAt(i); return u.buffer; };
 
-// Leitet AES-Wrap-Schlüssel via ECDH + HKDF ab
-async function deriveWrapKey(myPriv, theirPub) {
-    const bits = await crypto.subtle.deriveBits(
-        { name: 'ECDH', public: theirPub }, myPriv, 256
-    );
-    const hkdf = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
-    return crypto.subtle.deriveKey(
-        {
-            name: 'HKDF', hash: 'SHA-256',
-            salt: new TextEncoder().encode('ehoser-chat-key-wrap-v1'),
-            info: new Uint8Array(0)
-        },
-        hkdf,
-        { name: 'AES-GCM', length: 256 },
-        false, ['encrypt', 'decrypt']
-    );
+async function deriveWrap(myPriv, theirPub) {
+    const bits = await crypto.subtle.deriveBits({ name:'ECDH', public:theirPub }, myPriv, 256);
+    const h = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name:'HKDF', hash:'SHA-256', salt: new TextEncoder().encode('ehoser-chat-key-wrap-v1'), info: new Uint8Array(0) }, h, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
 }
 
-// Gruppenkey (raw AES-256 als base64) für einen Empfänger verpacken
-async function wrapGroupKeyForMember(groupKeyB64, recipientPubJwk) {
-    // Ephemeral ECDH-Keypair
-    const eph = await crypto.subtle.generateKey(
-        { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
-    );
-    const theirPub = await importPublicKey(recipientPubJwk);
-    const wrapKey = await deriveWrapKey(eph.privateKey, theirPub);
-
+async function wrapKey(groupKeyB64, recipPubJwk) {
+    const eph = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']);
+    const wk = await deriveWrap(eph.privateKey, await importPub(recipPubJwk));
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const plain = new TextEncoder().encode(groupKeyB64);
-    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, plain);
-
-    const ephPubJwk = await crypto.subtle.exportKey('jwk', eph.publicKey);
-    const { kty, crv, x, y } = ephPubJwk;
-
-    return JSON.stringify({
-        eph: JSON.stringify({ kty, crv, x, y, key_ops: [] }),
-        iv: b64enc(iv),
-        c: b64enc(cipher)
-    });
+    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, wk, new TextEncoder().encode(groupKeyB64));
+    const { kty,crv,x,y } = await crypto.subtle.exportKey('jwk', eph.publicKey);
+    return JSON.stringify({ eph: JSON.stringify({ kty,crv,x,y,key_ops:[] }), iv: b64e(iv), c: b64e(ct) });
 }
 
-// Verpackten Gruppenkey mit eigenem Private Key entschlüsseln
-async function unwrapGroupKey(wrappedJson) {
-    const { eph, iv, c } = JSON.parse(wrappedJson);
-    const ephPub = await importPublicKey(JSON.parse(eph));
-    const wrapKey = await deriveWrapKey(_myKeys.privateKey, ephPub);
-    const plain = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: new Uint8Array(b64dec(iv)) },
-        wrapKey, b64dec(c)
-    );
-    return new TextDecoder().decode(plain); // → groupKeyB64
+async function unwrapKey(wrapped) {
+    const { eph, iv, c } = JSON.parse(wrapped);
+    const wk = await deriveWrap(_myKeys.privateKey, await importPub(JSON.parse(eph)));
+    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: new Uint8Array(b64d(iv)) }, wk, b64d(c));
+    return new TextDecoder().decode(pt);
 }
 
-async function generateGroupKey() {
-    return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
-}
+async function makeGroupKey() { return crypto.subtle.generateKey({ name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']); }
+async function exportKeyB64(k) { return b64e(await crypto.subtle.exportKey('raw', k)); }
+async function importKeyB64(b) { return crypto.subtle.importKey('raw', b64d(b), { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']); }
 
-async function exportGroupKeyB64(groupKey) {
-    return b64enc(await crypto.subtle.exportKey('raw', groupKey));
-}
-
-async function importGroupKeyB64(b64) {
-    return crypto.subtle.importKey('raw', b64dec(b64), { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-}
-
-async function encryptMessage(text, groupKey) {
+async function encryptMsg(text, key) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const cipher = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv }, groupKey, new TextEncoder().encode(text)
-    );
-    return JSON.stringify({ iv: b64enc(iv), c: b64enc(cipher) });
+    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, new TextEncoder().encode(text));
+    return JSON.stringify({ iv: b64e(iv), c: b64e(ct) });
 }
 
-async function decryptMessage(encJson, groupKey) {
-    const { iv, c } = JSON.parse(encJson);
-    const plain = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: new Uint8Array(b64dec(iv)) },
-        groupKey, b64dec(c)
-    );
-    return new TextDecoder().decode(plain);
+async function decryptMsg(enc, key) {
+    const { iv, c } = JSON.parse(enc);
+    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: new Uint8Array(b64d(iv)) }, key, b64d(c));
+    return new TextDecoder().decode(pt);
 }
 
-// Gruppenkey für aktive Gruppe holen (cached)
-async function getGroupKey(groupId) {
-    if (_groupKeyCache[groupId]) return _groupKeyCache[groupId];
-    const { encryptedGroupKey } = await apiFetch(`/chat/groups/${groupId}/key`);
-    const keyB64 = await unwrapGroupKey(encryptedGroupKey);
-    const key = await importGroupKeyB64(keyB64);
-    _groupKeyCache[groupId] = key;
-    return key;
+async function getGroupKey(gid) {
+    if (_groupKeyCache[gid]) return _groupKeyCache[gid];
+    const { encryptedGroupKey } = await api('/chat/groups/' + gid + '/key');
+    const k = await importKeyB64(await unwrapKey(encryptedGroupKey));
+    _groupKeyCache[gid] = k;
+    return k;
 }
 
-// ─── Gruppen ──────────────────────────────────────────────────────────────────
-
+// ─── Groups ───────────────────────────────────────────────────────────────────
 async function loadGroups() {
     try {
-        const { groups } = await apiFetch('/chat/groups');
+        const { groups } = await api('/chat/groups');
         _groups = groups || [];
         renderGroupList();
-    } catch (e) {
-        showToast('Fehler beim Laden der Gruppen: ' + e.message, 'error');
-    }
+    } catch (e) { toast('Fehler: ' + e.message, 'err'); }
 }
 
 function renderGroupList() {
     const el = document.getElementById('groupList');
-    if (!_groups.length) {
-        el.innerHTML = '<p class="sidebar-empty">Keine Gruppen vorhanden.<br>Erstelle eine neue!</p>';
-        return;
-    }
+    if (!_groups.length) { el.innerHTML = '<p class="empty-hint">Keine Gruppen.<br>Erstelle eine neue!</p>'; return; }
     el.innerHTML = _groups.map(g => `
-        <div class="group-item ${_activeGroupId === g.id ? 'active' : ''}" onclick="selectGroup('${g.id}')">
-            <div class="group-item-icon">👥</div>
-            <div class="group-item-info">
-                <div class="group-item-name">${esc(g.name)}</div>
-                <div class="group-item-sub">von ${esc(g.created_by)}</div>
+        <div class="group-item${_activeGroupId === g.id ? ' active' : ''}" onclick="selectGroup('${g.id}')">
+            <div class="gi-avatar">👥</div>
+            <div class="gi-info">
+                <div class="gi-name">${esc(g.name)}</div>
+                <div class="gi-sub">von ${esc(g.created_by)}</div>
             </div>
-        </div>
-    `).join('');
+        </div>`).join('');
 }
 
-async function selectGroup(groupId) {
-    _activeGroupId = groupId;
+async function selectGroup(gid) {
+    _activeGroupId = gid;
     renderGroupList();
-
-    const group = _groups.find(g => g.id === groupId);
-    if (!group) return;
-
-    document.getElementById('noGroupSelected').style.display = 'none';
-    document.getElementById('activeChat').style.display = 'flex';
-    document.getElementById('activeChatName').textContent = group.name;
-    document.getElementById('activeChatMembers').textContent = 'Mitglieder laden…';
-    document.getElementById('messagesArea').innerHTML = '<div class="messages-loading">Nachrichten werden entschlüsselt…</div>';
-
-    // Mitglieder zählen
-    try {
-        const { members } = await apiFetch(`/chat/groups/${groupId}/members`);
-        document.getElementById('activeChatMembers').textContent = `${members.length} Mitglied${members.length !== 1 ? 'er' : ''}`;
-    } catch {}
-
-    // Alle Nachrichten laden
-    _lastMsgId[groupId] = 0;
-    await loadMessages(groupId, true);
+    const g = _groups.find(x => x.id === gid);
+    if (!g) return;
+    document.getElementById('noGroup').style.display = 'none';
+    const ac = document.getElementById('activeChat');
+    ac.style.display = 'flex';
+    document.getElementById('topbarName').textContent = g.name;
+    document.getElementById('topbarMeta').textContent = 'Mitglieder werden geladen…';
+    document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden entschlüsselt…</div>';
+    try { const { members } = await api('/chat/groups/' + gid + '/members'); document.getElementById('topbarMeta').textContent = members.length + ' Mitglied' + (members.length !== 1 ? 'er' : ''); } catch {}
+    _lastMsgId[gid] = 0;
+    await loadMessages(gid, true);
+    document.getElementById('msgInput').focus();
 }
 
-async function loadMessages(groupId, initial = false) {
+async function pollMessages() {
+    if (_activeGroupId) await loadMessages(_activeGroupId, false);
+}
+
+async function loadMessages(gid, initial) {
     try {
-        const after = _lastMsgId[groupId] || 0;
-        const { messages } = await apiFetch(`/chat/messages/${groupId}?after=${after}`);
+        const after = _lastMsgId[gid] || 0;
+        const { messages } = await api('/chat/messages/' + gid + '?after=' + after);
         if (!messages.length) {
-            if (initial) {
-                document.getElementById('messagesArea').innerHTML = '<div class="messages-loading" style="color:#3a6070">Noch keine Nachrichten. Schreibe die erste!</div>';
-            }
+            if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#2a5060">Noch keine Nachrichten.</div>';
             return;
         }
-
-        const key = await getGroupKey(groupId);
+        const key = await getGroupKey(gid);
         if (initial) document.getElementById('messagesArea').innerHTML = '';
-
-        for (const msg of messages) {
-            if (groupId !== _activeGroupId) break;
-            let text;
-            try { text = await decryptMessage(msg.encrypted_content, key); }
-            catch { text = null; }
-            appendMessage(msg, text);
-            _lastMsgId[groupId] = msg.id;
+        for (const m of messages) {
+            if (gid !== _activeGroupId) break;
+            let plain = null;
+            try { plain = await decryptMsg(m.encrypted_content, key); } catch {}
+            appendMessage(m, plain);
+            _lastMsgId[gid] = m.id;
         }
-
-        // Auto-scroll
-        if (groupId === _activeGroupId) {
-            const area = document.getElementById('messagesArea');
-            area.scrollTop = area.scrollHeight;
-        }
+        if (gid === _activeGroupId) { const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight; }
     } catch (e) {
-        if (initial) {
-            document.getElementById('messagesArea').innerHTML = `<div class="messages-loading" style="color:#c05050">Fehler: ${esc(e.message)}</div>`;
-        }
+        if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#c05050">Fehler: ' + esc(e.message) + '</div>';
     }
 }
 
-function appendMessage(msg, plainText) {
+function appendMessage(m, plainJson) {
     const area = document.getElementById('messagesArea');
-    const isOwn = msg.sender === _me?.username;
-    const time = new Date(msg.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-
+    const own = m.sender === _me?.username;
+    const time = new Date(m.created_at).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+    let content = '';
+    if (plainJson === null) {
+        content = '<span class="decrypt-err">🔒 Konnte nicht entschlüsselt werden</span>';
+    } else {
+        let parsed;
+        try { parsed = JSON.parse(plainJson); } catch { parsed = { t:'txt', v: plainJson }; }
+        content = renderContent(parsed);
+    }
     const row = document.createElement('div');
-    row.className = `message-row${isOwn ? ' own' : ''}`;
+    row.className = 'msg-row' + (own ? ' own' : '');
     row.innerHTML = `
-        <div class="message-avatar">${esc(msg.sender.substring(0, 2).toUpperCase())}</div>
-        <div class="message-bubble-wrap">
-            ${!isOwn ? `<span class="message-sender">${esc(msg.sender)}</span>` : ''}
-            <div class="message-bubble">
-                ${plainText !== null
-                    ? esc(plainText).replace(/\n/g, '<br>')
-                    : '<span class="decrypt-error">🔒 Nachricht kann nicht entschlüsselt werden</span>'
-                }
-            </div>
-            <span class="message-time">${time}</span>
-        </div>
-    `;
+        <div class="msg-avatar">${esc(m.sender.substring(0,2).toUpperCase())}</div>
+        <div class="msg-body">
+            ${!own ? '<span class="msg-sender">' + esc(m.sender) + '</span>' : ''}
+            <div class="msg-bubble">${content}</div>
+            <span class="msg-time">${time}</span>
+        </div>`;
     area.appendChild(row);
 }
 
-async function sendMessage(event) {
-    event.preventDefault();
-    const input = document.getElementById('messageInput');
-    const text = input.value.trim();
+function renderContent(p) {
+    if (!p || typeof p !== 'object') return esc(String(p));
+    switch (p.t) {
+        case 'txt': return esc(p.v || '').replace(/\n/g, '<br>');
+        case 'img': return `<img class="msg-img" src="${esc(p.url)}" alt="${esc(p.name||'Bild')}" loading="lazy" onclick="viewImg(this.src)">`;
+        case 'vid': return `<video class="msg-video" src="${esc(p.url)}" controls preload="metadata"></video>`;
+        case 'aud': return renderAudio(p);
+        case 'fw':  return `<img class="msg-img" src="${esc(p.url)}" alt="Face Warp" loading="lazy" onclick="viewImg(this.src)"><div class="msg-fw-label">🎭 Face Warp</div>`;
+        case 'file': return renderFile(p);
+        default: return esc(JSON.stringify(p));
+    }
+}
+
+function renderAudio(p) {
+    const bars = Array.from({length:18}, (_,i) => {
+        const h = 6 + Math.round(Math.abs(Math.sin(i * 0.7)) * 16);
+        return `<div class="wave-bar" style="height:${h}px"></div>`;
+    }).join('');
+    const dur = p.dur ? fmtTime(p.dur) : '';
+    return `<div class="msg-audio-player">
+        <button class="msg-audio-play" onclick="playAudio('${esc(p.url)}', this)">▶</button>
+        <div class="msg-audio-wave">${bars}</div>
+        <span class="msg-audio-dur">${dur}</span>
+    </div>`;
+}
+
+function renderFile(p) {
+    const icons = { pdf:'📄', zip:'🗜️', txt:'📃', doc:'📝', docx:'📝' };
+    const ext = (p.name||'').split('.').pop().toLowerCase();
+    const icon = icons[ext] || '📎';
+    const size = p.size ? fmtSize(p.size) : '';
+    return `<div class="msg-file">
+        <div class="msg-file-icon">${icon}</div>
+        <div class="msg-file-info">
+            <span class="msg-file-name">${esc(p.name||'Datei')}</span>
+            ${size ? '<span class="msg-file-size">' + size + '</span>' : ''}
+            <a class="msg-file-dl" href="${esc(p.url)}" target="_blank" download="${esc(p.name||'file')}">⬇ Herunterladen</a>
+        </div>
+    </div>`;
+}
+
+// ─── Send ─────────────────────────────────────────────────────────────────────
+async function sendMessage() {
+    const inp = document.getElementById('msgInput');
+    const text = inp.value.trim();
     if (!text || !_activeGroupId) return;
-
-    input.value = '';
-    input.disabled = true;
-
+    inp.value = ''; inp.style.height = ''; inp.disabled = true;
     try {
         const key = await getGroupKey(_activeGroupId);
-        const encryptedContent = await encryptMessage(text, key);
-        const { id, created_at } = await apiFetch('/chat/messages', {
-            method: 'POST',
-            body: { groupId: _activeGroupId, encryptedContent }
-        });
-        // Eigene Nachricht direkt anzeigen
-        appendMessage({ id, sender: _me.username, created_at, encrypted_content: encryptedContent }, text);
+        const enc = await encryptMsg(JSON.stringify({ t:'txt', v:text }), key);
+        const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, encryptedContent: enc });
+        appendMessage({ id, sender: _me.username, created_at, encrypted_content: enc }, JSON.stringify({ t:'txt', v:text }));
         _lastMsgId[_activeGroupId] = id;
-        const area = document.getElementById('messagesArea');
-        area.scrollTop = area.scrollHeight;
-    } catch (e) {
-        showToast('Fehler beim Senden: ' + e.message, 'error');
-        input.value = text;
-    } finally {
-        input.disabled = false;
-        input.focus();
+        const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
+    } catch (e) { toast('Fehler: ' + e.message, 'err'); inp.value = text; }
+    finally { inp.disabled = false; inp.focus(); }
+}
+
+async function sendMediaMessage(payload) {
+    if (!_activeGroupId) return;
+    try {
+        const key = await getGroupKey(_activeGroupId);
+        const enc = await encryptMsg(JSON.stringify(payload), key);
+        const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, encryptedContent: enc });
+        appendMessage({ id, sender: _me.username, created_at, encrypted_content: enc }, JSON.stringify(payload));
+        _lastMsgId[_activeGroupId] = id;
+        const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
+    } catch (e) { toast('Senden fehlgeschlagen: ' + e.message, 'err'); }
+}
+
+function handleMsgKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
+// ─── File Attach ──────────────────────────────────────────────────────────────
+function toggleAttachMenu() {
+    const m = document.getElementById('attachMenu');
+    _attachOpen = !_attachOpen;
+    m.style.display = _attachOpen ? 'block' : 'none';
+    document.getElementById('attachBtn').classList.toggle('active', _attachOpen);
+}
+
+function globalClickClose(e) {
+    if (!document.getElementById('attachWrap').contains(e.target)) {
+        document.getElementById('attachMenu').style.display = 'none';
+        document.getElementById('attachBtn').classList.remove('active');
+        _attachOpen = false;
     }
 }
 
-// ─── Polling ──────────────────────────────────────────────────────────────────
-
-function startPolling() {
-    _pollInterval = setInterval(async () => {
-        if (_activeGroupId) {
-            await loadMessages(_activeGroupId, false);
-        }
-    }, 3000);
+async function handleFilePick(input, kind) {
+    toggleAttachMenu();
+    const file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    try {
+        const res = await uploadFile(file, 'Wird hochgeladen… ' + file.name);
+        let payload;
+        const mime = res.mime || '';
+        if (mime.startsWith('image/'))      payload = { t:'img',  url:res.url, name:res.name, size:res.size };
+        else if (mime.startsWith('video/')) payload = { t:'vid',  url:res.url, name:res.name, size:res.size };
+        else                                payload = { t:'file', url:res.url, name:res.name, size:res.size };
+        await sendMediaMessage(payload);
+    } catch (e) { toast('Upload: ' + e.message, 'err'); }
 }
 
-// ─── Nutzersuche ─────────────────────────────────────────────────────────────
-
-let _searchTimeout = null;
-async function searchUsers(q, resultsId) {
-    const container = document.getElementById(resultsId);
-    clearTimeout(_searchTimeout);
-    if (!q || q.length < 2) { container.innerHTML = ''; container.style.display = 'none'; return; }
-
-    _searchTimeout = setTimeout(async () => {
-        try {
-            const { users } = await apiFetch(`/chat/users/search?q=${encodeURIComponent(q)}`);
-            if (!users.length) { container.innerHTML = '<div class="search-result-item" style="color:#4a7a90">Keine Nutzer gefunden</div>'; container.style.display = 'block'; return; }
-            container.style.display = 'block';
-
-            if (resultsId === 'newGroupResults') {
-                // Für neue Gruppe: Nutzer zur Auswahl hinzufügen
-                container.innerHTML = users.map(u => `
-                    <div class="search-result-item" onclick="toggleNewGroupMember('${esc(u)}')">
-                        <span class="result-name">${esc(u)}</span>
-                        <span class="result-add">${_selectedNewMembers[u] ? '✓ ausgewählt' : '+ Hinzufügen'}</span>
-                    </div>
-                `).join('');
-            } else if (resultsId === 'addMemberResults') {
-                // Für bestehende Gruppe: direkt hinzufügen
-                container.innerHTML = users.map(u => `
-                    <div class="search-result-item" onclick="addMemberToGroup('${esc(u)}')">
-                        <span class="result-name">${esc(u)}</span>
-                        <span class="result-add">+ Hinzufügen</span>
-                    </div>
-                `).join('');
-            }
-        } catch { container.innerHTML = ''; container.style.display = 'none'; }
-    }, 300);
-}
-
-// ─── Neue Gruppe Modal ────────────────────────────────────────────────────────
-
-function openNewGroupModal() {
-    _selectedNewMembers = {};
-    document.getElementById('newGroupName').value = '';
-    document.getElementById('memberSearchInput').value = '';
-    document.getElementById('newGroupResults').innerHTML = '';
-    document.getElementById('newGroupResults').style.display = 'none';
-    document.getElementById('selectedMembers').innerHTML = '';
-    document.getElementById('newGroupModal').style.display = 'flex';
-}
-
-async function toggleNewGroupMember(username) {
-    if (_selectedNewMembers[username]) {
-        delete _selectedNewMembers[username];
+// ─── Voice ────────────────────────────────────────────────────────────────────
+async function toggleVoice() {
+    if (_recorder && _recorder.state === 'recording') {
+        stopVoice();
     } else {
-        // Public Key holen
         try {
-            const { publicKey } = await apiFetch(`/chat/key/${username}`);
-            _selectedNewMembers[username] = publicKey;
-        } catch {
-            showToast(`${username} hat noch keinen Chat-Schlüssel. Er muss Chat einmal öffnen.`, 'error');
-            return;
-        }
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            _recChunks = []; _recSecs = 0;
+            _recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg' });
+            _recorder.ondataavailable = e => { if (e.data.size > 0) _recChunks.push(e.data); };
+            _recorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blob = new Blob(_recChunks, { type: _recorder.mimeType });
+                const dur = _recSecs;
+                clearInterval(_recTimer);
+                document.getElementById('voiceUI').style.display = 'none';
+                document.getElementById('micBtn').classList.remove('active');
+                if (!_cancelled) {
+                    try {
+                        const file = new File([blob], 'voice.' + (_recorder.mimeType.includes('webm') ? 'webm' : 'ogg'), { type: _recorder.mimeType });
+                        const res = await uploadFile(file, 'Sprachnachricht wird hochgeladen…');
+                        await sendMediaMessage({ t:'aud', url:res.url, dur });
+                    } catch(e) { toast('Fehler: ' + e.message, 'err'); }
+                }
+            };
+            _cancelled = false;
+            _recorder.start();
+            document.getElementById('voiceUI').style.display = 'flex';
+            document.getElementById('msgInput').style.display = 'none';
+            document.getElementById('sendBtnWrap') && (document.getElementById('sendBtnWrap').style.display = 'none');
+            document.getElementById('micBtn').classList.add('active');
+            _recTimer = setInterval(() => {
+                _recSecs++;
+                const m = Math.floor(_recSecs/60), s = _recSecs % 60;
+                document.getElementById('recTimer').textContent = m + ':' + String(s).padStart(2,'0');
+            }, 1000);
+        } catch(e) { toast('Mikrofon: ' + e.message, 'err'); }
     }
-    renderSelectedMembers();
-    // Suchergebnisse neu rendern
-    const q = document.getElementById('memberSearchInput').value;
-    searchUsers(q, 'newGroupResults');
 }
 
-function removeNewGroupMember(username) {
-    delete _selectedNewMembers[username];
-    renderSelectedMembers();
+let _cancelled = false;
+
+function cancelVoice() {
+    _cancelled = true;
+    if (_recorder) _recorder.stop();
+    clearInterval(_recTimer);
+    document.getElementById('voiceUI').style.display = 'none';
+    document.getElementById('msgInput').style.display = '';
+    document.getElementById('micBtn').classList.remove('active');
 }
 
-function renderSelectedMembers() {
-    const el = document.getElementById('selectedMembers');
-    el.innerHTML = Object.keys(_selectedNewMembers).map(u => `
-        <div class="member-chip">
-            <span>${esc(u)}</span>
-            <button onclick="removeNewGroupMember('${esc(u)}')" title="Entfernen">✕</button>
-        </div>
-    `).join('');
+function stopVoice() {
+    _cancelled = false;
+    if (_recorder) _recorder.stop();
+    document.getElementById('voiceUI').style.display = 'none';
+    document.getElementById('msgInput').style.display = '';
 }
+
+function playAudio(url, btn) {
+    const audio = new Audio(url);
+    btn.textContent = '⏸';
+    audio.play();
+    audio.onended = () => btn.textContent = '▶';
+}
+
+// ─── FaceWarp Picker ──────────────────────────────────────────────────────────
+function openFacewarpPicker() {
+    document.getElementById('attachMenu').style.display = 'none';
+    _attachOpen = false;
+    document.getElementById('attachBtn').classList.remove('active');
+    const saved = getSavedFacewarps();
+    const grid = document.getElementById('fwGrid');
+    if (!saved.length) {
+        grid.innerHTML = '<div class="fw-empty">Noch keine gespeicherten Bilder.<br>Erstelle eines im Face Warp Editor.</div>';
+    } else {
+        grid.innerHTML = saved.map((u,i) => `<img class="fw-grid-img" src="${esc(u)}" onclick="sendFwImage('${esc(u)}')">`).join('');
+    }
+    openModal('fwModal');
+}
+
+async function sendFwImage(url) {
+    closeModal('fwModal');
+    await sendMediaMessage({ t:'fw', url });
+}
+
+function openFacewarpEditor() {
+    closeModal('fwModal');
+    localStorage.setItem('faceWarpReturnToChat', '1');
+    window.open('/facewarp/', '_blank');
+}
+
+function getSavedFacewarps() {
+    try { return JSON.parse(localStorage.getItem('chatSavedFacewarps') || '[]'); } catch { return []; }
+}
+
+// ─── Groups: New ─────────────────────────────────────────────────────────────
+function openNewGroupModal() {
+    _ngMembers = {};
+    document.getElementById('ngName').value = '';
+    document.getElementById('ngSearch').value = '';
+    document.getElementById('ngResults').style.display = 'none';
+    document.getElementById('ngChips').innerHTML = '';
+    openModal('newGroupModal');
+}
+
+async function toggleNgMember(username) {
+    if (_ngMembers[username]) { delete _ngMembers[username]; }
+    else {
+        try {
+            const { publicKey } = await api('/chat/key/' + username);
+            _ngMembers[username] = publicKey;
+        } catch { toast(username + ' hat noch keinen Chat-Schlüssel', 'err'); return; }
+    }
+    renderNgChips();
+    searchUsers(document.getElementById('ngSearch').value, 'ngResults');
+}
+
+function renderNgChips() {
+    document.getElementById('ngChips').innerHTML = Object.keys(_ngMembers).map(u =>
+        `<div class="chip">${esc(u)}<button class="chip-x" onclick="removeNgMember('${esc(u)}')">✕</button></div>`
+    ).join('');
+}
+
+function removeNgMember(u) { delete _ngMembers[u]; renderNgChips(); }
 
 async function createGroup() {
-    const name = document.getElementById('newGroupName').value.trim();
-    if (!name) { showToast('Bitte einen Gruppennamen eingeben', 'error'); return; }
-
+    const name = document.getElementById('ngName').value.trim();
+    if (!name) { toast('Bitte einen Namen eingeben', 'err'); return; }
     try {
-        // Eigenen Public Key holen
-        const myPubJwk = await exportPublicKey(_myKeys.publicKey);
-
-        // Gruppenkey generieren
-        const groupKey = await generateGroupKey();
-        const groupKeyB64 = await exportGroupKeyB64(groupKey);
-
-        // Gruppenkey für alle Mitglieder (+ sich selbst) verpacken
+        const myPub = await exportPub(_myKeys.publicKey);
+        const gk = await makeGroupKey();
+        const gkB64 = await exportKeyB64(gk);
         const memberKeys = {};
-
-        // Eigener Schlüssel
-        memberKeys[_me.username] = await wrapGroupKeyForMember(groupKeyB64, myPubJwk);
-
-        // Für alle ausgewählten Mitglieder
-        for (const [username, pubJwk] of Object.entries(_selectedNewMembers)) {
-            memberKeys[username] = await wrapGroupKeyForMember(groupKeyB64, pubJwk);
-        }
-
-        const { id, name: groupName } = await apiFetch('/chat/groups', {
-            method: 'POST',
-            body: { name, memberKeys }
-        });
-
-        // Gruppenkey cachen
-        _groupKeyCache[id] = groupKey;
-
+        memberKeys[_me.username] = await wrapKey(gkB64, myPub);
+        for (const [u, pub] of Object.entries(_ngMembers)) memberKeys[u] = await wrapKey(gkB64, pub);
+        const { id, name: gname } = await api('/chat/groups', 'POST', { name, memberKeys });
+        _groupKeyCache[id] = gk;
         closeModal('newGroupModal');
-        showToast(`Gruppe "${groupName}" erstellt!`, 'ok');
-
-        // Gruppen neu laden und öffnen
+        toast('Gruppe "' + gname + '" erstellt', 'ok');
         await loadGroups();
         selectGroup(id);
-    } catch (e) {
-        showToast('Fehler beim Erstellen: ' + e.message, 'error');
-    }
+    } catch (e) { toast('Fehler: ' + e.message, 'err'); }
 }
 
-// ─── Mitglied hinzufügen ──────────────────────────────────────────────────────
-
+// ─── Groups: Add Member ───────────────────────────────────────────────────────
 function openAddMemberModal() {
-    document.getElementById('addMemberInput').value = '';
-    document.getElementById('addMemberResults').innerHTML = '';
-    document.getElementById('addMemberResults').style.display = 'none';
-    document.getElementById('addMemberStatus').textContent = '';
-    document.getElementById('addMemberStatus').className = 'modal-status';
-    document.getElementById('addMemberModal').style.display = 'flex';
+    document.getElementById('amSearch').value = '';
+    document.getElementById('amResults').style.display = 'none';
+    document.getElementById('amStatus').textContent = '';
+    document.getElementById('amStatus').className = 'status-msg';
+    openModal('addMemberModal');
 }
 
-async function addMemberToGroup(username) {
-    const status = document.getElementById('addMemberStatus');
-    document.getElementById('addMemberResults').style.display = 'none';
-    status.textContent = `${username} wird hinzugefügt…`;
-    status.className = 'modal-status';
-
+async function addMember(username) {
+    const st = document.getElementById('amStatus');
+    document.getElementById('amResults').style.display = 'none';
+    st.textContent = username + ' wird hinzugefügt…';
     try {
-        // Public Key des neuen Mitglieds holen
-        const { publicKey: theirPubJwk } = await apiFetch(`/chat/key/${username}`);
-
-        // Gruppenkey des aktuellen Raums entschlüsseln
-        const groupKey = await getGroupKey(_activeGroupId);
-        const groupKeyB64 = await exportGroupKeyB64(groupKey);
-
-        // Für neues Mitglied verpacken
-        const encryptedGroupKey = await wrapGroupKeyForMember(groupKeyB64, theirPubJwk);
-
-        await apiFetch(`/chat/groups/${_activeGroupId}/members`, {
-            method: 'POST',
-            body: { username, encryptedGroupKey }
-        });
-
-        status.textContent = `✓ ${username} wurde hinzugefügt!`;
-        status.className = 'modal-status';
-
-        // Mitgliederzahl aktualisieren
-        const { members } = await apiFetch(`/chat/groups/${_activeGroupId}/members`);
-        document.getElementById('activeChatMembers').textContent = `${members.length} Mitglied${members.length !== 1 ? 'er' : ''}`;
-
-        showToast(`${username} zur Gruppe hinzugefügt`, 'ok');
-    } catch (e) {
-        status.textContent = 'Fehler: ' + e.message;
-        status.className = 'modal-status error';
-    }
+        const { publicKey } = await api('/chat/key/' + username);
+        const gk = await getGroupKey(_activeGroupId);
+        const gkB64 = await exportKeyB64(gk);
+        const encKey = await wrapKey(gkB64, publicKey);
+        await api('/chat/groups/' + _activeGroupId + '/members', 'POST', { username, encryptedGroupKey: encKey });
+        st.textContent = '✓ ' + username + ' hinzugefügt';
+        const { members } = await api('/chat/groups/' + _activeGroupId + '/members');
+        document.getElementById('topbarMeta').textContent = members.length + ' Mitglieder';
+        toast(username + ' zur Gruppe hinzugefügt', 'ok');
+    } catch (e) { st.textContent = 'Fehler: ' + e.message; st.className = 'status-msg error'; }
 }
 
-// ─── Mitgliederliste Modal ────────────────────────────────────────────────────
-
+// ─── Members List ─────────────────────────────────────────────────────────────
 async function openMembersModal() {
-    document.getElementById('membersList').innerHTML = '<li style="color:#4a7a90;padding:10px">Lade…</li>';
-    document.getElementById('membersModal').style.display = 'flex';
-
+    document.getElementById('membersList').innerHTML = '<li style="color:var(--muted);padding:10px">Lade…</li>';
+    openModal('membersModal');
     try {
-        const { members } = await apiFetch(`/chat/groups/${_activeGroupId}/members`);
-        const group = _groups.find(g => g.id === _activeGroupId);
-
-        document.getElementById('membersList').innerHTML = members.map(m => `
-            <li>
-                <div class="member-avatar-sm">${esc(m.username.substring(0, 2).toUpperCase())}</div>
-                <span>${esc(m.username)}</span>
-                ${group?.created_by === m.username ? '<span class="member-creator-badge">Ersteller</span>' : ''}
-            </li>
-        `).join('') || '<li style="color:#4a7a90;padding:10px">Keine Mitglieder</li>';
-    } catch {
-        document.getElementById('membersList').innerHTML = '<li style="color:#c05050;padding:10px">Fehler beim Laden</li>';
-    }
+        const { members } = await api('/chat/groups/' + _activeGroupId + '/members');
+        const g = _groups.find(x => x.id === _activeGroupId);
+        document.getElementById('membersList').innerHTML = members.map(m =>
+            `<li><div class="member-av">${esc(m.username.substring(0,2).toUpperCase())}</div><span>${esc(m.username)}</span>${g?.created_by === m.username ? '<span class="creator-badge">Ersteller</span>' : ''}</li>`
+        ).join('') || '<li style="color:var(--muted)">Keine Mitglieder</li>';
+    } catch { document.getElementById('membersList').innerHTML = '<li style="color:#c05050">Fehler</li>'; }
 }
 
-// ─── Modal-Hilfsfunktionen ────────────────────────────────────────────────────
+// ─── User Search ──────────────────────────────────────────────────────────────
+let _searchT = null;
+function searchUsers(q, resultsId) {
+    const c = document.getElementById(resultsId);
+    clearTimeout(_searchT);
+    if (!q || q.length < 2) { c.innerHTML = ''; c.style.display = 'none'; return; }
+    _searchT = setTimeout(async () => {
+        try {
+            const { users } = await api('/chat/users/search?q=' + encodeURIComponent(q));
+            if (!users.length) { c.innerHTML = '<div class="sd-item" style="color:var(--muted)">Keine Treffer</div>'; c.style.display = 'block'; return; }
+            c.style.display = 'block';
+            if (resultsId === 'ngResults') {
+                c.innerHTML = users.map(u => `<div class="sd-item" onclick="toggleNgMember('${esc(u)}')">${esc(u)}<span class="sd-add">${_ngMembers[u] ? '✓' : '+'}</span></div>`).join('');
+            } else if (resultsId === 'amResults') {
+                c.innerHTML = users.map(u => `<div class="sd-item" onclick="addMember('${esc(u)}')">${esc(u)}<span class="sd-add">+ Hinzufügen</span></div>`).join('');
+            }
+        } catch { c.style.display = 'none'; }
+    }, 280);
+}
 
+// ─── Modal Helpers ────────────────────────────────────────────────────────────
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-function closeModalIfOverlay(e, id) { if (e.target === e.currentTarget) closeModal(id); }
+function closeIfOverlay(e, id) { if (e.target === e.currentTarget) closeModal(id); }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
-
-let _toastTimer = null;
-function showToast(msg, type = '') {
-    const t = document.getElementById('chatToast');
+let _toastT = null;
+function toast(msg, type = '') {
+    const t = document.getElementById('toast');
     t.textContent = msg;
-    t.className = `chat-toast${type === 'error' ? ' toast-error' : type === 'ok' ? ' toast-ok' : ''} show`;
-    clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+    t.className = 'toast' + (type ? ' ' + type : '') + ' show';
+    clearTimeout(_toastT);
+    _toastT = setTimeout(() => t.classList.remove('show'), 3500);
 }
 
-// ─── Hilfsfunktionen ──────────────────────────────────────────────────────────
-function esc(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+// ─── Image Viewer ─────────────────────────────────────────────────────────────
+function viewImg(src) {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+    ov.onclick = () => ov.remove();
+    const img = document.createElement('img');
+    img.src = src;
+    img.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.8)';
+    ov.appendChild(img);
+    document.body.appendChild(ov);
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtTime(secs) { const m=Math.floor(secs/60),s=Math.round(secs%60); return m+':'+String(s).padStart(2,'0'); }
+function fmtSize(bytes) { if (bytes<1024) return bytes+'B'; if (bytes<1024*1024) return Math.round(bytes/1024)+'KB'; return (bytes/(1024*1024)).toFixed(1)+'MB'; }
