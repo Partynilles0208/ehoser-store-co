@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Face Warp Studio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <section class="intro-banner">
+        <div class="fly-row">
+          <div class="fly-track" data-text="WARP 2.0 · GROSSES UPDATE · NEU"></div>
+        </div>
+        <div class="fly-row reverse">
+          <div class="fly-track" data-text="GLAETTEN · REKONSTRUKTION · UNDO · REDO · FLIP"></div>
+        </div>
+        <div class="banner-title">Warp 2.0 — Grosses Update</div>
+      </section>
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Face Warp</p>
+          <h1>Warp Studio</h1>
+          <p class="sub">
+            Verforme Gesichter sauber und kontrolliert. Ziehen, formen, exportieren.
+          </p>
+        </div>
+        <div class="quick-actions">
+          <label class="btn ghost" for="fileInput">
+            Bild laden
+            <input id="fileInput" type="file" accept="image/*" hidden />
+          </label>
+          <button id="undoBtn" class="btn ghost icon-btn" disabled title="Ruckgangig (Strg+Z)">&#8630; Undo</button>
+          <button id="redoBtn" class="btn ghost icon-btn" disabled title="Wiederholen (Strg+Y)">&#8631; Redo</button>
+          <button id="resetBtn" class="btn ghost" disabled>Reset</button>
+          <button id="saveBtn" class="btn primary" disabled>Export</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="panel">
+          <div class="panel-section">
+            <h2>Modus</h2>
+            <div class="mode-grid">
+              <button class="mode-btn active" data-mode="push">1 Ziehen</button>
+              <button class="mode-btn" data-mode="bulge">2 Aufblasen</button>
+              <button class="mode-btn" data-mode="pinch">3 Zusammenziehen</button>
+              <button class="mode-btn" data-mode="twirl">4 Drehen</button>
+              <button class="mode-btn" data-mode="smooth">5 Glaetten</button>
+              <button class="mode-btn" data-mode="reconstruct">6 Rekonstruktion</button>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Werkzeuge</h2>
+            <div class="control">
+              <label for="strength">Staerke</label>
+              <div class="slider-row">
+                <input
+                  id="strength"
+                  type="range"
+                  min="0.05"
+                  max="1.2"
+                  step="0.01"
+                  value="0.55"
+                />
+                <span id="strengthValue">0.55</span>
+              </div>
+            </div>
+            <div class="control">
+              <label for="size">Groesse</label>
+              <div class="slider-row">
+                <input
+                  id="size"
+                  type="range"
+                  min="20"
+                  max="220"
+                  step="1"
+                  value="90"
+                />
+                <span id="sizeValue">90 px</span>
+              </div>
+            </div>
+            <div class="control">
+              <label for="softness">Weichheit</label>
+              <div class="slider-row">
+                <input
+                  id="softness"
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.1"
+                  value="1.6"
+                />
+                <span id="softnessValue">1.6</span>
+              </div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Spiegeln</h2>
+            <div class="flip-controls">
+              <button id="flipHBtn" class="btn ghost" disabled>&#8596; Horizontal</button>
+              <button id="flipVBtn" class="btn ghost" disabled>&#8597; Vertikal</button>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Export-Format</h2>
+            <div class="export-options">
+              <select id="exportFormat" class="export-select">
+                <option value="image/png">PNG (verlustfrei)</option>
+                <option value="image/jpeg">JPEG (kleiner)</option>
+              </select>
+              <div id="exportQualityWrap" hidden class="control" style="margin-top:10px;margin-bottom:0">
+                <label for="exportQuality">Qualitaet</label>
+                <div class="slider-row">
+                  <input id="exportQuality" type="range" min="0.5" max="1" step="0.01" value="0.92" />
+                  <span id="exportQualityValue">92%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Kamera</h2>
+            <div class="camera-controls">
+              <button id="cameraBtn" class="btn ghost">Kamera starten</button>
+              <button id="captureBtn" class="btn ghost" disabled>Foto uebernehmen</button>
+            </div>
+            <div class="camera-preview" id="cameraPreview">
+              <video id="camera" playsinline muted></video>
+              <div class="camera-hint" id="cameraHint">Kamera aus</div>
+            </div>
+          </div>
+          <div class="panel-section">
+            <h2>Pixabay Suche</h2>
+            <div class="search-row">
+              <input
+                id="pixabayQuery"
+                type="text"
+                placeholder="z.B. portrait, fashion, face"
+              />
+              <button id="pixabaySearchBtn" class="btn ghost">Suchen</button>
+            </div>
+            <div class="search-meta">
+              <span id="pixabayStatus">Bereit</span>
+              <button id="pixabayUseBtn" class="btn primary" disabled>Nutzen</button>
+            </div>
+            <div id="pixabayResults" class="results-grid"></div>
+            <p class="attribution">
+              Bilder von Pixabay
+            </p>
+          </div>
+          <div class="panel-section tips">
+            <h2>Tipps</h2>
+            <ul>
+              <li>Ziehe uber Gesichtspartien, um sie zu formen.</li>
+              <li>Kleine Bewegungen wirken naturlicher.</li>
+              <li><b>Mausrad</b> oder <b>[ ]</b> aendert Pinselgroesse.</li>
+              <li><b>1-6</b> wechselt den Modus per Tastatur.</li>
+              <li><b>Strg+Z / Strg+Y</b> fuer Undo / Redo.</li>
+              <li><b>Strg+V</b> Bild aus Zwischenablage einfuegen.</li>
+              <li>Reset bringt dich zum Original zurueck.</li>
+            </ul>
+          </div>
+        </aside>
+
+        <main class="canvas-shell">
+          <div class="canvas-frame" id="canvasFrame">
+            <canvas id="canvas" width="900" height="650"></canvas>
+            <div id="brush" class="brush"></div>
+            <div id="placeholder" class="placeholder">
+              <p>Ziehe ein Foto hierher oder lade es oben.</p>
+              <p class="mini">PNG, JPG, WebP</p>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
