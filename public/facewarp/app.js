@@ -210,7 +210,6 @@ function loadImageFromFile(file) {
 function loadImageFromUrl(url) {
   if (!url) return;
   const img = new Image();
-  img.crossOrigin = "anonymous";
   img.onload = () => {
     drawLoadedImage(img);
     setPixabayStatus("Bild geladen.");
@@ -438,7 +437,9 @@ function renderPixabayResults(hits) {
     const img = document.createElement("img");
     img.alt = hit.tags || "Pixabay Bild";
     img.loading = "lazy";
-    img.src = hit.webformatURL || hit.previewURL;
+    const previewSrc = hit.previewURL || hit.webformatURL;
+    img.src = `${window.location.origin}/api/pixabay/image?url=${encodeURIComponent(previewSrc)}`;
+    img.onerror = () => { img.src = previewSrc; }; // Fallback direkt
 
     button.appendChild(img);
     button.addEventListener("click", () => {
@@ -727,12 +728,13 @@ pixabayQuery.addEventListener("keydown", (event) => {
 
 pixabayUseBtn.addEventListener("click", () => {
   if (!selectedPixabay) return;
-  const url = selectedPixabay.largeImageURL || selectedPixabay.webformatURL;
+  const rawUrl = selectedPixabay.largeImageURL || selectedPixabay.webformatURL;
+  const proxyUrl = `${window.location.origin}/api/pixabay/image?url=${encodeURIComponent(rawUrl)}`;
   setPixabayStatus("Bild wird geladen...");
   if (editorMode === "sticker") {
-    setStickerImageFromUrl(url);
+    setStickerImageFromUrl(proxyUrl);
   } else {
-    loadImageFromUrl(url);
+    loadImageFromUrl(proxyUrl);
   }
 });
 
