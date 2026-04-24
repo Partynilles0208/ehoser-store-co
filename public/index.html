@@ -32,7 +32,37 @@
         </nav>
 
         <main class="main-content">
-            <section id="auth" class="section active">
+
+            <!-- ── Modus-Auswahl ─────────────────────────────────── -->
+            <section id="mode-select" class="section active">
+                <div class="mode-select-container">
+                    <div class="mode-hero">
+                        <span class="logo-icon mode-logo">E</span>
+                        <h1 class="mode-title">Willkommen bei <span>ehoser</span></h1>
+                        <p class="mode-subtitle">Was möchtest du heute machen?</p>
+                    </div>
+                    <div class="mode-cards">
+                        <button class="mode-card" onclick="selectMode('store')">
+                            <div class="mode-card-icon">📦</div>
+                            <div class="mode-card-body">
+                                <h3>APK Store</h3>
+                                <p>Exklusive, kuratierte Apps herunterladen &amp; installieren. Für Mitglieder mit Entsperrcode.</p>
+                                <span class="mode-badge">Registrierung nötig</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-games" onclick="selectMode('games')">
+                            <div class="mode-card-icon">🎮</div>
+                            <div class="mode-card-body">
+                                <h3>Online Spiele</h3>
+                                <p>Hunderte kostenlose HTML5-Spiele direkt im Browser – kein Account erforderlich.</p>
+                                <span class="mode-badge mode-badge-free">Kostenlos &amp; sofort</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="auth" class="section">
                 <div class="auth-container">
                     <div class="hero-copy">
                         <p class="eyebrow">Geschlossener Premium App Store</p>
@@ -189,12 +219,50 @@
                 <div id="myAppsList" class="apps-grid">
                 </div>
             </section>
+
+            <!-- ── Online Spiele ─────────────────────────────────── -->
+            <section id="games" class="section">
+                <div class="games-header">
+                    <div class="games-header-top">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <h2>Online Spiele</h2>
+                    </div>
+                    <div class="games-controls">
+                        <div class="search-bar">
+                            <input type="text" id="gamesSearch" placeholder="Spiele suchen..." oninput="filterGames()">
+                        </div>
+                        <div id="gamesCategoryFilter" class="category-filter">
+                            <button class="filter-btn active" onclick="filterGamesByCategory('all', this)">Alle</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="gamesGrid" class="games-grid">
+                    <div class="games-loading">Spiele werden geladen…</div>
+                </div>
+                <div class="games-pagination">
+                    <button id="gamesPrevBtn" class="btn-secondary" onclick="changeGamesPage(-1)" disabled>← Zurück</button>
+                    <span id="gamesPageInfo">Seite 1</span>
+                    <button id="gamesNextBtn" class="btn-secondary" onclick="changeGamesPage(1)">Weiter →</button>
+                </div>
+            </section>
+
         </main>
 
         <div id="appModal" class="modal">
             <div class="modal-content">
                 <span class="close" onclick="closeModal()">&times;</span>
                 <div id="modalBody"></div>
+            </div>
+        </div>
+
+        <!-- Spiele-Spielen Modal -->
+        <div id="gameModal" class="modal game-modal">
+            <div class="modal-content game-modal-content">
+                <div class="game-modal-header">
+                    <span id="gameModalTitle" class="game-modal-title"></span>
+                    <button class="close" onclick="closeGameModal()">✕</button>
+                </div>
+                <iframe id="gameFrame" class="game-frame" src="" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock"></iframe>
             </div>
         </div>
     </div>

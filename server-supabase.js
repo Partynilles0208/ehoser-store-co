@@ -667,6 +667,50 @@ app.use((err, req, res, next) => {
   next();
 });
 
+// ─── Games Feed Proxy ────────────────────────────────────────────────────────
+let gamesCache = null;
+let gamesCacheTime = 0;
+const GAMES_CACHE_TTL = 10 * 60 * 1000; // 10 Minuten
+
+app.get('/api/games', async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const cacheKey = `games_p${page}`;
+
+  // Einfaches In-Memory-Cache
+  if (gamesCache && gamesCache[cacheKey] && Date.now() - gamesCacheTime < GAMES_CACHE_TTL) {
+    return res.json(gamesCache[cacheKey]);
+  }
+
+  try {
+    const feedUrl = `https://gamemonetize.com/feed.php?format=0&page=${page}`;
+    const response = await fetch(feedUrl, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (!response.ok) {
+      return res.status(502).json({ error: 'Feed nicht erreichbar' });
+    }
+
+    const text = await response.text();
+    let games;
+    try {
+      games = JSON.parse(text);
+    } catch {
+      return res.status(502).json({ error: 'Feed-Format ungültig' });
+    }
+
+    if (!gamesCache) gamesCache = {};
+    gamesCache[cacheKey] = games;
+    gamesCacheTime = Date.now();
+
+    res.json(games);
+  } catch (err) {
+    console.error('Games feed error:', err.message);
+    res.status(502).json({ error: 'Fehler beim Laden des Feeds' });
+  }
+});
+
 // Server starten (lokal) oder als Vercel-Handler exportieren
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
