@@ -880,6 +880,12 @@ let gamesCurrentPage = 1;
 let gamesCurrentCategory = 'all';
 let gamesSearchText = '';
 
+// ─── Game Timer Variablen (15min Limit für Gratis) ─────────────────────────
+let _gameTimerInterval = null;
+let _gameSecondsLeft = 0;
+let _gameStartTime = null;
+let _gameLimitSeconds = 900; // 15 Min = 900 Sekunden für Gratis
+
 async function loadGames() {
     const grid = document.getElementById('gamesGrid');
     grid.innerHTML = '<div class="games-loading">Spiele werden geladen…</div>';
@@ -983,16 +989,78 @@ function displayGames(games) {
     }).join('');
 }
 
+function _formatGameTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function _updateGameTimer() {
+    if (!_gameStartTime) return;
+    
+    const elapsed = Math.floor((Date.now() - _gameStartTime) / 1000);
+    _gameSecondsLeft = Math.max(0, _gameLimitSeconds - elapsed);
+    
+    const badge = document.getElementById('gameTimerBadge');
+    if (badge) {
+        badge.textContent = _formatGameTime(_gameSecondsLeft);
+        badge.classList.toggle('warning', _gameSecondsLeft <= 60);
+    }
+    
+    if (_gameSecondsLeft <= 0) {
+        _stopGameTimer();
+        alert('⏱️ Deine 15 Minuten sind vorbei! Jetzt Vollzugang freischalten für unbegrenzte Spielzeit.');
+        closeGameModal();
+    }
+}
+
+function _startGameTimer() {
+    if (_gameTimerInterval) clearInterval(_gameTimerInterval);
+    _gameStartTime = Date.now();
+    _gameSecondsLeft = _gameLimitSeconds;
+    
+    const badge = document.getElementById('gameTimerBadge');
+    if (badge) {
+        badge.style.display = 'block';
+        badge.classList.remove('warning');
+    }
+    
+    _gameTimerInterval = setInterval(_updateGameTimer, 500);
+}
+
+function _stopGameTimer() {
+    if (_gameTimerInterval) {
+        clearInterval(_gameTimerInterval);
+        _gameTimerInterval = null;
+    }
+    const badge = document.getElementById('gameTimerBadge');
+    if (badge) {
+        badge.style.display = 'none';
+    }
+}
+
 function openGame(url, title) {
     if (!url) return;
+    
+    // Wenn kein Pro → Timer starten (15 Min)
+    if (currentProfile && !currentProfile.isPro) {
+        _startGameTimer();
+    } else {
+        _stopGameTimer();
+        const badge = document.getElementById('gameTimerBadge');
+        if (badge) badge.style.display = 'none';
+    }
+    
     document.getElementById('gameFrame').src = url;
-    document.getElementById('gameModalTitle').textContent = title;
     document.getElementById('gameModal').classList.add('show');
 }
 
 function closeGameModal() {
+    _stopGameTimer();
     document.getElementById('gameFrame').src = '';
     document.getElementById('gameModal').classList.remove('show');
+    // Zurück zu Spieleauswahl
+    showSection('games');
 }
 
 function changeGamesPage(delta) {
