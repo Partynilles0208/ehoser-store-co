@@ -44,6 +44,7 @@ const editorStickerBtn = document.getElementById("editorStickerBtn");
 const stickerControls = document.getElementById("stickerControls");
 const stickerInput = document.getElementById("stickerInput");
 const removeStickerBtn = document.getElementById("removeStickerBtn");
+const removeBgBtn = document.getElementById("removeBgBtn");
 
 let strength = parseFloat(strengthInput.value);
 let radius = parseInt(sizeInput.value, 10);
@@ -85,6 +86,7 @@ function setHasImage(value) {
   saveBtn.disabled = !value;
   const saveToChatBtn = document.getElementById('saveToChatBtn');
   if (saveToChatBtn) saveToChatBtn.disabled = !value;
+  if (removeBgBtn) removeBgBtn.disabled = !value;
   if (flipHBtn) flipHBtn.disabled = !value;
   if (flipVBtn) flipVBtn.disabled = !value;
 }
@@ -671,6 +673,30 @@ fileInput.addEventListener("change", (event) => {
 });
 
 resetBtn.addEventListener("click", resetImage);
+
+if (removeBgBtn) {
+  removeBgBtn.addEventListener("click", () => {
+    if (!hasImage) return;
+    saveHistory();
+    const w = imgCanvas.width;
+    const h = imgCanvas.height;
+    const imageData = imgCtx.getImageData(0, 0, w, h);
+    const d = imageData.data;
+    // Tolerance: wie weit von Weiß entfernt ein Pixel noch als Hintergrund gilt
+    const tolerance = 30;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      if (r >= 255 - tolerance && g >= 255 - tolerance && b >= 255 - tolerance) {
+        d[i + 3] = 0; // Alpha auf transparent
+      }
+    }
+    imgCtx.putImageData(imageData, 0, 0);
+    // Auch originalCtx updaten damit Reset nicht zurücksetzt
+    originalCtx.putImageData(imageData, 0, 0);
+    originalImgData = originalCtx.getImageData(0, 0, w, h);
+    drawToScreen();
+  });
+}
 saveBtn.addEventListener("click", exportImage);
 
 const saveToChatBtn = document.getElementById('saveToChatBtn');
