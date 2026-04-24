@@ -989,3 +989,131 @@ textarea:focus {
         height: calc(96vh - 44px);
     }
 }
+
+/* ── VirusTotal Scan ────────────────────────────────────────────────────────── */
+.admin-help {
+    color: var(--muted, #8ab0c0);
+    font-size: 0.9rem;
+    margin: 4px 0 12px;
+}
+
+.admin-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.btn-secondary {
+    padding: 9px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--line, #2a4a5a);
+    background: var(--bg-soft, #0f2535);
+    color: var(--brand, #14a8c8);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-secondary:hover {
+    background: #163045;
+}
+
+.vt-apps-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.vt-app-item {
+    background: var(--bg-soft, #0f2535);
+    border: 1px solid var(--line, #1e3545);
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.vt-app-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.vt-app-version {
+    font-size: 0.78rem;
+    color: var(--muted, #8ab0c0);
+    background: #0d1f2e;
+    border-radius: 5px;
+    padding: 2px 7px;
+}
+
+.vt-app-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.vt-btn {
+    flex: none !important;
+    padding: 7px 14px !important;
+    font-size: 0.82rem;
+}
+
+.vt-result-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-height: 24px;
+}
+
+.vt-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.vt-scanning {
+    background: #1a3245;
+    color: #8ab0c0;
+}
+
+.vt-clean {
+    background: #0a2a1a;
+    color: #22dd88;
+    border: 1px solid #12542e;
+}
+
+.vt-suspicious {
+    background: #2a1f00;
+    color: #ffcc00;
+    border: 1px solid #554400;
+}
+
+.vt-malicious {
+    background: #2a0a0a;
+    color: #ff4444;
+    border: 1px solid #5a1010;
+}
+
+.vt-error {
+    background: #2a0a1a;
+    color: #ff6680;
+}
+
+.vt-timeout {
+    background: #1a1a2a;
+    color: #8888cc;
+}
+
+.vt-stats {
+    font-size: 0.75rem;
+    color: var(--muted, #8ab0c0);
+}
+

@@ -109,6 +109,16 @@
                         <h3>Registrierte Nutzer</h3>
                         <ul id="registeredUsersList" class="online-list"></ul>
                     </div>
+
+                    <div style="margin-top: 32px;">
+                        <h3>🛡️ VirusTotal Scan</h3>
+                        <p class="admin-help">Scanne APK-Dateien und Quell-URLs auf Viren, Malware und verdächtige Inhalte.</p>
+                        <div class="admin-actions" style="margin-bottom:16px;">
+                            <button class="btn-secondary" onclick="loadAppsForScan()">Apps für Scan laden</button>
+                        </div>
+                        <ul id="vtAppsList" class="vt-apps-list"></ul>
+                        <div id="vtStatus"></div>
+                    </div>
                 </section>
 
                 <div id="uploadStatus"></div>

@@ -286,3 +286,120 @@ function escapeHtml(value) {
 function escapeJs(value) {
     return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
+
+// ─── VirusTotal Scan ──────────────────────────────────────────────────────────
+async function loadAppsForScan() {
+    const list = document.getElementById('vtAppsList');
+    list.innerHTML = '<li style="color:var(--muted)">Lade Apps…</li>';
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/apps`);
+        if (!res.ok) throw new Error('Apps konnten nicht geladen werden');
+        const apps = await res.json();
+
+        if (!apps.length) {
+            list.innerHTML = '<li style="color:var(--muted)">Keine Apps im Store.</li>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+            <li class="vt-app-item" id="vt-app-${app.id}">
+                <div class="vt-app-info">
+                    <strong>${escapeHtml(app.name)}</strong>
+                    <span class="vt-app-version">v${escapeHtml(app.version || '?')}</span>
+                </div>
+                <div class="vt-app-actions">
+                    ${app.download_url ? `<button class="btn-small vt-btn" onclick="vtScanUrl('${escapeJs(app.download_url)}', 'apk', ${app.id})">APK scannen</button>` : '<span style="color:var(--muted);font-size:0.8rem">Kein APK</span>'}
+                    ${app.source_url ? `<button class="btn-small vt-btn" onclick="vtScanUrl('${escapeJs(app.source_url)}', 'url', ${app.id})">Quell-URL scannen</button>` : ''}
+                </div>
+                <div id="vt-result-${app.id}" class="vt-result-area"></div>
+            </li>
+        `).join('');
+    } catch (err) {
+        list.innerHTML = `<li style="color:var(--danger)">${escapeHtml(err.message)}</li>`;
+    }
+}
+
+async function vtScanUrl(url, type, appId) {
+    const resultArea = document.getElementById(`vt-result-${appId}`);
+    resultArea.innerHTML = '<span class="vt-badge vt-scanning">⏳ Wird eingereicht…</span>';
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/vt-scan`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ url })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            resultArea.innerHTML = `<span class="vt-badge vt-error">❌ ${escapeHtml(data.error || 'Fehler')}</span>`;
+            return;
+        }
+
+        resultArea.innerHTML = '<span class="vt-badge vt-scanning">🔍 Wird gescannt… (bis 30 Sek.)</span>';
+        await pollVtResult(data.analysisId, resultArea, 0);
+    } catch (err) {
+        resultArea.innerHTML = `<span class="vt-badge vt-error">❌ ${escapeHtml(err.message)}</span>`;
+    }
+}
+
+async function pollVtResult(analysisId, resultArea, attempt) {
+    if (attempt >= 10) {
+        resultArea.innerHTML = '<span class="vt-badge vt-timeout">⏱ Timeout – VT Analyse läuft noch. Später erneut versuchen.</span>';
+        return;
+    }
+
+    await new Promise(r => setTimeout(r, 3000));
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/vt-result/${encodeURIComponent(analysisId)}`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            resultArea.innerHTML = `<span class="vt-badge vt-error">❌ ${escapeHtml(data.error || 'Fehler')}</span>`;
+            return;
+        }
+
+        if (data.status !== 'completed') {
+            resultArea.innerHTML = `<span class="vt-badge vt-scanning">🔍 Analysiert… (Versuch ${attempt + 1}/10)</span>`;
+            await pollVtResult(analysisId, resultArea, attempt + 1);
+            return;
+        }
+
+        renderVtResult(data.stats, resultArea);
+    } catch (err) {
+        resultArea.innerHTML = `<span class="vt-badge vt-error">❌ ${escapeHtml(err.message)}</span>`;
+    }
+}
+
+function renderVtResult(stats, resultArea) {
+    const total = (stats.malicious || 0) + (stats.suspicious || 0) + (stats.harmless || 0) + (stats.undetected || 0);
+    const malicious = stats.malicious || 0;
+    const suspicious = stats.suspicious || 0;
+
+    let badgeClass, icon, label;
+    if (malicious > 0) {
+        badgeClass = 'vt-malicious';
+        icon = '🔴';
+        label = `GEFÄHRLICH: ${malicious} Erkennungen`;
+    } else if (suspicious > 0) {
+        badgeClass = 'vt-suspicious';
+        icon = '🟡';
+        label = `Verdächtig: ${suspicious} Hinweise`;
+    } else {
+        badgeClass = 'vt-clean';
+        icon = '🟢';
+        label = 'Sauber';
+    }
+
+    resultArea.innerHTML = `
+        <span class="vt-badge ${badgeClass}">${icon} ${escapeHtml(label)}</span>
+        <span class="vt-stats">${malicious} bösartig · ${suspicious} verdächtig · ${stats.harmless || 0} harmlos · ${stats.undetected || 0} unbekannt (von ${total})</span>
+    `;
+}
