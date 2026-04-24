@@ -329,11 +329,41 @@ async function searchPixabay(query) {
   }
 }
 
+// Catmull-Rom cubic weight function for bicubic sampling
+function cubicWeight(t) {
+  const a = -0.5;
+  const absT = Math.abs(t);
+  if (absT <= 1) return (a + 2) * absT * absT * absT - (a + 3) * absT * absT + 1;
+  if (absT < 2) return a * absT * absT * absT - 5 * a * absT * absT + 8 * a * absT - 4 * a;
+  return 0;
+}
+
+function sampleBicubic(data, w, h, sx, sy) {
+  const x0 = Math.floor(sx);
+  const y0 = Math.floor(sy);
+  let r = 0, g = 0, b = 0, a = 0;
+  for (let m = -1; m <= 2; m++) {
+    const wy = cubicWeight(sy - (y0 + m));
+    const iy = Math.max(0, Math.min(h - 1, y0 + m));
+    for (let n = -1; n <= 2; n++) {
+      const wx = cubicWeight(sx - (x0 + n));
+      const ix = Math.max(0, Math.min(w - 1, x0 + n));
+      const i = (iy * w + ix) * 4;
+      const wt = wx * wy;
+      r += data[i]     * wt;
+      g += data[i + 1] * wt;
+      b += data[i + 2] * wt;
+      a += data[i + 3] * wt;
+    }
+  }
+  return [r, g, b, a];
+}
+
 function applyStroke(from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const dist = Math.hypot(dx, dy);
-  const steps = Math.max(1, Math.ceil(dist / (radius * 0.35)));
+  const steps = Math.max(1, Math.ceil(dist / (radius * 0.18)));
   const stepX = dx / steps;
   const stepY = dy / steps;
 
@@ -379,8 +409,9 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
       // smooth and reconstruct modes bypass the sample-position approach
       if (distSquared < radiusSquared && (mode === "smooth" || mode === "reconstruct")) {
         const dist = Math.sqrt(distSquared);
-        const falloff = 1 - dist / radius;
-        const influence = Math.pow(falloff, softness);
+        const tn = dist / radius;
+        const smooth = 1 - (3 * tn * tn - 2 * tn * tn * tn);
+        const influence = Math.pow(smooth, softness);
         const t = Math.min(1, strength * influence);
 
         if (mode === "smooth") {
@@ -413,8 +444,9 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
 
       if (distSquared < radiusSquared) {
         const dist = Math.sqrt(distSquared);
-        const falloff = 1 - dist / radius;
-        const influence = Math.pow(falloff, softness);
+        const tn = dist / radius;
+        const smooth = 1 - (3 * tn * tn - 2 * tn * tn * tn); // smoothstep
+        const influence = Math.pow(smooth, softness);
 
         if (mode === "push") {
           sampleX = gx - deltaX * strength * influence;
@@ -443,23 +475,11 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
         if (sampleY > height - 1) sampleY = height - 1;
       }
 
-      const x0 = Math.floor(sampleX);
-      const y0 = Math.floor(sampleY);
-      const x1 = Math.min(x0 + 1, width - 1);
-      const y1 = Math.min(y0 + 1, height - 1);
-      const tx = sampleX - x0;
-      const ty = sampleY - y0;
-
-      const idx00 = (y0 * width + x0) * 4;
-      const idx10 = (y0 * width + x1) * 4;
-      const idx01 = (y1 * width + x0) * 4;
-      const idx11 = (y1 * width + x1) * 4;
-
-      for (let c = 0; c < 4; c += 1) {
-        const v0 = srcData[idx00 + c] * (1 - tx) + srcData[idx10 + c] * tx;
-        const v1 = srcData[idx01 + c] * (1 - tx) + srcData[idx11 + c] * tx;
-        outData[outIndex + c] = v0 * (1 - ty) + v1 * ty;
-      }
+      const [cr, cg, cb, ca] = sampleBicubic(srcData, width, height, sampleX, sampleY);
+      outData[outIndex]     = Math.max(0, Math.min(255, cr));
+      outData[outIndex + 1] = Math.max(0, Math.min(255, cg));
+      outData[outIndex + 2] = Math.max(0, Math.min(255, cb));
+      outData[outIndex + 3] = Math.max(0, Math.min(255, ca));
     }
   }
 
