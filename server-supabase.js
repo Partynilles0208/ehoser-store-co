@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS referral_invites (
       ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT NULL;
     `);
     await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pro_until TIMESTAMP NULL;
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS user_profiles (
         username TEXT PRIMARY KEY,
         settings JSONB DEFAULT '{}'::jsonb,
@@ -159,43 +162,97 @@ function normalizeProfileRow(username, row) {
 }
 
 async function getProfile(username) {
+  // Primär: users Tabelle (existiert immer), optional: user_profiles für Settings
+  let proUntil = null;
+  let settings = null;
+
+  // Pro-Status aus users Tabelle holen (primary storage)
+  try {
+    const { data } = await supabase
+      .from('users')
+      .select('pro_until')
+      .eq('username', username)
+      .single();
+    if (data?.pro_until) proUntil = data.pro_until;
+  } catch {}
+
+  // Settings aus user_profiles holen (optional)
   try {
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('username, settings, pro_until')
+      .select('settings, pro_until')
       .eq('username', username)
       .single();
+    if (!error && data) {
+      settings = data.settings;
+      // Wenn user_profiles einen späteren pro_until hat, nutze den
+      if (data.pro_until) {
+        const a = proUntil ? Date.parse(proUntil) : 0;
+        const b = Date.parse(data.pro_until);
+        if (b > a) proUntil = data.pro_until;
+      }
+    }
+  } catch {}
 
-    if (error && error.code !== 'PGRST116') throw error;
-    if (!data) return normalizeProfileRow(username, null);
-    return normalizeProfileRow(username, data);
-  } catch {
-    return normalizeProfileRow(username, null);
+  // Memory-Fallback
+  const mem = memoryProfiles.get(username);
+  if (mem?.proUntil) {
+    const a = proUntil ? Date.parse(proUntil) : 0;
+    const b = Date.parse(mem.proUntil);
+    if (b > a) proUntil = mem.proUntil;
   }
+
+  const ms = proUntil ? Date.parse(proUntil) : 0;
+  return {
+    username,
+    settings: normalizeSettings(settings || mem?.settings),
+    proUntil: proUntil || null,
+    isPro: Number.isFinite(ms) && ms > Date.now()
+  };
 }
 
 async function upsertProfile(username, patch) {
   const current = await getProfile(username);
-  const payload = {
-    username,
-    settings: patch.settings ? normalizeSettings(patch.settings) : current.settings,
-    pro_until: Object.prototype.hasOwnProperty.call(patch, 'proUntil') ? patch.proUntil : current.proUntil
-  };
+  const newProUntil = Object.prototype.hasOwnProperty.call(patch, 'proUntil') ? patch.proUntil : current.proUntil;
+  const newSettings = patch.settings ? normalizeSettings(patch.settings) : current.settings;
 
+  // Pro-Status in users Tabelle schreiben (primary – existiert garantiert)
+  let savedToUsers = false;
   try {
-    await supabase.from('user_profiles').upsert(payload);
-  } catch {
-    memoryProfiles.set(username, {
-      settings: payload.settings,
-      proUntil: payload.pro_until,
-      pro_until: payload.pro_until
-    });
+    const { error } = await supabase
+      .from('users')
+      .update({ pro_until: newProUntil })
+      .eq('username', username);
+    if (!error) savedToUsers = true;
+  } catch {}
+
+  // Wenn users.pro_until Spalte fehlt → Auto-Spalte anlegen versuchen
+  if (!savedToUsers) {
+    try {
+      // Spalte existiert nicht → in user_profiles speichern
+      await supabase.from('user_profiles').upsert({
+        username,
+        settings: newSettings,
+        pro_until: newProUntil
+      });
+    } catch {
+      // Letzter Fallback: Memory
+      memoryProfiles.set(username, { settings: newSettings, proUntil: newProUntil, pro_until: newProUntil });
+    }
   }
 
-  return normalizeProfileRow(username, {
-    settings: payload.settings,
-    pro_until: payload.pro_until
-  });
+  // Settings immer in user_profiles speichern (Fehler ignorieren)
+  try {
+    await supabase.from('user_profiles').upsert({ username, settings: newSettings, pro_until: newProUntil });
+  } catch {}
+
+  const ms = newProUntil ? Date.parse(newProUntil) : 0;
+  return {
+    username,
+    settings: newSettings,
+    proUntil: newProUntil || null,
+    isPro: Number.isFinite(ms) && ms > Date.now()
+  };
 }
 
 async function extendProFor(username, ms = PRO_BONUS_MS) {
