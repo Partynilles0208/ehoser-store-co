@@ -6,6 +6,8 @@ const secureArea = document.getElementById('adminSecureArea');
 const form = document.getElementById('uploadForm');
 const statusBox = document.getElementById('uploadStatus');
 const usersList = document.getElementById('registeredUsersList');
+const resetRequestsList = document.getElementById('resetRequestsList');
+let adminRefreshInterval = null;
 
 accessForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -19,7 +21,12 @@ accessForm.addEventListener('submit', async (event) => {
     activeAdminCode = code;
     secureArea.style.display = '';
     setStatus('Admin-Bereich freigeschaltet.', 'success');
-    await loadRegisteredUsers();
+    await Promise.all([loadRegisteredUsers(), loadResetRequests()]);
+    clearInterval(adminRefreshInterval);
+    adminRefreshInterval = setInterval(() => {
+        loadRegisteredUsers();
+        loadResetRequests();
+    }, 8000);
 });
 
 form.addEventListener('submit', async (event) => {
@@ -156,6 +163,42 @@ async function loadRegisteredUsers() {
     }
 }
 
+async function loadResetRequests() {
+    if (!activeAdminCode) return;
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/reset-requests`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+
+        const requests = await response.json();
+        if (!response.ok) {
+            setStatus(requests.error || 'Reset-Anfragen konnten nicht geladen werden.', 'error');
+            return;
+        }
+
+        if (!requests.length) {
+            resetRequestsList.innerHTML = '<li>Keine offenen Anfragen.</li>';
+            return;
+        }
+
+        resetRequestsList.innerHTML = requests
+            .map(
+                (item) => `
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                    <span>${escapeHtml(item.username)}</span>
+                    <span style="display:flex;gap:6px;">
+                        <button class="btn-small" onclick="approveResetRequest(${item.id}, '${escapeJs(item.username)}')">Annehmen</button>
+                        <button class="btn-small" onclick="rejectResetRequest(${item.id}, '${escapeJs(item.username)}')">Ablehnen</button>
+                    </span>
+                </li>`
+            )
+            .join('');
+    } catch (error) {
+        setStatus(`Fehler beim Laden der Anfragen: ${error.message}`, 'error');
+    }
+}
+
 async function deleteUser(userId, username) {
     if (!activeAdminCode) {
         setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
@@ -180,9 +223,45 @@ async function deleteUser(userId, username) {
         }
 
         setStatus(`Nutzer ${username} wurde geloescht.`, 'success');
-        await loadRegisteredUsers();
+        await Promise.all([loadRegisteredUsers(), loadResetRequests()]);
     } catch (error) {
         setStatus(`Fehler beim Loeschen: ${error.message}`, 'error');
+    }
+}
+
+async function approveResetRequest(requestId, username) {
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/reset-requests/${requestId}/approve`, {
+            method: 'POST',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Anfrage konnte nicht angenommen werden.', 'error');
+            return;
+        }
+        setStatus(`Reset fuer ${username} angenommen.`, 'success');
+        await loadResetRequests();
+    } catch (error) {
+        setStatus(`Fehler beim Annehmen: ${error.message}`, 'error');
+    }
+}
+
+async function rejectResetRequest(requestId, username) {
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/reset-requests/${requestId}/reject`, {
+            method: 'POST',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Anfrage konnte nicht abgelehnt werden.', 'error');
+            return;
+        }
+        setStatus(`Reset fuer ${username} abgelehnt.`, 'success');
+        await loadResetRequests();
+    } catch (error) {
+        setStatus(`Fehler beim Ablehnen: ${error.message}`, 'error');
     }
 }
 
