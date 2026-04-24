@@ -847,6 +847,77 @@ textarea:focus {
     border-color: rgba(34,197,94,0.3);
 }
 
+.mode-card-images:hover {
+    border-color: #f59e0b;
+    box-shadow: 0 20px 40px rgba(245,158,11,0.24);
+}
+
+.mode-badge-images {
+    background: rgba(245,158,11,0.12);
+    color: #fbbf24;
+    border-color: rgba(245,158,11,0.3);
+}
+
+.image-search-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.image-search-btn {
+    width: auto;
+    min-width: 120px;
+    border: none;
+    border-radius: 11px;
+    cursor: pointer;
+}
+
+.image-search-status {
+    margin: 10px 0 0;
+    color: var(--muted);
+}
+
+.image-search-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.image-result-card {
+    background: var(--card-dark);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+.image-result-link {
+    display: block;
+    aspect-ratio: 4 / 3;
+    background: #0e1f33;
+}
+
+.image-result-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.image-result-meta {
+    padding: 10px 12px;
+}
+
+.image-result-tags {
+    font-weight: 600;
+    color: #e9f6ff;
+    margin-bottom: 4px;
+}
+
+.image-result-user {
+    font-size: 0.85rem;
+    color: #9ac5d8;
+}
+
 /* ── Zugangscode-Box (Auth-Seite) ────────────────────────────────────────────── */
 .unlock-code-box {
     margin-top: 24px;
@@ -923,6 +994,13 @@ textarea:focus {
 @media (max-width: 620px) {
     .mode-cards { grid-template-columns: 1fr; }
     .mode-title { font-size: 1.8rem; }
+    .image-search-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .image-search-btn {
+        width: 100%;
+    }
 }
 
 /* ── Face Warp Section ───────────────────────────────────────────────────────── */

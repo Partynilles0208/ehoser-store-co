@@ -74,8 +74,33 @@
                                 <span class="mode-badge mode-badge-chat">🔒 E2E verschlüsselt</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-images" onclick="selectMode('images')">
+                            <div class="mode-card-icon">🖼️</div>
+                            <div class="mode-card-body">
+                                <h3>Bildersuche</h3>
+                                <p>Suche lizenzfreie Bilder direkt mit Pixabay und öffne sie sofort im Browser.</p>
+                                <span class="mode-badge mode-badge-images">Pixabay Suche</span>
+                            </div>
+                        </button>
                     </div>
                 </div>
+            </section>
+
+            <section id="images" class="section">
+                <div class="store-header">
+                    <h2>Bildersuche</h2>
+                    <div class="search-bar image-search-bar">
+                        <input
+                            type="text"
+                            id="imageSearchInput"
+                            placeholder="z.B. Katze, Auto, Landschaft..."
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();runImageSearch();}"
+                        >
+                        <button class="btn-primary image-search-btn" onclick="runImageSearch()">Suchen</button>
+                    </div>
+                    <p id="imageSearchStatus" class="image-search-status">Bereit.</p>
+                </div>
+                <div id="imageSearchResults" class="image-search-grid"></div>
             </section>
 
             <section id="auth" class="section">

@@ -8,6 +8,7 @@ let resetLookupToken = null;
 let resetToken = null;
 let resetPollInterval = null;
 let pendingReferral = null;
+let imageSearchLastQuery = '';
 
 function switchAuthTab(tab, btn) {
     document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
@@ -603,12 +604,89 @@ function selectMode(mode) {
         showSection('auth');
     } else if (mode === 'games') {
         showSection('games');
+    } else if (mode === 'images') {
+        showSection('images');
+        if (!imageSearchLastQuery) {
+            document.getElementById('imageSearchStatus').textContent = 'Gib ein Suchwort ein und starte die Suche.';
+        }
     } else if (mode === 'facewarp') {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
         window.location.href = '/chat/';
     } else {
         showSection('mode-select');
+    }
+}
+
+function renderImageSearchResults(hits) {
+    const grid = document.getElementById('imageSearchResults');
+    if (!grid) return;
+
+    if (!Array.isArray(hits) || !hits.length) {
+        grid.innerHTML = '<div class="games-loading">Keine Bilder gefunden.</div>';
+        return;
+    }
+
+    grid.innerHTML = hits.map((hit) => {
+        const preview = escapeAttribute(hit.webformatURL || hit.previewURL || '');
+        const pageUrl = escapeAttribute(hit.pageURL || '');
+        const tags = escapeHtml(hit.tags || 'Bild');
+        const author = escapeHtml(hit.user || 'Unbekannt');
+        return `
+            <article class="image-result-card">
+                <a href="${pageUrl}" target="_blank" rel="noopener noreferrer" class="image-result-link">
+                    <img src="${preview}" alt="${tags}" loading="lazy" class="image-result-thumb">
+                </a>
+                <div class="image-result-meta">
+                    <div class="image-result-tags">${tags}</div>
+                    <div class="image-result-user">von ${author}</div>
+                </div>
+            </article>
+        `;
+    }).join('');
+}
+
+async function runImageSearch() {
+    const input = document.getElementById('imageSearchInput');
+    const status = document.getElementById('imageSearchStatus');
+    const grid = document.getElementById('imageSearchResults');
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+        showAlert('Bitte zuerst anmelden, um die Bildersuche zu nutzen.', 'error');
+        showSection('auth');
+        return;
+    }
+
+    const q = (input?.value || '').trim();
+    if (!q) {
+        status.textContent = 'Bitte Suchwort eingeben.';
+        return;
+    }
+
+    imageSearchLastQuery = q;
+    status.textContent = 'Suche läuft...';
+    if (grid) grid.innerHTML = '<div class="games-loading">Bilder werden geladen…</div>';
+
+    try {
+        const params = new URLSearchParams({ q });
+        const response = await fetch(`${API_BASE}/pixabay?${params.toString()}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            status.textContent = `Fehler: ${data.error || 'Suche fehlgeschlagen.'}`;
+            if (grid) grid.innerHTML = '';
+            return;
+        }
+
+        const hits = Array.isArray(data.hits) ? data.hits : [];
+        status.textContent = `${hits.length} Treffer für "${q}"`;
+        renderImageSearchResults(hits);
+    } catch {
+        status.textContent = 'Verbindungsfehler bei der Bildersuche.';
+        if (grid) grid.innerHTML = '';
     }
 }
 
