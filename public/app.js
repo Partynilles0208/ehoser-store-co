@@ -499,7 +499,7 @@ function selectMode(mode) {
     } else if (mode === 'facewarp') {
         const frame = document.getElementById('facewarpFrame');
         if (frame && !frame.src) {
-            frame.src = 'https://facedaswarp.vercel.app/';
+            frame.src = '/facewarp/index.html';
         }
         showSection('facewarp');
     } else {
