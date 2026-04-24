@@ -159,6 +159,7 @@ async function handleLogin(event) {
         localStorage.setItem('token', data.token);
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
+        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
         applyProfileSettings();
         showAlert('Erfolgreich angemeldet!', 'success');
 
@@ -204,6 +205,7 @@ async function verifyToken(token) {
         if (response.status === 401) {
             // Token abgelaufen/ungültig – Token NICHT löschen!
             // User kann sich erneut anmelden → Token wird dann überschrieben
+            localStorage.removeItem('proStatus');
             showSection('mode-select');
             return;
         }
@@ -218,6 +220,8 @@ async function verifyToken(token) {
         if (data.token) localStorage.setItem('token', data.token);
         currentUser = data.user;
         currentProfile = data.profile || null;
+        // 🔥 Pro-Status in localStorage speichern für FaceWarp/Chat
+        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
         applyProfileSettings();
         showLoggedInUI();
         await loadApps();
@@ -253,6 +257,7 @@ async function handleRegister(event) {
         localStorage.setItem('token', data.token);
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
+        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
         applyProfileSettings();
         window.alert(`Dein Login-Code: ${data.loginCode}\nDiesen Code sicher speichern. Du brauchst ihn fuer jede Anmeldung.`);
         if (data.referralApplied) {
@@ -587,6 +592,7 @@ function selectMode(mode) {
 
 function logout() {
     localStorage.removeItem('token');
+    localStorage.removeItem('proStatus');
     currentUser = null;
     currentProfile = null;
     allApps = [];
@@ -775,6 +781,7 @@ async function saveAccountSettings() {
             return;
         }
         currentProfile = data.profile;
+        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
         applyProfileSettings();
         showLoggedInUI();
         closeSettingsModal();
