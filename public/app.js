@@ -165,7 +165,6 @@ function displayApps(apps) {
             <div class="app-icon-wrap">${renderIcon(app.icon_url, app.name)}</div>
             <h3 class="app-name">${escapeHtml(app.name)}</h3>
             <div class="app-category">${escapeHtml(app.category || 'Allgemein')}</div>
-            <p class="app-description">${escapeHtml(app.description || 'Keine Beschreibung')}</p>
             <p class="app-version">Version ${escapeHtml(app.version || '1.0.0')}</p>
             <div class="app-actions">
                 <button class="btn-small btn-install" onclick="installApp(${app.id}, this)">Installieren</button>
@@ -337,7 +336,6 @@ async function loadMyApps() {
                 <div class="app-icon-wrap">${renderIcon(app.icon_url, app.name)}</div>
                 <h3 class="app-name">${escapeHtml(app.name)}</h3>
                 <div class="app-category">${escapeHtml(app.category || 'Allgemein')}</div>
-                <p class="app-description">${escapeHtml(app.description || 'Keine Beschreibung')}</p>
                 <p class="app-version">Version ${escapeHtml(app.version || '1.0.0')}</p>
                 <div class="app-actions">
                     <button class="btn-small btn-installed" disabled>Installiert</button>
