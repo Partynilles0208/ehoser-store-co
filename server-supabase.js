@@ -234,19 +234,23 @@ app.post('/api/register', async (req, res) => {
   const loginCode = createLoginCode();
   const passwordHash = await bcrypt.hash(password, 12);
 
+  // Versuche zuerst mit password_hash Spalte zu registrieren
+  let insertPayload = { username, email: email || null, access_code: loginCode, password_hash: passwordHash, verified: 1 };
+
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .insert([
-        {
-          username,
-          email: email || null,
-          access_code: loginCode,
-          password_hash: passwordHash,
-          verified: 1
-        }
-      ])
-      .select();
+    let { data, error } = await supabase.from('users').insert([insertPayload]).select();
+
+    // Falls password_hash Spalte nicht existiert → nochmal ohne versuchen
+    if (error && (error.message.includes('password_hash') || error.message.includes('column'))) {
+      const fallbackPayload = { username, email: email || null, access_code: loginCode, verified: 1 };
+      const retry = await supabase.from('users').insert([fallbackPayload]).select();
+      data = retry.data;
+      error = retry.error;
+      // Passwort in user_profiles.settings als Backup speichern
+      if (!error && retry.data) {
+        upsertProfile(username, { settings: { passwordHash } }).catch(() => {});
+      }
+    }
 
     if (error) {
       if (error.message.includes('duplicate') || error.message.includes('users_username_key')) {
@@ -326,19 +330,36 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Benutzername oder Passwort falsch' });
     }
 
-    // Passwort-basierte Authentifizierung (neue User)
+    // Passwort-Authentifizierung: entweder password_hash in DB oder in user_profiles.settings
     if (password) {
-      if (!data.password_hash) {
-        // Alter Account ohne Passwort: nur Login-Code möglich
-        return res.status(401).json({ error: 'Dieses Konto hat kein Passwort. Bitte mit Login-Code anmelden.' });
-      }
-      const passwordOk = await bcrypt.compare(password, data.password_hash);
-      if (!passwordOk) {
+      const hashFromDb = data.password_hash || null;
+      // Backup-Hash aus user_profiles.settings holen falls Spalte fehlt
+      const profileForHash = hashFromDb ? null : await getProfile(username);
+      const hashToCheck = hashFromDb || profileForHash?.settings?.passwordHash || null;
+
+      if (hashToCheck) {
+        let passwordOk = false;
+        try { passwordOk = await bcrypt.compare(password, hashToCheck); } catch {}
+        if (!passwordOk) {
+          // Wenn auch ein loginCode mitgeschickt wurde, noch den probieren
+          if (!loginCode || data.access_code !== loginCode) {
+            registerFailedAttempt(clientKey);
+            return res.status(401).json({ error: 'Benutzername oder Passwort falsch' });
+          }
+          // loginCode stimmt → durchlassen
+        }
+        // passwordOk → weiter
+      } else if (loginCode && data.access_code === loginCode) {
+        // Altes Konto ohne Passwort, aber Login-Code stimmt → OK
+      } else if (loginCode) {
         registerFailedAttempt(clientKey);
-        return res.status(401).json({ error: 'Benutzername oder Passwort falsch' });
+        return res.status(401).json({ error: 'Login-Code ist falsch' });
+      } else {
+        // Kein Passwort-Hash & kein Login-Code
+        return res.status(401).json({ error: 'Dieses Konto hat noch kein Passwort. Bitte Login-Code verwenden.' });
       }
     } else if (loginCode) {
-      // Login-Code-Authentifizierung (alte User / Backup)
+      // Nur Login-Code (kein Passwort)
       if (data.access_code !== loginCode) {
         registerFailedAttempt(clientKey);
         return res.status(401).json({ error: 'Benutzername oder Login-Code falsch' });
@@ -367,7 +388,8 @@ app.post('/api/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login Error:', error);
-    res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
+    const msg = error?.message || JSON.stringify(error) || 'Unbekannter Fehler';
+    res.status(500).json({ error: `Anmeldung fehlgeschlagen: ${msg}` });
   }
 });
 
