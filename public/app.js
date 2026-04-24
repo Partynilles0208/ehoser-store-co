@@ -191,6 +191,12 @@ async function handleLogin(event) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Splash Screen nach Animation entfernen
+    const splash = document.getElementById('introSplash');
+    if (splash) {
+        setTimeout(() => splash.remove(), 3100);
+    }
+
     const ref = new URLSearchParams(window.location.search).get('ref');
     pendingReferral = ref || localStorage.getItem('pendingReferralCode') || null;
     if (pendingReferral) {
