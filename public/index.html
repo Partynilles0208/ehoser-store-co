@@ -345,6 +345,15 @@
                     <button class="btn-small" onclick="copyInviteLink()">Kopieren</button>
                 </div>
             </div>
+            <div class="settings-login-code-box" style="background:rgba(0,0,0,0.04);border:1px solid rgba(0,0,0,0.1);border-radius:12px;padding:14px 16px;margin-top:4px;">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">Dein Login-Code</div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span id="myLoginCodeDisplay" style="font-family:monospace;font-size:1.4rem;font-weight:800;letter-spacing:0.2em;color:var(--primary,#333);min-width:80px;">••••••</span>
+                    <button id="toggleCodeBtn" onclick="toggleShowLoginCode()" class="btn-small" style="padding:4px 10px;font-size:12px;">👁 Anzeigen</button>
+                    <button onclick="copyLoginCode()" class="btn-small" style="padding:4px 10px;font-size:12px;">📋 Kopieren</button>
+                </div>
+                <small style="display:block;margin-top:8px;color:var(--muted,#888);font-size:11px;">⚠️ Halte diesen Code geheim. Du brauchst ihn zum Anmelden.</small>
+            </div>
             <button class="btn-primary" onclick="saveAccountSettings()">Speichern</button>
         </div>
     </div>

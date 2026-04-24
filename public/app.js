@@ -202,8 +202,8 @@ async function verifyToken(token) {
         });
 
         if (response.status === 401) {
-            // Nur bei ungültigem/abgelaufenem Token abmelden
-            localStorage.removeItem('token');
+            // Token abgelaufen/ungültig – Token NICHT löschen!
+            // User kann sich erneut anmelden → Token wird dann überschrieben
             showSection('mode-select');
             return;
         }
@@ -679,8 +679,71 @@ function openSettingsModal() {
     document.getElementById('settingDesign').value = p.settings?.design || 'standard';
     document.getElementById('settingEnergySaver').checked = Boolean(p.settings?.energySaver);
     document.getElementById('inviteLinkWrap').style.display = 'none';
+    // Login-Code laden und anzeigen
+    const codeDisplay = document.getElementById('myLoginCodeDisplay');
+    if (codeDisplay) {
+        codeDisplay.textContent = '••••••';
+        codeDisplay.dataset.revealed = 'false';
+    }
+    const toggleBtn = document.getElementById('toggleCodeBtn');
+    if (toggleBtn) toggleBtn.textContent = '👁 Anzeigen';
+    fetchLoginCode();
     updatePlanBadge();
     modal.classList.add('show');
+}
+
+let _cachedLoginCode = null;
+async function fetchLoginCode() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const res = await fetch(`${API_BASE}/me/login-code`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        _cachedLoginCode = data.loginCode || null;
+        const codeDisplay = document.getElementById('myLoginCodeDisplay');
+        if (codeDisplay && codeDisplay.dataset.revealed === 'true') {
+            codeDisplay.textContent = _cachedLoginCode || '–';
+        }
+    } catch {}
+}
+
+function toggleShowLoginCode() {
+    const codeDisplay = document.getElementById('myLoginCodeDisplay');
+    const btn = document.getElementById('toggleCodeBtn');
+    if (!codeDisplay) return;
+    if (codeDisplay.dataset.revealed === 'true') {
+        codeDisplay.textContent = '••••••';
+        codeDisplay.dataset.revealed = 'false';
+        if (btn) btn.textContent = '👁 Anzeigen';
+    } else {
+        if (_cachedLoginCode) {
+            codeDisplay.textContent = _cachedLoginCode;
+            codeDisplay.dataset.revealed = 'true';
+            if (btn) btn.textContent = '🙈 Verbergen';
+        } else {
+            fetchLoginCode().then(() => {
+                if (_cachedLoginCode) {
+                    codeDisplay.textContent = _cachedLoginCode;
+                    codeDisplay.dataset.revealed = 'true';
+                    if (btn) btn.textContent = '🙈 Verbergen';
+                }
+            });
+        }
+    }
+}
+
+async function copyLoginCode() {
+    if (!_cachedLoginCode) await fetchLoginCode();
+    if (!_cachedLoginCode) { showAlert('Code konnte nicht geladen werden.', 'error'); return; }
+    try {
+        await navigator.clipboard.writeText(_cachedLoginCode);
+        showAlert('Login-Code kopiert!', 'success');
+    } catch {
+        showAlert('Kopieren fehlgeschlagen. Bitte manuell kopieren.', 'error');
+    }
 }
 
 function closeSettingsModal() {
