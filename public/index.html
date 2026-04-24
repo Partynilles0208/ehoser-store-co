@@ -280,13 +280,11 @@
             </div>
         </div>
 
-        <!-- Spiele-Spielen Modal -->
+        <!-- Spiele-Spielen Modal (Vollbild) -->
         <div id="gameModal" class="modal game-modal">
             <div class="modal-content game-modal-content">
-                <div class="game-modal-header">
-                    <span id="gameModalTitle" class="game-modal-title"></span>
-                    <button class="close" onclick="closeGameModal()">✕</button>
-                </div>
+                <div class="game-timer-badge" id="gameTimerBadge" style="display:none"></div>
+                <button id="gameCloseBtn" class="game-modal-close-btn" onclick="closeGameModal()">✕</button>
                 <iframe id="gameFrame" class="game-frame" src="" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock"></iframe>
             </div>
         </div>
