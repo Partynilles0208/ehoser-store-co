@@ -165,7 +165,7 @@ async function handleLogin(event) {
 
         showLoggedInUI();
         await loadApps();
-        showSection('store');
+        showSection('mode-select');
         startOnlinePolling();
         document.getElementById('loginForm').reset();
     } catch (err) {
@@ -199,7 +199,7 @@ async function verifyToken(token) {
         currentUser = data.user;
         showLoggedInUI();
         await loadApps();
-        showSection('store');
+        showSection('mode-select');
         startOnlinePolling();
     } catch (err) {
         localStorage.removeItem('token');
@@ -240,7 +240,7 @@ async function handleRegister(event) {
 
         showLoggedInUI();
         await loadApps();
-        showSection('store');
+        showSection('mode-select');
         startOnlinePolling();
         document.getElementById('registerForm').reset();
     } catch (err) {
