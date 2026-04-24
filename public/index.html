@@ -58,6 +58,14 @@
                                 <span class="mode-badge mode-badge-free">Kostenlos &amp; sofort</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-facewarp" onclick="selectMode('facewarp')">
+                            <div class="mode-card-icon">🎭</div>
+                            <div class="mode-card-body">
+                                <h3>Face Warp Editor</h3>
+                                <p>Verändere Gesichter mit Spezialeffekten direkt im Browser – keine App nötig.</p>
+                                <span class="mode-badge mode-badge-warp">Sofort starten</span>
+                            </div>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -265,6 +273,24 @@
                 <iframe id="gameFrame" class="game-frame" src="" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock"></iframe>
             </div>
         </div>
+
+        <!-- Face Warp Section -->
+        <section id="facewarp" class="section">
+            <div class="facewarp-header">
+                <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                <h2>🎭 Face Warp Editor</h2>
+            </div>
+            <div class="facewarp-wrapper">
+                <iframe
+                    id="facewarpFrame"
+                    class="facewarp-frame"
+                    src=""
+                    allowfullscreen
+                    allow="camera; microphone"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                ></iframe>
+            </div>
+        </section>
     </div>
 
     <script src="app.js"></script>

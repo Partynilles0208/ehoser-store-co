@@ -496,6 +496,12 @@ function selectMode(mode) {
         showSection('auth');
     } else if (mode === 'games') {
         showSection('games');
+    } else if (mode === 'facewarp') {
+        const frame = document.getElementById('facewarpFrame');
+        if (frame && !frame.src) {
+            frame.src = 'https://facedaswarp.vercel.app/';
+        }
+        showSection('facewarp');
     } else {
         showSection('mode-select');
     }
