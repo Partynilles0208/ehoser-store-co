@@ -349,6 +349,27 @@ textarea:focus {
     color: var(--muted);
 }
 
+.login-fallback-details {
+    margin-bottom: 10px;
+}
+
+.login-fallback-details summary {
+    font-size: 0.82rem;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 6px 0;
+    user-select: none;
+}
+
+.login-fallback-details summary:hover {
+    color: var(--brand);
+}
+
+.login-fallback-details[open] summary {
+    color: var(--brand);
+    margin-bottom: 4px;
+}
+
 .btn-primary {
     width: 100%;
     padding: 12px 14px;
