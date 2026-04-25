@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     sessionStorage.setItem('intro_shown', '1');
                     showCaptcha();
                 }, 500);
-            }, 12800);
+            }, 20000);
         }
     } else {
         showCaptcha();
