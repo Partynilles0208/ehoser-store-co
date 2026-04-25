@@ -233,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function verifyToken(token) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 12000); // Vercel cold start kann ~10s dauern
     try {
         const response = await fetch(`${API_BASE}/verify-token`, {
             method: 'POST',
