@@ -194,66 +194,8 @@ async function handleLogin(event) {
     }
 }
 
-// ── reCAPTCHA Enterprise (Score-basiert, unsichtbar) ─────────────────────────
-const RECAPTCHA_SITE_KEY = '6Lf6esksAAAAAA7p5xYYHCrJze9a_ng_BUKHXyom';
-
+// ── reCAPTCHA entfernt – direkt starten ──────────────────────────────────────
 function showCaptcha() {
-    if (sessionStorage.getItem('captcha_passed')) {
-        startApp();
-        return;
-    }
-    const overlay = document.getElementById('captchaOverlay');
-    if (overlay) {
-        overlay.style.display = 'flex';
-        document.body.classList.add('captcha-active');
-    }
-
-    const tryExecute = () => {
-        if (window.grecaptcha && window.grecaptcha.enterprise) {
-            window.grecaptcha.enterprise.ready(async () => {
-                try {
-                    const token = await window.grecaptcha.enterprise.execute(RECAPTCHA_SITE_KEY, { action: 'VISIT' });
-                    _verifyCaptchaToken(token);
-                } catch {
-                    _captchaDone(); // Fallback
-                }
-            });
-        } else {
-            setTimeout(tryExecute, 150);
-        }
-    };
-    setTimeout(tryExecute, 50);
-}
-
-function _verifyCaptchaToken(token) {
-    fetch('/api/verify-captcha', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, action: 'VISIT' })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.blocked) {
-            const overlay = document.getElementById('captchaOverlay');
-            if (overlay) {
-                overlay.querySelector('.captcha-sub').textContent = 'Zugriff verweigert. Bitte neu laden.';
-                overlay.querySelector('.captcha-spinner').style.display = 'none';
-            }
-            return;
-        }
-        _captchaDone();
-    })
-    .catch(() => _captchaDone()); // Bei Fehler: Zugang erlauben
-}
-
-function _captchaDone() {
-    sessionStorage.setItem('captcha_passed', '1');
-    const overlay = document.getElementById('captchaOverlay');
-    if (overlay) {
-        overlay.style.animation = 'captcha-out 0.3s ease forwards';
-        setTimeout(() => { overlay.style.display = 'none'; }, 300);
-    }
-    document.body.classList.remove('captcha-active');
     startApp();
 }
 
