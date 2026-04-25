@@ -869,6 +869,127 @@ textarea:focus {
     border-color: rgba(56,189,248,0.3);
 }
 
+.mode-card-map:hover {
+    border-color: #4ade80;
+    box-shadow: 0 20px 40px rgba(74,222,128,0.22);
+}
+
+.mode-badge-map {
+    background: rgba(74,222,128,0.1);
+    color: #86efac;
+    border-color: rgba(74,222,128,0.3);
+}
+
+/* ── Karte Section ───────────────────────────────────────────────────────────── */
+.map-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 140px);
+    min-height: 480px;
+}
+
+.map-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0 12px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.map-search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+}
+
+.map-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #0a1e2e;
+    border: 1px solid #1e4060;
+    border-radius: 11px;
+    padding: 10px 14px;
+    color: #e0f4ff;
+    font-family: inherit;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.map-search-input:focus {
+    border-color: #0e8a9b;
+}
+
+.map-search-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #091820;
+    border: 1px solid #1e4060;
+    border-radius: 12px;
+    z-index: 9999;
+    max-height: 280px;
+    overflow-y: auto;
+    display: none;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+}
+
+.map-search-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 0.86rem;
+    color: #a8d8f0;
+    border-bottom: 1px solid #132a3d;
+    line-height: 1.4;
+    transition: background 0.1s;
+}
+
+.map-search-item:last-child { border-bottom: none; }
+.map-search-item:hover { background: #122840; color: #e0f4ff; }
+.map-search-empty { color: #4a7a90; cursor: default; }
+
+.map-layer-toggle {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.map-layer-btn {
+    border: 1px solid #1e4060;
+    border-radius: 10px;
+    padding: 8px 14px;
+    cursor: pointer;
+    background: #0a1e2e;
+    color: #5a9ab8;
+    font-size: 0.85rem;
+    font-family: inherit;
+    font-weight: 500;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.map-layer-btn.active {
+    background: linear-gradient(135deg, #0e8a9b, #f47c2a);
+    color: #fff;
+    border-color: transparent;
+}
+
+.map-container {
+    flex: 1;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid #1e3d55;
+    min-height: 400px;
+}
+
+@media (max-width: 620px) {
+    .map-controls { flex-direction: column; align-items: stretch; }
+    .map-layer-toggle { justify-content: stretch; }
+    .map-layer-btn { flex: 1; text-align: center; }
+}
+
 /* ── Weather Section ─────────────────────────────────────────────────────────── */
 .weather-search-bar {
     display: flex;
