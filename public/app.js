@@ -207,6 +207,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.classList.remove('splash-active');
                 document.body.style.overflow = '';
                 document.cookie = 'intro_shown=1; path=/; SameSite=Strict'; // kein expires = Session-Cookie
+                // Sicherstellen dass die Seite sichtbar ist, egal was vorher passiert ist
+                if (!document.querySelector('.section.active')) {
+                    showSection('mode-select');
+                }
             }, 16500);
         }
     }
@@ -228,11 +232,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function verifyToken(token) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
         const response = await fetch(`${API_BASE}/verify-token`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal
         });
+        clearTimeout(timeout);
 
         if (response.status === 401) {
             // Token abgelaufen/ungültig – Token NICHT löschen!
