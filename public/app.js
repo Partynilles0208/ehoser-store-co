@@ -191,14 +191,24 @@ async function handleLogin(event) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Splash Screen nach Animation entfernen (21s Gesamt + 0.5s Puffer)
+    // Splash: nur einmal pro Browser-Session (Session-Cookie löscht sich beim Browser-Schließen)
     const splash = document.getElementById('introSplash');
     if (splash) {
-        setTimeout(() => {
+        const cookieSet = document.cookie.split(';').some(c => c.trim().startsWith('intro_shown='));
+        if (cookieSet) {
+            // Bereits in dieser Browser-Session gesehen → sofort ausblenden
             splash.remove();
             document.body.classList.remove('splash-active');
             document.body.style.overflow = '';
-        }, 21500);
+        } else {
+            // Erste Öffnung → Intro abspielen, dann Session-Cookie setzen
+            setTimeout(() => {
+                splash.remove();
+                document.body.classList.remove('splash-active');
+                document.body.style.overflow = '';
+                document.cookie = 'intro_shown=1; path=/; SameSite=Strict'; // kein expires = Session-Cookie
+            }, 21500);
+        }
     }
 
     const ref = new URLSearchParams(window.location.search).get('ref');
