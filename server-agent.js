@@ -37,8 +37,19 @@ async function getSharedBrowser() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--mute-audio',
+        '--no-first-run',
+        '--safebrowsing-disable-auto-update',
+        '--single-process',
         `--window-size=${VIEWPORT.width},${VIEWPORT.height}`
-      ]
+      ],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     }).catch(err => {
       _browserPromise = null;
       throw err;
