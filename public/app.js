@@ -218,11 +218,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (referralInput) referralInput.value = pendingReferral;
     }
 
-    // Splash: nur einmal pro Browser-Session
+    // Splash: nur einmal pro Tab-Session
     const splash = document.getElementById('introSplash');
     if (splash) {
-        const cookieSet = document.cookie.split(';').some(c => c.trim().startsWith('intro_shown='));
-        if (cookieSet) {
+        const alreadyShown = sessionStorage.getItem('intro_shown');
+        if (alreadyShown) {
             splash.remove();
             document.body.classList.remove('splash-active');
             document.body.style.overflow = '';
@@ -236,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     splash.remove();
                     document.body.classList.remove('splash-active');
                     document.body.style.overflow = '';
-                    document.cookie = 'intro_shown=1; path=/; SameSite=Strict';
+                    sessionStorage.setItem('intro_shown', '1');
                     showCaptcha();
                 }, 500);
             }, 12800);
