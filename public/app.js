@@ -633,7 +633,36 @@ function selectMode(mode) {
     }
 }
 
-const WEATHER_API_KEY = 'b10f0d4c0555b59f28decb48e8df796e';
+// WMO Wetter-Code → Emoji + Beschreibung (Open-Meteo)
+function weatherCodeInfo(code) {
+    const map = {
+        0:  ['☀️', 'Klarer Himmel'],
+        1:  ['🌤️', 'Überwiegend klar'],
+        2:  ['⛅', 'Teilweise bewölkt'],
+        3:  ['☁️', 'Bedeckt'],
+        45: ['🌫️', 'Nebel'],
+        48: ['🌫️', 'Gefrierender Nebel'],
+        51: ['🌦️', 'Leichter Nieselregen'],
+        53: ['🌦️', 'Nieselregen'],
+        55: ['🌧️', 'Starker Nieselregen'],
+        61: ['🌧️', 'Leichter Regen'],
+        63: ['🌧️', 'Regen'],
+        65: ['🌧️', 'Starker Regen'],
+        71: ['🌨️', 'Leichter Schneefall'],
+        73: ['🌨️', 'Schneefall'],
+        75: ['❄️', 'Starker Schneefall'],
+        77: ['🌨️', 'Schneekörner'],
+        80: ['🌦️', 'Leichte Schauer'],
+        81: ['🌧️', 'Schauer'],
+        82: ['⛈️', 'Starke Schauer'],
+        85: ['🌨️', 'Schneeschauer'],
+        86: ['❄️', 'Starke Schneeschauer'],
+        95: ['⛈️', 'Gewitter'],
+        96: ['⛈️', 'Gewitter mit Hagel'],
+        99: ['⛈️', 'Gewitter mit starkem Hagel'],
+    };
+    return map[code] || ['🌡️', `Wetter-Code ${code}`];
+}
 
 async function runWeatherSearch() {
     const input = document.getElementById('weatherCityInput');
@@ -646,51 +675,61 @@ async function runWeatherSearch() {
         return;
     }
 
-    status.textContent = 'Lade Wetterdaten…';
+    status.textContent = 'Suche Ort…';
     result.innerHTML = '';
 
     try {
-        const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${WEATHER_API_KEY}&units=metric&lang=de`;
-        const res = await fetch(url);
-        const data = await res.json();
+        // 1. Geocoding (kein API Key nötig)
+        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=de&format=json`);
+        const geoData = await geoRes.json();
 
-        if (!res.ok) {
-            status.textContent = data.cod === '404' ? `Ort „${city}" nicht gefunden.` : `Fehler: ${data.message || 'Unbekannt'}`;
+        if (!geoData.results?.length) {
+            status.textContent = `Ort „${city}" nicht gefunden.`;
             return;
         }
 
+        const { latitude, longitude, name, country, admin1 } = geoData.results[0];
+        status.textContent = 'Lade Wetterdaten…';
+
+        // 2. Wetterdaten (kein API Key nötig)
+        const weatherRes = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
+            `&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,visibility` +
+            `&wind_speed_unit=kmh&timezone=auto`
+        );
+        const weatherData = await weatherRes.json();
+        const cur = weatherData.current;
+
         status.textContent = '';
 
-        const icon = data.weather[0]?.icon;
-        const desc = data.weather[0]?.description || '';
-        const temp = Math.round(data.main.temp);
-        const feelsLike = Math.round(data.main.feels_like);
-        const humidity = data.main.humidity;
-        const windKmh = Math.round((data.wind?.speed || 0) * 3.6);
-        const visibility = data.visibility ? `${Math.round(data.visibility / 1000)} km` : '–';
+        const temp      = Math.round(cur.temperature_2m);
+        const feels     = Math.round(cur.apparent_temperature);
+        const humidity  = cur.relative_humidity_2m;
+        const wind      = Math.round(cur.wind_speed_10m);
+        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : '–';
+        const [icon, desc] = weatherCodeInfo(cur.weather_code);
+        const location  = [name, admin1, country].filter(Boolean).join(', ');
 
         result.innerHTML = `
             <div class="weather-card">
-                <div class="weather-card-city">${escapeHtml(data.name)}</div>
-                <div class="weather-card-country">${escapeHtml(data.sys?.country || '')}</div>
-                <img class="weather-card-icon"
-                    src="https://openweathermap.org/img/wn/${icon}@2x.png"
-                    alt="${escapeHtml(desc)}">
+                <div class="weather-card-city">${escapeHtml(name)}</div>
+                <div class="weather-card-country">${escapeHtml([admin1, country].filter(Boolean).join(', '))}</div>
+                <div class="weather-card-icon" style="font-size:5rem;line-height:1">${icon}</div>
                 <div class="weather-card-desc">${escapeHtml(desc)}</div>
                 <div class="weather-card-temp">${temp}°C</div>
-                <div class="weather-card-feels">Gefühlt wie ${feelsLike}°C</div>
+                <div class="weather-card-feels">Gefühlt wie ${feels}°C</div>
                 <div class="weather-card-stats">
                     <div class="weather-stat">
-                        <span class="weather-stat-label">💧 Luftfeuchtigkeit</span>
+                        <span class="weather-stat-label">💧 Luftfeucht.</span>
                         <span class="weather-stat-value">${humidity}%</span>
                     </div>
                     <div class="weather-stat">
                         <span class="weather-stat-label">💨 Wind</span>
-                        <span class="weather-stat-value">${windKmh} km/h</span>
+                        <span class="weather-stat-value">${wind} km/h</span>
                     </div>
                     <div class="weather-stat">
                         <span class="weather-stat-label">👁️ Sichtweite</span>
-                        <span class="weather-stat-value">${visibility}</span>
+                        <span class="weather-stat-value">${visKm}</span>
                     </div>
                 </div>
             </div>`;
