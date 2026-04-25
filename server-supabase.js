@@ -2160,6 +2160,54 @@ app.post('/api/ki', async (req, res) => {
   }
 });
 
+// PixVerse Video-KI: Job starten
+app.post('/api/ki/video/create', async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
+  const apiKey = process.env.PIXVERSE_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'PIXVERSE_API_KEY nicht konfiguriert' });
+  try {
+    const r = await fetch('https://api.pixverse.ai/open/v2/video/text/generate', {
+      method: 'POST',
+      headers: {
+        'API-KEY': apiKey,
+        'Ai-trace-id': crypto.randomUUID(),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ prompt: prompt.slice(0, 500), quality: '540p', duration: 5, ratio: '16:9' })
+    });
+    const data = await r.json();
+    if (!r.ok || data.ErrCode !== 0) {
+      return res.status(502).json({ error: data.Msg || 'PixVerse Fehler' });
+    }
+    res.json({ video_id: data.Resp.video_id });
+  } catch (err) {
+    res.status(502).json({ error: 'Verbindungsfehler zu PixVerse' });
+  }
+});
+
+// PixVerse Video-KI: Status abfragen
+app.get('/api/ki/video/:id/status', async (req, res) => {
+  const apiKey = process.env.PIXVERSE_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'PIXVERSE_API_KEY nicht konfiguriert' });
+  try {
+    const r = await fetch(`https://api.pixverse.ai/open/v2/video/${encodeURIComponent(req.params.id)}/result`, {
+      headers: { 'API-KEY': apiKey, 'Ai-trace-id': crypto.randomUUID() }
+    });
+    const data = await r.json();
+    if (!r.ok || data.ErrCode !== 0) {
+      return res.status(502).json({ error: data.Msg || 'PixVerse Fehler' });
+    }
+    // status: 0=processing, 1=done, -1=failed
+    const { status, url } = data.Resp;
+    if (status === 1) return res.json({ status: 'done', url });
+    if (status === -1) return res.json({ status: 'failed' });
+    res.json({ status: 'processing' });
+  } catch (err) {
+    res.status(502).json({ error: 'Verbindungsfehler zu PixVerse' });
+  }
+});
+
 // Pollinations.ai Bild-Proxy
 app.get('/api/ki/image', async (req, res) => {
   const prompt = req.query.prompt;
