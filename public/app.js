@@ -191,34 +191,14 @@ async function handleLogin(event) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Tab-Zähler: Intro-Flag löschen wenn letzter Tab geschlossen wird
-    const tabCount = parseInt(localStorage.getItem('ehoser_tabs') || '0') + 1;
-    localStorage.setItem('ehoser_tabs', String(tabCount));
-    window.addEventListener('pagehide', () => {
-        const count = parseInt(localStorage.getItem('ehoser_tabs') || '1') - 1;
-        if (count <= 0) {
-            localStorage.removeItem('ehoser_tabs');
-            localStorage.removeItem('ehoser_intro_shown');
-        } else {
-            localStorage.setItem('ehoser_tabs', String(count));
-        }
-    });
-
-    // Splash Screen: nur zeigen wenn noch nicht in dieser Browser-Session
+    // Splash Screen nach Animation entfernen (21s Gesamt + 0.5s Puffer)
     const splash = document.getElementById('introSplash');
     if (splash) {
-        if (window._skipIntro) {
+        setTimeout(() => {
             splash.remove();
             document.body.classList.remove('splash-active');
             document.body.style.overflow = '';
-        } else {
-            localStorage.setItem('ehoser_intro_shown', '1');
-            setTimeout(() => {
-                splash.remove();
-                document.body.classList.remove('splash-active');
-                document.body.style.overflow = '';
-            }, 21500);
-        }
+        }, 21500);
     }
 
     const ref = new URLSearchParams(window.location.search).get('ref');
@@ -639,12 +619,83 @@ function selectMode(mode) {
         if (!imageSearchLastQuery) {
             document.getElementById('imageSearchStatus').textContent = 'Gib ein Suchwort ein und starte die Suche.';
         }
+    } else if (mode === 'weather') {
+        showSection('weather');
+        document.getElementById('weatherStatus').textContent = '';
+        document.getElementById('weatherResult').innerHTML = '';
+        setTimeout(() => document.getElementById('weatherCityInput')?.focus(), 50);
     } else if (mode === 'facewarp') {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
         window.location.href = '/chat/';
     } else {
         showSection('mode-select');
+    }
+}
+
+const WEATHER_API_KEY = 'b10f0d4c0555b59f28decb48e8df796e';
+
+async function runWeatherSearch() {
+    const input = document.getElementById('weatherCityInput');
+    const status = document.getElementById('weatherStatus');
+    const result = document.getElementById('weatherResult');
+    const city = (input?.value || '').trim();
+
+    if (!city) {
+        status.textContent = 'Bitte einen Ort eingeben.';
+        return;
+    }
+
+    status.textContent = 'Lade Wetterdaten…';
+    result.innerHTML = '';
+
+    try {
+        const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${WEATHER_API_KEY}&units=metric&lang=de`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!res.ok) {
+            status.textContent = data.cod === '404' ? `Ort „${city}" nicht gefunden.` : `Fehler: ${data.message || 'Unbekannt'}`;
+            return;
+        }
+
+        status.textContent = '';
+
+        const icon = data.weather[0]?.icon;
+        const desc = data.weather[0]?.description || '';
+        const temp = Math.round(data.main.temp);
+        const feelsLike = Math.round(data.main.feels_like);
+        const humidity = data.main.humidity;
+        const windKmh = Math.round((data.wind?.speed || 0) * 3.6);
+        const visibility = data.visibility ? `${Math.round(data.visibility / 1000)} km` : '–';
+
+        result.innerHTML = `
+            <div class="weather-card">
+                <div class="weather-card-city">${escapeHtml(data.name)}</div>
+                <div class="weather-card-country">${escapeHtml(data.sys?.country || '')}</div>
+                <img class="weather-card-icon"
+                    src="https://openweathermap.org/img/wn/${icon}@2x.png"
+                    alt="${escapeHtml(desc)}">
+                <div class="weather-card-desc">${escapeHtml(desc)}</div>
+                <div class="weather-card-temp">${temp}°C</div>
+                <div class="weather-card-feels">Gefühlt wie ${feelsLike}°C</div>
+                <div class="weather-card-stats">
+                    <div class="weather-stat">
+                        <span class="weather-stat-label">💧 Luftfeuchtigkeit</span>
+                        <span class="weather-stat-value">${humidity}%</span>
+                    </div>
+                    <div class="weather-stat">
+                        <span class="weather-stat-label">💨 Wind</span>
+                        <span class="weather-stat-value">${windKmh} km/h</span>
+                    </div>
+                    <div class="weather-stat">
+                        <span class="weather-stat-label">👁️ Sichtweite</span>
+                        <span class="weather-stat-value">${visibility}</span>
+                    </div>
+                </div>
+            </div>`;
+    } catch (err) {
+        status.textContent = 'Verbindungsfehler. Bitte versuche es erneut.';
     }
 }
 

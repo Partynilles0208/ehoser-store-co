@@ -16,17 +16,6 @@
     </style>
 </head>
 <body class="splash-active">
-    <script>
-    (function () {
-        if (localStorage.getItem('ehoser_intro_shown')) {
-            document.body.classList.remove('splash-active');
-            var s = document.createElement('style');
-            s.textContent = '#introSplash{display:none!important}';
-            document.head.appendChild(s);
-            window._skipIntro = true;
-        }
-    }());
-    </script>
     <!-- ── Intro Splash ──────────────────────────────────────────────────── -->
     <div id="introSplash" class="intro-splash">
         <div class="intro-logo">E</div>
@@ -108,6 +97,14 @@
                                 <span class="mode-badge mode-badge-images">Pixabay Suche</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-weather" onclick="selectMode('weather')">
+                            <div class="mode-card-icon">⛅</div>
+                            <div class="mode-card-body">
+                                <h3>Wetter</h3>
+                                <p>Gibt einen Ort ein und sieh das aktuelle Wetter – Temperatur, Regen, Wind und mehr live.</p>
+                                <span class="mode-badge mode-badge-weather">OpenWeather Live</span>
+                            </div>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -127,6 +124,24 @@
                     <p id="imageSearchStatus" class="image-search-status">Bereit.</p>
                 </div>
                 <div id="imageSearchResults" class="image-search-grid"></div>
+            </section>
+
+            <section id="weather" class="section">
+                <div class="store-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>⛅ Wetter</h2>
+                    <div class="weather-search-bar">
+                        <input
+                            type="text"
+                            id="weatherCityInput"
+                            placeholder="z.B. Berlin, München, New York..."
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();runWeatherSearch();}"
+                        >
+                        <button class="btn-primary weather-search-btn" onclick="runWeatherSearch()">Suchen</button>
+                    </div>
+                    <p id="weatherStatus" class="weather-status"></p>
+                </div>
+                <div id="weatherResult" class="weather-result-wrap"></div>
             </section>
 
             <section id="auth" class="section">
