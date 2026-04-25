@@ -254,6 +254,7 @@
                             <div style="font-size:0.8rem;color:#4d9fff;">Vertraulich · Einfühlsam · Jederzeit verfügbar</div>
                         </div>
                         <button onclick="closePsOverlay()" style="margin-left:auto;background:none;border:1px solid rgba(255,255,255,0.15);color:#8ab4c9;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:0.85rem;">✕ Schließen</button>
+                        <button onclick="if(confirm('Chat wirklich löschen und neu starten?')){localStorage.removeItem(\'ps_chat\');closePsOverlay();}" style="background:none;border:1px solid rgba(220,50,50,0.3);color:#e57373;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:0.8rem;">🗑 Neu</button>
                     </div>
                     <!-- Messages -->
                     <div id="psChatMessages" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;"></div>

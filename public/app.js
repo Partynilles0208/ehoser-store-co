@@ -1709,15 +1709,51 @@ const PS_FIXED_QUESTIONS = [
     'Was ist dein größter Wunsch?'
 ];
 
+function _psSaveState() {
+    try {
+        localStorage.setItem('ps_chat', JSON.stringify({
+            name: _psName,
+            history: _psChatHistory,
+            summary: _psAllSummary
+        }));
+    } catch {}
+}
+
+function _psLoadState() {
+    try {
+        const raw = localStorage.getItem('ps_chat');
+        if (!raw) return false;
+        const saved = JSON.parse(raw);
+        if (!saved?.history?.length) return false;
+        _psName = saved.name || '';
+        _psChatHistory = saved.history;
+        _psAllSummary = saved.summary || '';
+        return true;
+    } catch { return false; }
+}
+
 function openPsHelp() {
     const overlay = document.getElementById('psOverlay');
     if (!overlay) return;
-    // Reset state
+
+    // Wenn gespeicherter Chat vorhanden → direkt Chat zeigen
+    if (_psLoadState()) {
+        overlay.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        showPsScreen('psScreenChat');
+        const chatMessages = document.getElementById('psChatMessages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
+            _psChatHistory.forEach(m => appendPsChatMessage(m.role, m.content));
+        }
+        return;
+    }
+
+    // Kein gespeicherter Chat → Neu starten
     _psName = '';
     _psAnswers = [];
     _psChatHistory = [];
     _psAllSummary = '';
-    // Show name screen
     showPsScreen('psScreenName');
     overlay.style.display = 'flex';
     document.body.style.overflow = 'hidden';
@@ -1827,6 +1863,7 @@ async function initPsChat() {
     const openingMessage = `Hallo ${_psName}, ich habe deine Antworten gelesen. Danke, dass du dich mir anvertraust. Ich bin hier, um dir zuzuhören und dir zu helfen. Lass uns gemeinsam schauen, wie es dir geht.`;
     appendPsChatMessage('assistant', openingMessage);
     _psChatHistory.push({ role: 'assistant', content: openingMessage });
+    _psSaveState();
 
     // AI analyzes and responds
     await sendPsChatToAI(null);
@@ -1836,7 +1873,7 @@ function appendPsChatMessage(role, text) {
     const chatMessages = document.getElementById('psChatMessages');
     if (!chatMessages) return;
     const div = document.createElement('div');
-    div.style.cssText = `margin:8px 0;padding:12px 16px;border-radius:14px;max-width:85%;word-wrap:break-word;line-height:1.5;font-size:0.95rem;${role === 'user' ? 'background:rgba(77,159,255,0.15);border:1px solid rgba(77,159,255,0.3);margin-left:auto;text-align:right;' : 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);'}`;
+    div.style.cssText = `margin:8px 0;padding:12px 16px;border-radius:14px;max-width:85%;word-wrap:break-word;line-height:1.5;font-size:0.95rem;color:#fff;${role === 'user' ? 'background:rgba(77,159,255,0.2);border:1px solid rgba(77,159,255,0.35);margin-left:auto;text-align:right;' : 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);'}`;
     div.textContent = text;
     chatMessages.appendChild(div);
     chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -1849,6 +1886,7 @@ async function sendPsChatToAI(userMessage) {
     if (userMessage) {
         _psChatHistory.push({ role: 'user', content: userMessage });
         appendPsChatMessage('user', userMessage);
+        _psSaveState();
     }
 
     // Typing indicator
@@ -1875,6 +1913,7 @@ async function sendPsChatToAI(userMessage) {
         const reply = data.reply || '';
         _psChatHistory.push({ role: 'assistant', content: reply });
         appendPsChatMessage('assistant', reply);
+        _psSaveState();
     } catch {
         typing?.remove();
         appendPsChatMessage('assistant', 'Verbindungsfehler. Bitte versuche es erneut.');
