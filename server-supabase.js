@@ -2160,7 +2160,7 @@ app.post('/api/ki', async (req, res) => {
   }
 });
 
-// Pollinations.ai Bild-Proxy (Key bleibt sicher auf dem Server)
+// Pollinations.ai Bild-Proxy
 app.get('/api/ki/image', async (req, res) => {
   const prompt = req.query.prompt;
   if (!prompt || prompt.trim().length === 0) {
@@ -2169,12 +2169,23 @@ app.get('/api/ki/image', async (req, res) => {
   const seed = req.query.seed || Math.floor(Math.random() * 999999);
   const apiKey = process.env.POLLINATIONS_API_KEY;
   const encodedPrompt = encodeURIComponent(prompt.slice(0, 500));
-  let pollinationsUrl = `https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`;
-  if (apiKey) pollinationsUrl += `&key=${encodeURIComponent(apiKey)}`;
+
+  // Wenn ein Key vorhanden: neue API nutzen, sonst Legacy-Endpoint (kein Key nötig)
+  const urls = apiKey
+    ? [`https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&key=${encodeURIComponent(apiKey)}`]
+    : [
+        `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`,
+        `https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`
+      ];
+
   try {
-    const imgRes = await fetch(pollinationsUrl);
-    if (!imgRes.ok) {
-      return res.status(imgRes.status).json({ error: `Pollinations Fehler: ${imgRes.status}` });
+    let imgRes;
+    for (const url of urls) {
+      imgRes = await fetch(url, { headers: { 'User-Agent': 'ehoser-store/1.0' } });
+      if (imgRes.ok) break;
+    }
+    if (!imgRes || !imgRes.ok) {
+      return res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen – kein Dienst verfügbar' });
     }
     const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
     res.setHeader('Content-Type', contentType);
