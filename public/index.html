@@ -114,6 +114,14 @@
                                 <span class="mode-badge mode-badge-map">OpenStreetMap</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-youtube" onclick="selectMode('youtube')">
+                            <div class="mode-card-icon">▶️</div>
+                            <div class="mode-card-body">
+                                <h3>YouTube</h3>
+                                <p>Videos, Playlists und Kanäle suchen – direkt im eingebetteten Player schauen.</p>
+                                <span class="mode-badge mode-badge-youtube">YouTube API v3</span>
+                            </div>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -133,6 +141,42 @@
                     <p id="imageSearchStatus" class="image-search-status">Bereit.</p>
                 </div>
                 <div id="imageSearchResults" class="image-search-grid"></div>
+            </section>
+
+            <section id="youtube" class="section">
+                <div class="yt-wrapper">
+                    <div class="yt-controls">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <div class="yt-search-wrap">
+                            <input
+                                type="text"
+                                id="ytSearchInput"
+                                class="yt-search-input"
+                                placeholder="Videos, Playlists oder Kanäle suchen..."
+                                onkeydown="if(event.key==='Enter'){runYTSearch();}"
+                                autocomplete="off"
+                            >
+                            <button class="yt-search-btn" onclick="runYTSearch()">🔍 Suchen</button>
+                        </div>
+                    </div>
+                    <div class="yt-type-tabs">
+                        <button class="yt-tab active" id="ytTabVideo" onclick="setYTType('video')">▶ Videos</button>
+                        <button class="yt-tab" id="ytTabPlaylist" onclick="setYTType('playlist')">📋 Playlists</button>
+                        <button class="yt-tab" id="ytTabChannel" onclick="setYTType('channel')">📺 Kanäle</button>
+                    </div>
+                    <div id="ytPlayerWrap" class="yt-player-wrap" style="display:none">
+                        <div class="yt-player-header">
+                            <span id="ytPlayerTitle" class="yt-player-title"></span>
+                            <button class="yt-close-btn" onclick="closeYTPlayer()">✕ Schließen</button>
+                        </div>
+                        <div class="yt-iframe-wrap">
+                            <iframe id="ytIframe" class="yt-iframe" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+                        </div>
+                    </div>
+                    <div id="ytStatus" class="yt-status"></div>
+                    <div id="ytResults" class="yt-results"></div>
+                    <div id="ytPagination" class="yt-pagination"></div>
+                </div>
             </section>
 
             <section id="map" class="section">
