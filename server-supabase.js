@@ -2037,7 +2037,7 @@ app.post('/api/ps/analyze', async (req, res) => {
 
   const answersText = answers.map((a, i) => `Frage ${i + 1}: ${a.question}\nAntwort: ${a.answer}`).join('\n\n');
 
-  const systemPrompt = `Du bist ein einfühlsamer, psychologisch geschulter KI-Assistent.\nAnalysiere die Umfrageantworten von "${name || 'dem Nutzer'}" und erstelle genau 5 personalisierte Folgefragen auf Deutsch, die tiefer auf emotionale Bedürfnisse und Sorgen eingehen.\nAntworte NUR mit einem JSON-Array mit 5 Strings. Kein anderer Text.\nBeispiel: ["Frage 1?", "Frage 2?", "Frage 3?", "Frage 4?", "Frage 5?"]`;
+  const systemPrompt = `Du bist ein einfühlsamer, psychologisch geschulter KI-Assistent.\nAnalysiere die Umfrageantworten von "${name || 'dem Nutzer'}" und erstelle genau 10 personalisierte Folgefragen auf Deutsch, die tiefer auf emotionale Bedürfnisse und Sorgen eingehen.\nAntworte NUR mit einem JSON-Array mit 10 Strings. Kein anderer Text.\nBeispiel: ["Frage 1?", "Frage 2?", "Frage 3?", "Frage 4?", "Frage 5?", "Frage 6?", "Frage 7?", "Frage 8?", "Frage 9?", "Frage 10?"]`;
 
   try {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -2047,10 +2047,10 @@ app.post('/api/ps/analyze', async (req, res) => {
         model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Bisherige Antworten:\n\n${answersText}\n\nErstelle 5 personalisierte Folgefragen.` }
+          { role: 'user', content: `Bisherige Antworten:\n\n${answersText}\n\nErstelle 10 personalisierte Folgefragen.` }
         ],
         temperature: 0.7,
-        max_tokens: 600
+        max_tokens: 1000
       })
     });
 
@@ -2063,7 +2063,7 @@ app.post('/api/ps/analyze', async (req, res) => {
       const match = text.match(/\[[\s\S]*?\]/);
       questions = match ? JSON.parse(match[0]) : [];
     } catch {
-      questions = text.split('\n').filter(l => l.trim()).slice(0, 5).map(l => l.replace(/^\d+[\.\)]\s*/, '').replace(/^["']|["']$/g, '').trim());
+      questions = text.split('\n').filter(l => l.trim()).slice(0, 10).map(l => l.replace(/^\d+[\.\)]\s*/, '').replace(/^["']|["']$/g, '').trim());
     }
 
     const fallbacks = [
@@ -2071,10 +2071,15 @@ app.post('/api/ps/analyze', async (req, res) => {
       'Gibt es Menschen in deinem Leben, mit denen du über deine Gefühle sprechen kannst?',
       'Wie schläfst du momentan?',
       'Was würde dir helfen, dich besser zu fühlen?',
-      'Hast du das Gefühl, dass du Unterstützung brauchst?'
+      'Hast du das Gefühl, dass du Unterstützung brauchst?',
+      'Gibt es Situationen, in denen du dich besonders unwohl fühlst?',
+      'Wie gehst du normalerweise mit Stress um?',
+      'Gibt es etwas, das du dir selbst gegenüber wünschst?',
+      'Wie wichtig sind dir enge Beziehungen zu anderen Menschen?',
+      'Was macht dich glücklich, auch wenn es gerade schwer fällt?'
     ];
-    while (questions.length < 5) questions.push(fallbacks[questions.length]);
-    questions = questions.slice(0, 5);
+    while (questions.length < 10) questions.push(fallbacks[questions.length]);
+    questions = questions.slice(0, 10);
 
     res.json({ questions });
   } catch {

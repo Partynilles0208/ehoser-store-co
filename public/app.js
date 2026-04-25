@@ -1706,7 +1706,8 @@ const PS_FIXED_QUESTIONS = [
     'Wie geht es dir heute?',
     'Wie ging es dir in den letzten Wochen?',
     'Was ist deine größte Angst?',
-    'Was ist dein größter Wunsch?'
+    'Was ist dein größter Wunsch?',
+    'Hast du einen Zwang, etwas nicht zu können?'
 ];
 
 function _psSaveState() {
