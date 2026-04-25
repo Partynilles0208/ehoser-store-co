@@ -163,9 +163,10 @@ async function loadRegisteredUsers() {
             .map(
                 (user) => `
                 <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-                    <span>${escapeHtml(user.username)} ${user.is_pro ? '<strong style="color:#b45309">PRO</strong>' : ''}</span>
+                    <span>${escapeHtml(user.username)} ${user.is_pro ? '<strong style="color:#b45309">PRO</strong>' : ''} ${user.update_unlocked ? '<strong style="color:#2dbe6c">UPDATE</strong>' : ''}</span>
                     <span style="display:flex;gap:6px;">
                         <button class="btn-small" onclick="toggleUserPro(${user.id}, ${user.is_pro ? 'false' : 'true'})">${user.is_pro ? 'PRO entfernen' : 'PRO geben'}</button>
+                        <button class="btn-small" style="background:${user.update_unlocked ? 'rgba(220,50,50,0.2)' : 'rgba(45,190,108,0.2)'}" onclick="unlockUserUpdate(${user.id}, ${user.update_unlocked ? 'false' : 'true'})">${user.update_unlocked ? '🔒 Update sperren' : '🔓 Update freischalten'}</button>
                         <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
                         <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
                     </span>
@@ -199,6 +200,26 @@ async function loadVotes() {
         `;
     } catch {
         el.innerHTML = '<li>Verbindungsfehler.</li>';
+    }
+}
+
+async function unlockUserUpdate(userId, enabled) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/unlock-update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
+            body: JSON.stringify({ enabled })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Update-Freischaltung fehlgeschlagen.', 'error');
+            return;
+        }
+        setStatus(enabled ? `✅ Update für ${data.username} freigeschaltet.` : `🔒 Update für ${data.username} gesperrt.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
     }
 }
 
