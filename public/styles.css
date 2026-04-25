@@ -550,6 +550,8 @@ textarea:focus {
 
 .settings-modal-content {
     max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .settings-pro-box {
