@@ -13,7 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const UNLOCK_CODE = '020818';
-const ADMIN_UPLOAD_KEY = 'nils2014!';
+const ADMIN_UPLOAD_KEY = '135797531lol';
 const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre – Token läuft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 
