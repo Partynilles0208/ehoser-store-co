@@ -122,6 +122,35 @@
                                 <span class="mode-badge mode-badge-youtube">YouTube API v3</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-ki" onclick="selectMode('ki')">
+                            <div class="mode-card-icon">🤖</div>
+                            <div class="mode-card-body">
+                                <h3>KI</h3>
+                                <p>Stell der künstlichen Intelligenz Fragen – Konversation mit Verlauf, powered by Gemini.</p>
+                                <span class="mode-badge mode-badge-ki">Google Gemini</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="ki" class="section">
+                <div class="ki-wrapper">
+                    <div class="ki-header">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <h2 class="ki-title">🤖 KI – Gemini Chat</h2>
+                        <button class="ki-clear-btn" onclick="clearKIChat()">Verlauf leeren</button>
+                    </div>
+                    <div id="kiMessages" class="ki-messages"></div>
+                    <div class="ki-input-row">
+                        <textarea
+                            id="kiInput"
+                            class="ki-input"
+                            placeholder="Stell eine Frage..."
+                            rows="2"
+                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendKIMessage();}"
+                        ></textarea>
+                        <button class="ki-send-btn" onclick="sendKIMessage()">➤</button>
                     </div>
                 </div>
             </section>

@@ -640,6 +640,12 @@ function selectMode(mode) {
     } else if (mode === 'youtube') {
         showSection('youtube');
         setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
+    } else if (mode === 'ki') {
+        showSection('ki');
+        if (document.getElementById('kiMessages')?.children.length === 0) {
+            appendKIBubble('ai', 'Hallo! 👋 Ich bin Gemini. Stell mir eine Frage oder schreib einfach drauf los.');
+        }
+        setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
     } else if (mode === 'facewarp') {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
@@ -1003,7 +1009,86 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-function renderImageSearchResults(hits) {
+// ─── KI Chat (Google Gemini) ──────────────────────────────────────────────────
+const GEMINI_API_KEY = 'AIzaSyDLaTeVl446BhMOjtRYhJA9ZndmCiRoHSs';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+let _kiHistory = []; // { role: 'user'|'model', parts: [{text}] }
+
+function appendKIBubble(type, text) {
+    const messages = document.getElementById('kiMessages');
+    if (!messages) return null;
+    const div = document.createElement('div');
+    div.className = `ki-bubble ki-bubble-${type}`;
+    div.textContent = text;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+    return div;
+}
+
+function showKITyping() {
+    const messages = document.getElementById('kiMessages');
+    if (!messages) return null;
+    const div = document.createElement('div');
+    div.className = 'ki-bubble ki-bubble-ai ki-typing';
+    div.id = 'kiTypingIndicator';
+    div.innerHTML = '<span></span><span></span><span></span>';
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+    return div;
+}
+
+async function sendKIMessage() {
+    const input = document.getElementById('kiInput');
+    const sendBtn = document.querySelector('.ki-send-btn');
+    const text = input?.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    if (sendBtn) sendBtn.disabled = true;
+
+    appendKIBubble('user', text);
+    _kiHistory.push({ role: 'user', parts: [{ text }] });
+
+    const typing = showKITyping();
+
+    try {
+        const res = await fetch(GEMINI_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: _kiHistory })
+        });
+
+        typing?.remove();
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            const msg = err?.error?.message || `Fehler ${res.status}`;
+            appendKIBubble('error', '⚠️ ' + msg);
+            // Letzten User-Eintrag wieder entfernen damit Verlauf konsistent bleibt
+            _kiHistory.pop();
+            return;
+        }
+
+        const data = await res.json();
+        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || '(Keine Antwort)';
+        _kiHistory.push({ role: 'model', parts: [{ text: reply }] });
+        appendKIBubble('ai', reply);
+    } catch (err) {
+        typing?.remove();
+        appendKIBubble('error', '⚠️ Verbindungsfehler. Bitte versuche es erneut.');
+        _kiHistory.pop();
+    } finally {
+        if (sendBtn) sendBtn.disabled = false;
+        input?.focus();
+    }
+}
+
+function clearKIChat() {
+    _kiHistory = [];
+    const messages = document.getElementById('kiMessages');
+    if (messages) messages.innerHTML = '';
+    appendKIBubble('ai', 'Verlauf geleert. 👋 Stell mir eine neue Frage!');
+}
     const grid = document.getElementById('imageSearchResults');
     if (!grid) return;
 
