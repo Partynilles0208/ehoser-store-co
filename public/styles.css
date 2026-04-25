@@ -2553,3 +2553,88 @@ textarea:focus {
 @media (max-width: 520px) {
     .ki-bubble { max-width: 95%; }
 }
+
+/* ── ehoser KI Name-Modal ────────────────────────────────────────────────────── */
+.ki-name-modal {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 140px);
+    padding: 20px;
+}
+
+.ki-name-box {
+    background: #0a1828;
+    border: 1px solid #2a3060;
+    border-radius: 20px;
+    padding: 36px 32px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 24px 60px rgba(99,102,241,0.15);
+}
+
+.ki-name-logo {
+    font-size: 3rem;
+    line-height: 1;
+}
+
+.ki-name-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #c4b5fd;
+    margin: 0;
+}
+
+.ki-name-sub {
+    font-size: 0.88rem;
+    color: #7a8ab0;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.ki-name-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #050f18;
+    border: 1px solid #2a3060;
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #e0e7ff;
+    font-family: inherit;
+    font-size: 1rem;
+    outline: none;
+    text-align: center;
+    transition: border-color 0.2s;
+}
+
+.ki-name-input:focus {
+    border-color: #6366f1;
+}
+
+.ki-name-btn {
+    background: linear-gradient(135deg, #6366f1, #818cf8);
+    border: none;
+    border-radius: 12px;
+    padding: 12px 32px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    transition: opacity 0.15s;
+}
+
+.ki-name-btn:hover { opacity: 0.88; }
+
+.ki-name-hint {
+    font-size: 0.75rem;
+    color: #4a5a7a;
+    margin: 0;
+    line-height: 1.5;
+}
