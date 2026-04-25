@@ -1009,9 +1009,8 @@ function closeYTPlayer() {
     if (wrap) wrap.style.display = 'none';
 }
 
-// ─── KI Chat (DeepSeek) ─────────────────────────────────────────────────────
-const DEEPSEEK_API_KEY = 'sk-3d08c96bc4c24bd197db716b08c37fcd';
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
+// ─── KI Chat (Groq – Llama 3.3 70B) ──────────────────────────────────────────
+// API Key liegt serverseitig in GROQ_API_KEY (Vercel Environment Variable)
 let _kiHistory = []; // { role: 'user'|'assistant', content: string }
 
 function appendKIBubble(type, text) {
@@ -1052,17 +1051,10 @@ async function sendKIMessage() {
     const typing = showKITyping();
 
     try {
-        const res = await fetch(DEEPSEEK_URL, {
+        const res = await fetch('/api/ki', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'deepseek-chat',
-                messages: _kiHistory,
-                stream: false
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: _kiHistory })
         });
 
         typing?.remove();
