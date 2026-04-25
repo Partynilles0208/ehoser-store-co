@@ -1097,6 +1097,8 @@ function clearKIChat() {
     if (messages) messages.innerHTML = '';
     appendKIBubble('ai', 'Verlauf geleert. 👋 Stell mir eine neue Frage!');
 }
+
+function renderImageSearchResults(hits) {
     const grid = document.getElementById('imageSearchResults');
     if (!grid) return;
 
