@@ -1828,6 +1828,62 @@ app.delete('/api/me/unlink-email', async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── Update-Abstimmung ────────────────────────────────────────────────────────
+// Stimmen werden in user_profiles.settings._updateVote gespeichert (per User)
+// Gesamtstatus wird in einem speziellen Supabase-Eintrag gehalten
+
+const VOTE_THRESHOLD = 10;
+
+// Hilfsfunktion: alle Stimmen zählen
+async function getVoteStatus() {
+  // Alle user_profiles durchsuchen die _updateVote=true haben
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('username, settings')
+    .not('settings', 'is', null);
+
+  const voters = (data || []).filter(r => r.settings?._updateVote === true).map(r => r.username);
+  const count = voters.length;
+  return { count, unlocked: count >= VOTE_THRESHOLD, voters };
+}
+
+// Öffentlich: Vote-Status abrufen (für Frontend-Polling)
+app.get('/api/vote/status', async (req, res) => {
+  try {
+    const status = await getVoteStatus();
+    res.json(status);
+  } catch {
+    res.status(500).json({ error: 'Fehler beim Laden des Abstimmungsstatus.' });
+  }
+});
+
+// Eingeloggte User: abstimmen
+app.post('/api/vote', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const profile = await getProfile(auth.username);
+  if (profile?.settings?._updateVote) {
+    return res.status(409).json({ error: 'Du hast bereits abgestimmt.' });
+  }
+
+  const settings = { ...(profile?.settings || {}), _updateVote: true };
+  await supabase.from('user_profiles').upsert({ username: auth.username, settings });
+
+  const status = await getVoteStatus();
+  res.json({ success: true, ...status });
+});
+
+// Admin: Abstimmungs-Übersicht
+app.get('/api/admin/votes', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+  const status = await getVoteStatus();
+  res.json({ ...status, threshold: VOTE_THRESHOLD, remaining: Math.max(0, VOTE_THRESHOLD - status.count) });
+});
+
 // ─── KI Proxy (Groq) ──────────────────────────────────────────────────────────
 app.post('/api/ki', async (req, res) => {
   const groqKey = process.env.GROQ_API_KEY;

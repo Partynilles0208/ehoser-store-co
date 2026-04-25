@@ -26,12 +26,13 @@ accessForm.addEventListener('submit', async (event) => {
         activeAdminCode = code;
         secureArea.style.display = '';
         setStatus('Admin-Bereich freigeschaltet.', 'success');
-        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadAdminApps()]);
+        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadAdminApps(), loadVotes()]);
         clearInterval(adminRefreshInterval);
         adminRefreshInterval = setInterval(() => {
             loadRegisteredUsers();
             loadResetRequests();
             loadAdminApps();
+            loadVotes();
         }, 8000);
     } catch (err) {
         setStatus('Verbindungsfehler.', 'error');
@@ -173,6 +174,31 @@ async function loadRegisteredUsers() {
             .join('');
     } catch (error) {
         setStatus(`Fehler beim Laden der Nutzer: ${error.message}`, 'error');
+    }
+}
+
+async function loadVotes() {
+    if (!activeAdminCode) return;
+    const el = document.getElementById('votesAdminList');
+    if (!el) return;
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/votes`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await res.json();
+        if (!res.ok) { el.innerHTML = '<li>Fehler beim Laden.</li>'; return; }
+        const { count, threshold, remaining, voters, unlocked } = data;
+        el.innerHTML = `
+            <li style="margin-bottom:12px;">
+                <strong style="font-size:1.1rem;color:${unlocked ? '#2dbe6c' : '#4d9fff'};">${unlocked ? '✅ Update freigeschaltet!' : `${count} / ${threshold} Stimmen – noch ${remaining} nötig`}</strong>
+                <div style="background:rgba(255,255,255,0.06);border-radius:99px;height:8px;margin:8px 0;overflow:hidden;">
+                    <div style="height:100%;background:linear-gradient(90deg,#0e8a9b,#4d9fff);border-radius:99px;width:${Math.min(100, count * 10)}%;transition:width 0.4s ease;"></div>
+                </div>
+            </li>
+            ${voters.length ? voters.map(v => `<li style="color:#8ab4c9;padding:3px 0;">✔ ${escapeHtml(v)}</li>`).join('') : '<li style="color:#8ab4c9;">Noch keine Stimmen.</li>'}
+        `;
+    } catch {
+        el.innerHTML = '<li>Verbindungsfehler.</li>';
     }
 }
 
