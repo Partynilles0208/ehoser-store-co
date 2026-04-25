@@ -77,6 +77,9 @@ CREATE TABLE IF NOT EXISTS referral_invites (
       ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_unlocked BOOLEAN DEFAULT FALSE;
     `);
     await pool.query(`
+      ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS chat_token TEXT NULL;
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS referral_invites (
         code TEXT PRIMARY KEY,
         inviter_username TEXT NOT NULL,
@@ -1867,6 +1870,26 @@ app.delete('/api/me/unlink-email', async (req, res) => {
   const { error } = await supabase.from('users').update({ email: null }).eq('id', auth.id);
   if (error) return res.status(500).json({ error: 'E-Mail konnte nicht entfernt werden.' });
   res.json({ success: true });
+});
+
+// Chat Token: abrufen
+app.get('/api/me/chat-token', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const { data } = await supabase.from('user_profiles').select('chat_token').eq('username', auth.username).single();
+  res.json({ token: data?.chat_token || null });
+});
+
+// Chat Token: neu erstellen
+app.post('/api/me/chat-token', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const token = 'ect_' + crypto.randomBytes(32).toString('hex');
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({ username: auth.username, chat_token: token }, { onConflict: 'username' });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ token });
 });
 
 // ─── Update-Abstimmung ────────────────────────────────────────────────────────
