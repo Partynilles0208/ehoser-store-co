@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS referral_invites (
       );
     `);
     await pool.query(`
+      ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_vote BOOLEAN DEFAULT FALSE;
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS referral_invites (
         code TEXT PRIMARY KEY,
         inviter_username TEXT NOT NULL,
@@ -1834,15 +1837,14 @@ app.delete('/api/me/unlink-email', async (req, res) => {
 
 const VOTE_THRESHOLD = 10;
 
-// Hilfsfunktion: alle Stimmen zählen
+// Votes werden in einer eigenen Spalte `update_vote` in user_profiles gespeichert
 async function getVoteStatus() {
-  // Alle user_profiles durchsuchen die _updateVote=true haben
   const { data } = await supabase
     .from('user_profiles')
-    .select('username, settings')
-    .not('settings', 'is', null);
+    .select('username, update_vote')
+    .eq('update_vote', true);
 
-  const voters = (data || []).filter(r => r.settings?._updateVote === true).map(r => r.username);
+  const voters = (data || []).map(r => r.username);
   const count = voters.length;
   return { count, unlocked: count >= VOTE_THRESHOLD, voters };
 }
@@ -1862,13 +1864,19 @@ app.post('/api/vote', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
 
-  const profile = await getProfile(auth.username);
-  if (profile?.settings?._updateVote) {
+  // Prüfen ob bereits abgestimmt (direkt aus DB, nicht über normalizeSettings)
+  const { data: existing } = await supabase
+    .from('user_profiles')
+    .select('update_vote')
+    .eq('username', auth.username)
+    .single();
+
+  if (existing?.update_vote === true) {
     return res.status(409).json({ error: 'Du hast bereits abgestimmt.' });
   }
 
-  const settings = { ...(profile?.settings || {}), _updateVote: true };
-  await supabase.from('user_profiles').upsert({ username: auth.username, settings });
+  // Stimme setzen (upsert, andere Felder unberührt lassen)
+  await supabase.from('user_profiles').upsert({ username: auth.username, update_vote: true });
 
   const status = await getVoteStatus();
   res.json({ success: true, ...status });
