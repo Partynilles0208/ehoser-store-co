@@ -1188,6 +1188,7 @@ Wenn du den Nutzer persÃ¶nlich ansprechen mÃ¶chtest, schreibe ausschlieÃŸl
 Antworte IMMER ausschlieÃŸlich auf Deutsch, egal in welcher Sprache der Nutzer schreibt. Keine Ausnahmen.
 Halte deine Antworten kurz und knapp â€“ maximal 3-4 SÃ¤tze.
 Du kannst Bilder generieren! Wenn der Nutzer ein Bild moechte, antworte mit: BILD_GENERIEREN: [englischer Bildprompt]. Dieser Befehl wird automatisch erkannt und ein Bild erstellt.`;
+Du kannst auch Videos generieren! Wenn der Nutzer ein Video moechte, antworte mit: VIDEO_GENERIEREN: [englischer Videoprompt]. Dieser Befehl wird automatisch erkannt und ein Video erstellt.erstellt.`;
 
 function startKIWithName() {
     const input = document.getElementById('kiNameInput');
@@ -1310,6 +1311,94 @@ function kiHandleImageGenCommand(reply) {
     return true;
 }
 
+function appendKIVideoBubble(prompt) {
+    const messages = document.getElementById('kiMessages');
+    if (!messages) return null;
+    const div = document.createElement('div');
+    div.className = 'ki-bubble ki-bubble-ai';
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:0.8rem;color:#8ab4c9;margin-bottom:8px;';
+    label.textContent = '\uD83C\uDFAC Generiertes Video: ' + prompt;
+    div.appendChild(label);
+    const status = document.createElement('div');
+    status.className = 'ki-video-status';
+    status.style.cssText = 'color:#8ab4c9;font-size:0.9rem;padding:4px 0;';
+    status.textContent = '\u23F3 Video wird generiert\u2026 (30-90 Sekunden)';
+    div.appendChild(status);
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+    return { div, status };
+}
+
+async function kiStartVideoGeneration(prompt) {
+    const bubble = appendKIVideoBubble(prompt);
+    if (!bubble) return;
+    const { div, status } = bubble;
+    const messages = document.getElementById('kiMessages');
+    try {
+        const res = await fetch('/api/ki/video/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.video_id) {
+            status.textContent = '\u274C ' + (data.error || 'Video-Generierung fehlgeschlagen');
+            return;
+        }
+        const videoId = data.video_id;
+        let attempts = 0;
+        const maxAttempts = 36; // 3 Minuten max (36 * 5s)
+        const poll = setInterval(async () => {
+            attempts++;
+            if (attempts > maxAttempts) {
+                clearInterval(poll);
+                status.textContent = '\u274C Zeitüberschreitung – Video nicht verfügbar';
+                return;
+            }
+            try {
+                const r = await fetch(`/api/ki/video/${videoId}/status`);
+                const d = await r.json();
+                if (d.status === 'done' && d.url) {
+                    clearInterval(poll);
+                    status.remove();
+                    const video = document.createElement('video');
+                    video.src = d.url;
+                    video.controls = true;
+                    video.style.cssText = 'max-width:100%;border-radius:10px;margin-top:6px;';
+                    const link = document.createElement('a');
+                    link.href = d.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    link.style.cssText = 'display:block;font-size:0.8rem;color:#8ab4c9;margin-top:6px;text-decoration:underline;';
+                    link.textContent = '\u2B07\uFE0F Video herunterladen';
+                    div.appendChild(video);
+                    div.appendChild(link);
+                    if (messages) messages.scrollTop = messages.scrollHeight;
+                } else if (d.status === 'failed') {
+                    clearInterval(poll);
+                    status.textContent = '\u274C Video-Generierung fehlgeschlagen';
+                } else {
+                    const dots = '.'.repeat((attempts % 3) + 1);
+                    status.textContent = '\u23F3 Video wird generiert' + dots + ' (' + (attempts * 5) + 's)';
+                }
+            } catch (e) { /* nächster Versuch */ }
+        }, 5000);
+    } catch (err) {
+        status.textContent = '\u274C Verbindungsfehler';
+    }
+}
+
+function kiHandleVideoGenCommand(reply) {
+    const match = reply.match(/VIDEO_GENERIEREN:\s*(.+)/i);
+    if (!match) return false;
+    const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
+    const textBefore = reply.replace(/VIDEO_GENERIEREN:\s*.+/i, '').trim();
+    if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
+    kiStartVideoGeneration(prompt);
+    return true;
+}
+
 function showKITyping() {
     const messages = document.getElementById('kiMessages');
     if (!messages) return null;
@@ -1407,7 +1496,7 @@ async function sendKIMessage() {
         const data = await res.json();
         const rawReply = data?.choices?.[0]?.message?.content || '(Keine Antwort)';
         _kiHistory.push({ role: 'assistant', content: rawReply });
-        if (!kiHandleImageGenCommand(rawReply)) {
+        if (!kiHandleVideoGenCommand(rawReply) && !kiHandleImageGenCommand(rawReply)) {
             const reply = kiReplaceNamePlaceholder(rawReply);
             appendKIBubble('ai', reply);
         }
