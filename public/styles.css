@@ -2078,8 +2078,7 @@ textarea:focus {
     background: linear-gradient(135deg, #0e8a9b, #f47c2a);
     box-shadow: 0 0 80px rgba(14,138,155,0.6), 0 0 160px rgba(244,124,42,0.3);
     border-radius: 40px;
-    animation: big-logo-appear 0.7s cubic-bezier(.2,1.2,.4,1) 15s forwards,
-               big-logo-shrink-move 1.8s cubic-bezier(.6,0,.4,1) 16.5s forwards;
+    /* Animation via JS gesteuert */
 }
 
 @keyframes blue-roll-in {
@@ -2133,21 +2132,7 @@ textarea:focus {
     45%  { opacity: 1; }
     100% { opacity: 0; }
 }
-@keyframes big-logo-appear {
-    0%   { opacity: 0; transform: scale(0.2) rotate(-360deg); }
-    70%  { opacity: 1; transform: scale(1.15) rotate(15deg); }
-    100% { opacity: 1; transform: scale(1) rotate(0deg); }
-}
-@keyframes big-logo-shrink-move {
-    0% {
-        width: 180px; height: 180px; font-size: 7rem; border-radius: 40px;
-        top: calc(50% - 90px); left: calc(50% - 90px);
-    }
-    100% {
-        width: 36px; height: 36px; font-size: 1.35rem; border-radius: 10px;
-        top: 36px; left: 40px;
-    }
-}
+
 
 .mode-card-youtube:hover {
     border-color: #ff4444;
