@@ -196,23 +196,8 @@ async function handleLogin(event) {
 
 // ── reCAPTCHA entfernt – Vote-Screen oder direkt starten ─────────────────────
 function showCaptcha() {
-    // Zuerst Vote-Status prüfen
-    fetch(`${API_BASE}/vote/status`)
-        .then(r => r.json())
-        .then(data => {
-            applyUpdateFeatures(data.unlocked || false);
-            if (data.unlocked) {
-                // Update schon freigeschaltet → direkt App
-                startApp();
-            } else {
-                // Update noch nicht freigeschaltet → Vote-Screen zeigen
-                showVoteScreen();
-            }
-        })
-        .catch(() => {
-            // Bei Fehler: direkt starten
-            startApp();
-        });
+    applyUpdateFeatures(true);
+    startApp();
 }
 
 // ── Update-Abstimmung ─────────────────────────────────────────────────────────
