@@ -1577,6 +1577,8 @@ function openSettingsModal() {
             }).catch(() => {});
     }
     document.getElementById('emailCodeRow').style.display = 'none';
+    // Chat Token laden
+    loadChatToken();
     modal.classList.add('show');
 }
 
@@ -1644,6 +1646,50 @@ function closeSettingsModal() {
     if (emailCodeInput) emailCodeInput.value = '';
     if (emailCodeRow) emailCodeRow.style.display = 'none';
 }
+
+async function loadChatToken() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const res = await fetch(`${API_BASE}/me/chat-token`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        const display = document.getElementById('chatTokenDisplay');
+        const val = document.getElementById('chatTokenValue');
+        if (data.token && display && val) {
+            val.textContent = data.token;
+            display.style.display = 'block';
+        }
+    } catch {}
+}
+
+async function createChatToken() {
+    const token = localStorage.getItem('token');
+    if (!token) { showAlert('Bitte zuerst anmelden.', 'error'); return; }
+    const msg = document.getElementById('chatTokenMsg');
+    if (msg) msg.textContent = 'Token wird erstellt...';
+    try {
+        const res = await fetch(`${API_BASE}/me/chat-token`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) { if (msg) msg.textContent = data.error || 'Fehler.'; return; }
+        const display = document.getElementById('chatTokenDisplay');
+        const val = document.getElementById('chatTokenValue');
+        if (display && val) { val.textContent = data.token; display.style.display = 'block'; }
+        if (msg) msg.textContent = 'Token wurde erstellt!';
+    } catch { if (msg) msg.textContent = 'Netzwerkfehler.'; }
+}
+
+function copyChatToken() {
+    const val = document.getElementById('chatTokenValue');
+    if (!val?.textContent) return;
+    navigator.clipboard.writeText(val.textContent).then(() => {
+        const msg = document.getElementById('chatTokenMsg');
+        if (msg) msg.textContent = 'Token kopiert!';
+    });
+}
+
 
 async function unlinkEmail() {
     if (!confirm('E-Mail-Adresse wirklich entfernen?')) return;
