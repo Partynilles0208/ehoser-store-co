@@ -32,6 +32,10 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Admin-Client mit service_role key – umgeht RLS für Server-seitige Operationen
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
 // Auto-Migration: Tabellen anlegen wenn nicht vorhanden
 async function initDatabase() {
   const dbUrl = process.env.DATABASE_URL;
@@ -187,7 +191,7 @@ async function getProfile(username) {
 
   // Settings aus user_profiles holen (optional)
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('user_profiles')
       .select('settings, pro_until')
       .eq('username', username)
@@ -239,7 +243,7 @@ async function upsertProfile(username, patch) {
   if (!savedToUsers) {
     try {
       // Spalte existiert nicht → in user_profiles speichern
-      await supabase.from('user_profiles').upsert({
+      await supabaseAdmin.from('user_profiles').upsert({
         username,
         settings: newSettings,
         pro_until: newProUntil
@@ -252,7 +256,7 @@ async function upsertProfile(username, patch) {
 
   // Settings immer in user_profiles speichern (Fehler ignorieren)
   try {
-    await supabase.from('user_profiles').upsert({ username, settings: newSettings, pro_until: newProUntil });
+    await supabaseAdmin.from('user_profiles').upsert({ username, settings: newSettings, pro_until: newProUntil });
   } catch {}
 
   const ms = newProUntil ? Date.parse(newProUntil) : 0;
@@ -946,7 +950,7 @@ app.get('/api/admin/users', async (req, res) => {
     const users = [];
     for (const userRow of (data || [])) {
       const profile = await getProfile(userRow.username);
-      const { data: up } = await supabase
+      const { data: up } = await supabaseAdmin
         .from('user_profiles')
         .select('update_unlocked')
         .eq('username', userRow.username)
@@ -1020,7 +1024,7 @@ app.post('/api/admin/users/:id/unlock-update', async (req, res) => {
     const { data, error } = await supabase.from('users').select('username').eq('id', userId).single();
     if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
 
-    const { error: upsertErr } = await supabase
+    const { error: upsertErr } = await supabaseAdmin
       .from('user_profiles')
       .upsert({ username: data.username, update_unlocked: enabled }, { onConflict: 'username' });
 
@@ -1767,14 +1771,14 @@ async function getPendingEmailCode(username) {
 async function setPendingEmailCode(username, data) {
   const profile = await getProfile(username);
   const settings = { ...(profile?.settings || {}), _emailPending: data };
-  await supabase.from('user_profiles').upsert({ username, settings });
+  await supabaseAdmin.from('user_profiles').upsert({ username, settings });
 }
 
 async function clearPendingEmailCode(username) {
   const profile = await getProfile(username);
   const settings = { ...(profile?.settings || {}) };
   delete settings._emailPending;
-  await supabase.from('user_profiles').upsert({ username, settings });
+  await supabaseAdmin.from('user_profiles').upsert({ username, settings });
 }
 
 app.post('/api/me/link-email', async (req, res) => {
@@ -1876,7 +1880,7 @@ app.delete('/api/me/unlink-email', async (req, res) => {
 app.get('/api/me/chat-token', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
-  const { data } = await supabase.from('user_profiles').select('chat_token').eq('username', auth.username).single();
+  const { data } = await supabaseAdmin.from('user_profiles').select('chat_token').eq('username', auth.username).single();
   res.json({ token: data?.chat_token || null });
 });
 
@@ -1885,7 +1889,7 @@ app.post('/api/me/chat-token', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
   const token = 'ect_' + crypto.randomBytes(32).toString('hex');
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('user_profiles')
     .upsert({ username: auth.username, chat_token: token }, { onConflict: 'username' });
   if (error) return res.status(500).json({ error: error.message });
@@ -1900,7 +1904,7 @@ const VOTE_THRESHOLD = 10;
 
 // Votes werden in einer eigenen Spalte `update_vote` in user_profiles gespeichert
 async function getVoteStatus() {
-  const { data } = await supabase
+  const { data } = await supabaseAdmin
     .from('user_profiles')
     .select('username, update_vote')
     .eq('update_vote', true);
@@ -1920,7 +1924,7 @@ app.get('/api/vote/status', async (req, res) => {
     if (token) {
       try {
         const auth = jwt.verify(token, JWT_SECRET);
-        const { data } = await supabase
+        const { data } = await supabaseAdmin
           .from('user_profiles')
           .select('update_vote, update_unlocked')
           .eq('username', auth.username)
@@ -1943,7 +1947,7 @@ app.post('/api/vote', async (req, res) => {
   if (!auth) return;
 
   // Prüfen ob bereits abgestimmt (direkt aus DB, nicht über normalizeSettings)
-  const { data: existing } = await supabase
+  const { data: existing } = await supabaseAdmin
     .from('user_profiles')
     .select('update_vote')
     .eq('username', auth.username)
@@ -1954,7 +1958,7 @@ app.post('/api/vote', async (req, res) => {
   }
 
   // Stimme setzen (upsert, andere Felder unberührt lassen)
-  const { error: upsertError } = await supabase
+  const { error: upsertError } = await supabaseAdmin
     .from('user_profiles')
     .upsert({ username: auth.username, update_vote: true }, { onConflict: 'username' });
 
