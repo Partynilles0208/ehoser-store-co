@@ -6,10 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "start:supabase": "node server-supabase.js",
-    "start:agent": "node server-agent.js",
     "dev": "nodemon server.js",
     "dev:supabase": "nodemon server-supabase.js",
-    "dev:agent": "nodemon server-agent.js",
     "generate-secrets": "node generate-secrets.js"
   },
   "engines": { "node": ">=18" },
@@ -22,9 +20,7 @@
     "jsonwebtoken": "^9.0.0",
     "multer": "^1.4.5-lts.1",
     "@supabase/supabase-js": "^2.38.0",
-    "pg": "^8.10.0",
-    "puppeteer": "^22.0.0",
-    "ws": "^8.17.0"
+    "pg": "^8.10.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.20"

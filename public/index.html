@@ -130,72 +130,7 @@
                                 <span class="mode-badge mode-badge-ki">Llama 3.3 70B</span>
                             </div>
                         </button>
-                        <button class="mode-card mode-card-agent" onclick="selectMode('browser-agent')">
-                            <div class="mode-card-icon">🌐</div>
-                            <div class="mode-card-body">
-                                <h3>KI Browser</h3>
-                                <p>Die KI surft selbständig im Internet, zeigt ihre Gedanken live und löst Aufgaben.</p>
-                                <span class="mode-badge mode-badge-agent">⚡ PRO • Agent Mode</span>
-                            </div>
-                        </button>
-                    </div>
-                </div>
-            </section>
 
-            <!-- ehoser KI Browser Agent -->
-            <section id="browser-agent" class="section">
-                <div class="ba-layout">
-                    <div class="ba-header">
-                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
-                        <h2 class="ba-title">🌐 ehoser KI Browser</h2>
-                        <div class="ba-status" id="baStatus">
-                            <span class="ba-dot ba-dot-off"></span> Nicht verbunden
-                        </div>
-                    </div>
-                    <div class="ba-body">
-                        <div class="ba-browser-panel">
-                            <div class="ba-urlbar">
-                                <span class="ba-urlbar-icon">🔒</span>
-                                <span class="ba-urlbar-text" id="baCurrentUrl">about:blank</span>
-                            </div>
-                            <div class="ba-viewport-wrap" id="baViewportWrap">
-                                <div class="ba-blank-state" id="baBlankState">
-                                    <div style="font-size:3rem">🌐</div>
-                                    <p>Verbinde dich mit dem Browser-Server und gib eine Aufgabe ein.</p>
-                                </div>
-                                <img id="baScreenshot" class="ba-screenshot" src="" alt=""
-                                    style="display:none"
-                                    onclick="baManualClick(event)">
-                                <div class="ba-cursor" id="baCursor">
-                                    <svg width="18" height="22" viewBox="0 0 18 22" fill="none">
-                                        <path d="M1 1L1 17L5 12.5L7.5 19.5L10 18.5L7.5 11.5L13 11.5Z"
-                                            fill="white" stroke="#1a1a2e" stroke-width="1.5"/>
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="ba-thoughts-panel">
-                            <div class="ba-thoughts-header">💭 KI-Gedanken</div>
-                            <div class="ba-thoughts" id="baThoughts">
-                                <div class="ba-thought-empty">Noch keine Aktivität.</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="ba-footer">
-                        <div class="ba-connect-row">
-                            <input type="text" id="baServerInput" class="ba-server-input"
-                                placeholder="wss://dein-agent.up.railway.app"
-                                onkeydown="if(event.key==='Enter')baConnect()">
-                            <button class="ba-btn ba-connect-btn" id="baConnectBtn" onclick="baConnect()">Verbinden</button>
-                            <button class="ba-btn ba-disconnect-btn" id="baDisconnectBtn" onclick="baDisconnect()" style="display:none">Trennen</button>
-                        </div>
-                        <div class="ba-task-row">
-                            <input type="text" id="baTaskInput" class="ba-task-input"
-                                placeholder="Aufgabe z.B. 'Suche auf Google nach Wetter Berlin'"
-                                onkeydown="if(event.key==='Enter')baStartAgent()">
-                            <button class="ba-btn ba-start-btn" id="baStartBtn" onclick="baStartAgent()" disabled>▶ Start</button>
-                            <button class="ba-btn ba-stop-btn" id="baStopBtn" onclick="baStopAgent()" style="display:none">⏹ Stop</button>
-                        </div>
                     </div>
                 </div>
             </section>

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     --bg: #081218;
     --bg-soft: #10232d;
     --card: #f7fbff;
@@ -45,7 +45,7 @@
 }
 
 .online-list li::before {
-    content: "● ";
+    content: "â— ";
     color: #22c55e;
     font-size: 0.6rem;
     vertical-align: middle;
@@ -708,7 +708,7 @@ textarea:focus {
     }
 }
 
-/* ── Modus-Auswahl ─────────────────────────────────────────────────────────── */
+/* â”€â”€ Modus-Auswahl â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .mode-select-container {
     display: flex;
     flex-direction: column;
@@ -880,7 +880,7 @@ textarea:focus {
     border-color: rgba(74,222,128,0.3);
 }
 
-/* ── Karte Section ───────────────────────────────────────────────────────────── */
+/* â”€â”€ Karte Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .map-wrapper {
     display: flex;
     flex-direction: column;
@@ -990,7 +990,7 @@ textarea:focus {
     .map-layer-btn { flex: 1; text-align: center; }
 }
 
-/* ── Weather Section ─────────────────────────────────────────────────────────── */
+/* â”€â”€ Weather Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .weather-search-bar {
     display: flex;
     gap: 10px;
@@ -1176,7 +1176,7 @@ textarea:focus {
     color: #9ac5d8;
 }
 
-/* ── Zugangscode-Box (Auth-Seite) ────────────────────────────────────────────── */
+/* â”€â”€ Zugangscode-Box (Auth-Seite) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .unlock-code-box {
     margin-top: 24px;
     background: rgba(14,138,155,0.08);
@@ -1261,7 +1261,7 @@ textarea:focus {
     }
 }
 
-/* ── Face Warp Section ───────────────────────────────────────────────────────── */
+/* â”€â”€ Face Warp Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .facewarp-header {
     display: flex;
     align-items: center;
@@ -1293,7 +1293,7 @@ textarea:focus {
     display: block;
 }
 
-/* ── Spiele-Sektion ─────────────────────────────────────────────────────────── */
+/* â”€â”€ Spiele-Sektion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .games-header {
     margin-bottom: 24px;
 }
@@ -1469,7 +1469,7 @@ textarea:focus {
     text-align: center;
 }
 
-/* ── Spiel-Spielen Modal (Vollbild) ────────────────────────────────────────── */
+/* â”€â”€ Spiel-Spielen Modal (Vollbild) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .game-modal {
     position: fixed;
     inset: 0;
@@ -1639,7 +1639,7 @@ textarea:focus {
     }
 }
 
-/* ── VirusTotal Scan ────────────────────────────────────────────────────────── */
+/* â”€â”€ VirusTotal Scan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .admin-help {
     color: var(--muted, #8ab0c0);
     font-size: 0.9rem;
@@ -1766,7 +1766,7 @@ textarea:focus {
     color: var(--muted, #8ab0c0);
 }
 
-/* ── Bildschirmübertragung (Nutzer-Popup) ────────────────────────────────────── */
+/* â”€â”€ BildschirmÃ¼bertragung (Nutzer-Popup) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sr-popup {
     position: fixed;
     inset: 0;
@@ -1821,7 +1821,7 @@ textarea:focus {
     justify-content: center;
 }
 
-/* ── Bildschirmübertragung (Aktiv-Indikator) ─────────────────────────────────── */
+/* â”€â”€ BildschirmÃ¼bertragung (Aktiv-Indikator) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sr-indicator {
     position: fixed;
     top: 0;
@@ -1858,7 +1858,7 @@ textarea:focus {
     50% { opacity: 0.85; }
 }
 
-/* ── Bildschirmübertragung (Admin Viewer Modal) ───────────────────────────────── */
+/* â”€â”€ BildschirmÃ¼bertragung (Admin Viewer Modal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sv-modal {
     position: fixed;
     inset: 0;
@@ -1957,16 +1957,16 @@ textarea:focus {
 
  
  
-/* ── Intro Splash ────────────────────────────────────────────────────────────
-   0s  – 3s  : E rollt von rechts in Bildschirmmitte
-   3s         : E stoppt, Name erscheint darüber
-   5s  – 8s  : E rollt nach links weg
-   8s  – 12s : Name leuchtet (4s)
-   12s – 16s : Name verschwindet (4s)
-   16s – 21s : Schwarz → hell, Website taucht auf (5s)
-───────────────────────────────────────────────────────────────────────────── */
+/* â”€â”€ Intro Splash â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   0s  â€“ 3s  : E rollt von rechts in Bildschirmmitte
+   3s         : E stoppt, Name erscheint darÃ¼ber
+   5s  â€“ 8s  : E rollt nach links weg
+   8s  â€“ 12s : Name leuchtet (4s)
+   12s â€“ 16s : Name verschwindet (4s)
+   16s â€“ 21s : Schwarz â†’ hell, Website taucht auf (5s)
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-/* Schwarzer Deckmantel über der ganzen Seite */
+/* Schwarzer Deckmantel Ã¼ber der ganzen Seite */
 .intro-splash {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -1978,7 +1978,7 @@ textarea:focus {
     animation: splash-brighten 0.4s ease-out 16s forwards;
 }
 
-/* ─── Das rollende E – absolut zentriert im Viewport ─── */
+/* â”€â”€â”€ Das rollende E â€“ absolut zentriert im Viewport â”€â”€â”€ */
 .intro-logo {
     position: absolute;
     top: 50%;
@@ -1996,16 +1996,16 @@ textarea:focus {
     font-family: "Space Grotesk", sans-serif;
     font-size: 4.5rem;
     font-weight: 700;
-    /* Startet rechts außerhalb, rollt in Mitte, rollt links raus */
+    /* Startet rechts auÃŸerhalb, rollt in Mitte, rollt links raus */
     animation:
         e-roll-in  3s ease-out 0s   forwards,
         e-roll-out 3s ease-in  5s   forwards;
 }
 
-/* ─── Name – absolut über der Mitte des Screens ─── */
+/* â”€â”€â”€ Name â€“ absolut Ã¼ber der Mitte des Screens â”€â”€â”€ */
 .intro-text {
     position: absolute;
-    /* Oberhalb der Bildschirmmitte – über der E-Box */
+    /* Oberhalb der Bildschirmmitte â€“ Ã¼ber der E-Box */
     top: calc(50% - 55px - 30px - 80px);
     left: 50%;
     transform: translateX(-50%);
@@ -2037,7 +2037,7 @@ textarea:focus {
     letter-spacing: 0.03em;
 }
 
-/* ─── Keyframes ─── */
+/* â”€â”€â”€ Keyframes â”€â”€â”€ */
 
 @keyframes e-roll-in {
     0%   { transform: translateX(120vw) rotate(0deg); }
@@ -2073,7 +2073,7 @@ textarea:focus {
     100% { opacity: 0; }
 }
 
-/* ── YouTube Section ─────────────────────────────────────────────────────────── */
+/* â”€â”€ YouTube Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .mode-card-youtube:hover {
     border-color: #ff4444;
     box-shadow: 0 20px 40px rgba(255,68,68,0.24);
@@ -2378,7 +2378,7 @@ textarea:focus {
     .yt-search-wrap { flex-direction: row; }
 }
 
-/* ── KI Section (Gemini Chat) ────────────────────────────────────────────────── */
+/* â”€â”€ KI Section (Gemini Chat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .mode-card-ki:hover {
     border-color: #818cf8;
     box-shadow: 0 20px 40px rgba(129,140,248,0.24);
@@ -2554,7 +2554,7 @@ textarea:focus {
     .ki-bubble { max-width: 95%; }
 }
 
-/* ── ehoser KI Name-Modal ────────────────────────────────────────────────────── */
+/* â”€â”€ ehoser KI Name-Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .ki-name-modal {
     display: flex;
     align-items: center;
@@ -2639,7 +2639,7 @@ textarea:focus {
     line-height: 1.5;
 }
 
-/* ── KI Datei-Anhang ─────────────────────────────────────────────────────────── */
+/* â”€â”€ KI Datei-Anhang â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .ki-attach-btn {
     background: #0a1828;
     border: 1px solid #2a3060;
@@ -2702,267 +2702,3 @@ textarea:focus {
     margin-bottom: 4px;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   ehoser KI Browser Agent
-══════════════════════════════════════════════════════════════════════════════ */
-
-/* Mode Card */
-.mode-card-agent { border-color: #0e7a5a; }
-.mode-card-agent:hover { border-color: #10b981; box-shadow: 0 0 28px rgba(16,185,129,0.18); }
-.mode-badge-agent { background: linear-gradient(90deg,#064e3b,#065f46); color: #34d399; }
-
-/* Layout */
-.ba-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-    gap: 0;
-}
-
-.ba-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 18px;
-    background: #060f1a;
-    border-bottom: 1px solid #0f2035;
-    flex-shrink: 0;
-}
-
-.ba-title {
-    flex: 1;
-    font-size: 1rem;
-    font-weight: 700;
-    color: #34d399;
-    margin: 0;
-}
-
-.ba-status {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 0.8rem;
-    color: #7a9ab8;
-}
-
-.ba-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
-}
-.ba-dot-off  { background: #374151; }
-.ba-dot-on   { background: #10b981; box-shadow: 0 0 6px #10b981; animation: ba-pulse 1.5s infinite; }
-.ba-dot-busy { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; animation: ba-pulse 0.8s infinite; }
-
-@keyframes ba-pulse {
-    0%,100% { opacity: 1; }
-    50%      { opacity: 0.4; }
-}
-
-/* Body – browser + thoughts side by side */
-.ba-body {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    gap: 0;
-    overflow: hidden;
-}
-
-/* Browser panel (left) */
-.ba-browser-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid #0f2035;
-    min-width: 0;
-}
-
-.ba-urlbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    background: #070e1a;
-    border-bottom: 1px solid #0f2035;
-    flex-shrink: 0;
-}
-
-.ba-urlbar-icon { font-size: 0.85rem; flex-shrink: 0; }
-
-.ba-urlbar-text {
-    flex: 1;
-    font-size: 0.78rem;
-    color: #7a9ab8;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-family: 'Courier New', monospace;
-}
-
-/* Viewport */
-.ba-viewport-wrap {
-    flex: 1;
-    position: relative;
-    background: #02080e;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.ba-blank-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    color: #2a3a5a;
-    text-align: center;
-    padding: 20px;
-    font-size: 0.9rem;
-}
-
-.ba-screenshot {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    display: block;
-    cursor: crosshair;
-}
-
-/* Animated cursor */
-.ba-cursor {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: none;
-    z-index: 10;
-    transition: top 0.25s cubic-bezier(.4,0,.2,1), left 0.25s cubic-bezier(.4,0,.2,1);
-    display: none;
-}
-.ba-cursor.ba-cursor-click {
-    animation: ba-cursor-click 0.3s ease;
-}
-@keyframes ba-cursor-click {
-    0%   { transform: scale(1); }
-    50%  { transform: scale(0.65); }
-    100% { transform: scale(1); }
-}
-
-/* Thoughts panel (right) */
-.ba-thoughts-panel {
-    width: 260px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    background: #050d18;
-}
-
-.ba-thoughts-header {
-    padding: 10px 14px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: #34d399;
-    border-bottom: 1px solid #0f2035;
-    flex-shrink: 0;
-}
-
-.ba-thoughts {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.ba-thought-empty {
-    color: #2a3a5a;
-    font-size: 0.8rem;
-    text-align: center;
-    padding: 20px 0;
-}
-
-.ba-thought {
-    font-size: 0.8rem;
-    line-height: 1.45;
-    padding: 8px 10px;
-    border-radius: 10px;
-    word-break: break-word;
-}
-.ba-thought-task  { background: rgba(16,185,129,0.1); border-left: 3px solid #10b981; color: #a7f3d0; }
-.ba-thought-ai    { background: rgba(99,102,241,0.1); border-left: 3px solid #6366f1; color: #c4b5fd; }
-.ba-thought-action{ background: rgba(245,158,11,0.1); border-left: 3px solid #f59e0b; color: #fcd34d; font-family: monospace; }
-.ba-thought-done  { background: rgba(16,185,129,0.15); border-left: 3px solid #34d399; color: #6ee7b7; font-weight: 600; }
-.ba-thought-error { background: rgba(239,68,68,0.1); border-left: 3px solid #ef4444; color: #fca5a5; }
-
-/* Footer controls */
-.ba-footer {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px 16px;
-    background: #060f1a;
-    border-top: 1px solid #0f2035;
-    flex-shrink: 0;
-}
-
-.ba-connect-row,
-.ba-task-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.ba-server-input {
-    flex: 1;
-    background: #050d18;
-    border: 1px solid #1a2a40;
-    border-radius: 10px;
-    padding: 8px 12px;
-    color: #e0e7ff;
-    font-size: 0.82rem;
-    font-family: 'Courier New', monospace;
-    outline: none;
-}
-.ba-server-input:focus { border-color: #10b981; }
-
-.ba-task-input {
-    flex: 1;
-    background: #050d18;
-    border: 1px solid #1a2a40;
-    border-radius: 10px;
-    padding: 8px 12px;
-    color: #e0e7ff;
-    font-size: 0.88rem;
-    font-family: inherit;
-    outline: none;
-}
-.ba-task-input:focus { border-color: #6366f1; }
-
-/* Buttons */
-.ba-btn {
-    border: none;
-    border-radius: 10px;
-    padding: 8px 14px;
-    font-family: inherit;
-    font-size: 0.82rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: opacity 0.15s;
-}
-.ba-btn:hover { opacity: 0.85; }
-.ba-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
-.ba-connect-btn    { background: #064e3b; color: #34d399; }
-.ba-disconnect-btn { background: #2d1b1b; color: #f87171; }
-.ba-start-btn      { background: linear-gradient(135deg,#6366f1,#818cf8); color: #fff; }
-.ba-stop-btn       { background: #7f1d1d; color: #fca5a5; }
-
-@media (max-width: 700px) {
-    .ba-body { flex-direction: column; }
-    .ba-thoughts-panel { width: 100%; height: 140px; border-right: none; border-top: 1px solid #0f2035; }
-    .ba-browser-panel { border-right: none; }
-}

@@ -1,4 +1,4 @@
-const API_BASE = `${window.location.origin}/api`;
+﻿const API_BASE = `${window.location.origin}/api`;
 let currentUser = null;
 let currentProfile = null;
 let allApps = [];
@@ -186,22 +186,22 @@ async function handleLogin(event) {
         startOnlinePolling();
         document.getElementById('loginForm').reset();
     } catch (err) {
-        showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
+        showAlert('Verbindungsfehler. PrÃ¼fe ob der Server lÃ¤uft.', 'error');
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Splash: nur einmal pro Browser-Session (Session-Cookie löscht sich beim Browser-Schließen)
+    // Splash: nur einmal pro Browser-Session (Session-Cookie lÃ¶scht sich beim Browser-SchlieÃŸen)
     const splash = document.getElementById('introSplash');
     if (splash) {
         const cookieSet = document.cookie.split(';').some(c => c.trim().startsWith('intro_shown='));
         if (cookieSet) {
-            // Bereits in dieser Browser-Session gesehen → sofort ausblenden
+            // Bereits in dieser Browser-Session gesehen â†’ sofort ausblenden
             splash.remove();
             document.body.classList.remove('splash-active');
             document.body.style.overflow = '';
         } else {
-            // Erste Öffnung → Intro abspielen, dann Session-Cookie setzen
+            // Erste Ã–ffnung â†’ Intro abspielen, dann Session-Cookie setzen
             setTimeout(() => {
                 splash.remove();
                 document.body.classList.remove('splash-active');
@@ -243,8 +243,8 @@ async function verifyToken(token) {
         clearTimeout(timeout);
 
         if (response.status === 401) {
-            // Token abgelaufen/ungültig – Token NICHT löschen!
-            // User kann sich erneut anmelden → Token wird dann überschrieben
+            // Token abgelaufen/ungÃ¼ltig â€“ Token NICHT lÃ¶schen!
+            // User kann sich erneut anmelden â†’ Token wird dann Ã¼berschrieben
             localStorage.removeItem('proStatus');
             showSection('mode-select');
             return;
@@ -260,7 +260,7 @@ async function verifyToken(token) {
         if (data.token) localStorage.setItem('token', data.token);
         currentUser = data.user;
         currentProfile = data.profile || null;
-        // 🔥 Pro-Status in localStorage speichern für FaceWarp/Chat
+        // ðŸ”¥ Pro-Status in localStorage speichern fÃ¼r FaceWarp/Chat
         localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
         applyProfileSettings();
         showLoggedInUI();
@@ -268,7 +268,7 @@ async function verifyToken(token) {
         showSection('mode-select');
         startOnlinePolling();
     } catch (err) {
-        // Netzwerkfehler: Token NICHT löschen, Seite trotzdem zeigen
+        // Netzwerkfehler: Token NICHT lÃ¶schen, Seite trotzdem zeigen
         showSection('mode-select');
     }
 }
@@ -287,7 +287,7 @@ async function handleRegister(event) {
         return;
     }
     if (password !== passwordConfirm) {
-        showAlert('Passwörter stimmen nicht überein.', 'error');
+        showAlert('PasswÃ¶rter stimmen nicht Ã¼berein.', 'error');
         return;
     }
 
@@ -329,7 +329,7 @@ async function handleRegister(event) {
         startOnlinePolling();
         document.getElementById('registerForm').reset();
     } catch (err) {
-        showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
+        showAlert('Verbindungsfehler. PrÃ¼fe ob der Server lÃ¤uft.', 'error');
     }
 }
 
@@ -388,7 +388,7 @@ function displayApps(apps) {
 
 function renderIcon(iconUrl, appName) {
     if (!iconUrl) {
-        return '<span class="emoji-icon">📱</span>';
+        return '<span class="emoji-icon">ðŸ“±</span>';
     }
 
     const looksLikeImage = iconUrl.startsWith('/uploads/') || /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(iconUrl) || iconUrl.startsWith('http');
@@ -601,7 +601,7 @@ async function loadUnlockCode() {
         _unlockCode = data.code;
         document.getElementById('unlockCodeDisplay').textContent = _unlockCode;
     } catch {
-        document.getElementById('unlockCodeDisplay').textContent = '–';
+        document.getElementById('unlockCodeDisplay').textContent = 'â€“';
     }
 }
 
@@ -619,10 +619,10 @@ async function copyUnlockCode() {
         sel.addRange(range);
     }
     const btn = document.querySelector('.unlock-code-copy');
-    btn.textContent = '✓ Kopiert!';
+    btn.textContent = 'âœ“ Kopiert!';
     btn.classList.add('copied');
     setTimeout(() => {
-        btn.textContent = '📋 Kopieren';
+        btn.textContent = 'ðŸ“‹ Kopieren';
         btn.classList.remove('copied');
     }, 2000);
 }
@@ -648,26 +648,8 @@ function selectMode(mode) {
     } else if (mode === 'youtube') {
         showSection('youtube');
         setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
-    } else if (mode === 'browser-agent') {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            showAlert('Bitte zuerst anmelden, um den KI Browser zu nutzen.', 'error');
-            showSection('auth');
-            return;
-        }
-        if (localStorage.getItem('proStatus') !== '1') {
-            showAlert('Der KI Browser ist ein PRO-Feature. Bitte upgrade deinen Account.', 'error');
-            return;
-        }
-        showSection('browser-agent');
-        // Gespeicherte Server-URL laden
-        const savedUrl = localStorage.getItem('baServerUrl');
-        if (savedUrl) {
-            const inp = document.getElementById('baServerInput');
-            if (inp) inp.value = savedUrl;
-        }
     } else if (mode === 'ki') {
-        // Registrierung nötig
+        // Registrierung nÃ¶tig
         const token = localStorage.getItem('token');
         if (!token) {
             showAlert('Bitte zuerst anmelden, um ehoser KI zu nutzen.', 'error');
@@ -675,7 +657,7 @@ function selectMode(mode) {
             return;
         }
         showSection('ki');
-        // Name bereits bekannt → direkt Chat öffnen, sonst Modal zeigen
+        // Name bereits bekannt â†’ direkt Chat Ã¶ffnen, sonst Modal zeigen
         if (sessionStorage.getItem('kiUserName')) {
             showKIChat();
         } else {
@@ -692,35 +674,35 @@ function selectMode(mode) {
     }
 }
 
-// WMO Wetter-Code → Emoji + Beschreibung (Open-Meteo)
+// WMO Wetter-Code â†’ Emoji + Beschreibung (Open-Meteo)
 function weatherCodeInfo(code) {
     const map = {
-        0:  ['☀️', 'Klarer Himmel'],
-        1:  ['🌤️', 'Überwiegend klar'],
-        2:  ['⛅', 'Teilweise bewölkt'],
-        3:  ['☁️', 'Bedeckt'],
-        45: ['🌫️', 'Nebel'],
-        48: ['🌫️', 'Gefrierender Nebel'],
-        51: ['🌦️', 'Leichter Nieselregen'],
-        53: ['🌦️', 'Nieselregen'],
-        55: ['🌧️', 'Starker Nieselregen'],
-        61: ['🌧️', 'Leichter Regen'],
-        63: ['🌧️', 'Regen'],
-        65: ['🌧️', 'Starker Regen'],
-        71: ['🌨️', 'Leichter Schneefall'],
-        73: ['🌨️', 'Schneefall'],
-        75: ['❄️', 'Starker Schneefall'],
-        77: ['🌨️', 'Schneekörner'],
-        80: ['🌦️', 'Leichte Schauer'],
-        81: ['🌧️', 'Schauer'],
-        82: ['⛈️', 'Starke Schauer'],
-        85: ['🌨️', 'Schneeschauer'],
-        86: ['❄️', 'Starke Schneeschauer'],
-        95: ['⛈️', 'Gewitter'],
-        96: ['⛈️', 'Gewitter mit Hagel'],
-        99: ['⛈️', 'Gewitter mit starkem Hagel'],
+        0:  ['â˜€ï¸', 'Klarer Himmel'],
+        1:  ['ðŸŒ¤ï¸', 'Ãœberwiegend klar'],
+        2:  ['â›…', 'Teilweise bewÃ¶lkt'],
+        3:  ['â˜ï¸', 'Bedeckt'],
+        45: ['ðŸŒ«ï¸', 'Nebel'],
+        48: ['ðŸŒ«ï¸', 'Gefrierender Nebel'],
+        51: ['ðŸŒ¦ï¸', 'Leichter Nieselregen'],
+        53: ['ðŸŒ¦ï¸', 'Nieselregen'],
+        55: ['ðŸŒ§ï¸', 'Starker Nieselregen'],
+        61: ['ðŸŒ§ï¸', 'Leichter Regen'],
+        63: ['ðŸŒ§ï¸', 'Regen'],
+        65: ['ðŸŒ§ï¸', 'Starker Regen'],
+        71: ['ðŸŒ¨ï¸', 'Leichter Schneefall'],
+        73: ['ðŸŒ¨ï¸', 'Schneefall'],
+        75: ['â„ï¸', 'Starker Schneefall'],
+        77: ['ðŸŒ¨ï¸', 'SchneekÃ¶rner'],
+        80: ['ðŸŒ¦ï¸', 'Leichte Schauer'],
+        81: ['ðŸŒ§ï¸', 'Schauer'],
+        82: ['â›ˆï¸', 'Starke Schauer'],
+        85: ['ðŸŒ¨ï¸', 'Schneeschauer'],
+        86: ['â„ï¸', 'Starke Schneeschauer'],
+        95: ['â›ˆï¸', 'Gewitter'],
+        96: ['â›ˆï¸', 'Gewitter mit Hagel'],
+        99: ['â›ˆï¸', 'Gewitter mit starkem Hagel'],
     };
-    return map[code] || ['🌡️', `Wetter-Code ${code}`];
+    return map[code] || ['ðŸŒ¡ï¸', `Wetter-Code ${code}`];
 }
 
 async function runWeatherSearch() {
@@ -734,23 +716,23 @@ async function runWeatherSearch() {
         return;
     }
 
-    status.textContent = 'Suche Ort…';
+    status.textContent = 'Suche Ortâ€¦';
     result.innerHTML = '';
 
     try {
-        // 1. Geocoding (kein API Key nötig)
+        // 1. Geocoding (kein API Key nÃ¶tig)
         const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=de&format=json`);
         const geoData = await geoRes.json();
 
         if (!geoData.results?.length) {
-            status.textContent = `Ort „${city}" nicht gefunden.`;
+            status.textContent = `Ort â€ž${city}" nicht gefunden.`;
             return;
         }
 
         const { latitude, longitude, name, country, admin1 } = geoData.results[0];
-        status.textContent = 'Lade Wetterdaten…';
+        status.textContent = 'Lade Wetterdatenâ€¦';
 
-        // 2. Wetterdaten (kein API Key nötig)
+        // 2. Wetterdaten (kein API Key nÃ¶tig)
         const weatherRes = await fetch(
             `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
             `&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,visibility` +
@@ -765,7 +747,7 @@ async function runWeatherSearch() {
         const feels     = Math.round(cur.apparent_temperature);
         const humidity  = cur.relative_humidity_2m;
         const wind      = Math.round(cur.wind_speed_10m);
-        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : '–';
+        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : 'â€“';
         const [icon, desc] = weatherCodeInfo(cur.weather_code);
         const location  = [name, admin1, country].filter(Boolean).join(', ');
 
@@ -775,19 +757,19 @@ async function runWeatherSearch() {
                 <div class="weather-card-country">${escapeHtml([admin1, country].filter(Boolean).join(', '))}</div>
                 <div class="weather-card-icon" style="font-size:5rem;line-height:1">${icon}</div>
                 <div class="weather-card-desc">${escapeHtml(desc)}</div>
-                <div class="weather-card-temp">${temp}°C</div>
-                <div class="weather-card-feels">Gefühlt wie ${feels}°C</div>
+                <div class="weather-card-temp">${temp}Â°C</div>
+                <div class="weather-card-feels">GefÃ¼hlt wie ${feels}Â°C</div>
                 <div class="weather-card-stats">
                     <div class="weather-stat">
-                        <span class="weather-stat-label">💧 Luftfeucht.</span>
+                        <span class="weather-stat-label">ðŸ’§ Luftfeucht.</span>
                         <span class="weather-stat-value">${humidity}%</span>
                     </div>
                     <div class="weather-stat">
-                        <span class="weather-stat-label">💨 Wind</span>
+                        <span class="weather-stat-label">ðŸ’¨ Wind</span>
                         <span class="weather-stat-value">${wind} km/h</span>
                     </div>
                     <div class="weather-stat">
-                        <span class="weather-stat-label">👁️ Sichtweite</span>
+                        <span class="weather-stat-label">ðŸ‘ï¸ Sichtweite</span>
                         <span class="weather-stat-value">${visKm}</span>
                     </div>
                 </div>
@@ -797,7 +779,7 @@ async function runWeatherSearch() {
     }
 }
 
-// ─── Karte (Leaflet + OpenStreetMap + Nominatim) ──────────────────────────────
+// â”€â”€â”€ Karte (Leaflet + OpenStreetMap + Nominatim) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let _map = null;
 let _mapNormalLayer = null;
 let _mapSatLayer = null;
@@ -814,17 +796,17 @@ function initMap() {
     if (!_map) return;
 
     _mapNormalLayer = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        attribution: 'Â© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19
     });
     _mapSatLayer = window.L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles © Esri',
+        attribution: 'Tiles Â© Esri',
         maxZoom: 19
     });
     _mapNormalLayer.addTo(_map);
 
-    // Dropdown schließen bei Klick auf Karte
+    // Dropdown schlieÃŸen bei Klick auf Karte
     _map.on('click', closeMapDropdown);
 }
 
@@ -901,13 +883,13 @@ function goToMapResult(lat, lon, name) {
     if (input) input.value = name.split(',')[0].trim();
 }
 
-// Dropdown schließen bei Klick außerhalb
+// Dropdown schlieÃŸen bei Klick auÃŸerhalb
 document.addEventListener('click', (e) => {
     const wrap = document.getElementById('mapSearchInput')?.closest('.map-search-wrap');
     if (wrap && !wrap.contains(e.target)) closeMapDropdown();
 });
 
-// ─── YouTube (YouTube Data API v3) ────────────────────────────────────────────
+// â”€â”€â”€ YouTube (YouTube Data API v3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const YT_API_KEY = 'AIzaSyBKmRUuR2URlYmdDHGC-6I5N7Vxv4SxScc';
 let _ytType = 'video';
 let _ytNextPageToken = null;
@@ -931,7 +913,7 @@ async function runYTSearch(pageToken) {
     const status = document.getElementById('ytStatus');
     const results = document.getElementById('ytResults');
     const pagination = document.getElementById('ytPagination');
-    if (status) status.textContent = 'Suche läuft…';
+    if (status) status.textContent = 'Suche lÃ¤uftâ€¦';
     if (results) results.innerHTML = '';
     if (pagination) pagination.innerHTML = '';
     closeYTPlayer();
@@ -961,8 +943,8 @@ async function runYTSearch(pageToken) {
         // Pagination
         if (pagination && (_ytPrevPageToken || _ytNextPageToken)) {
             pagination.innerHTML = `
-                ${_ytPrevPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytPrevPageToken}')">← Zurück</button>` : ''}
-                ${_ytNextPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytNextPageToken}')">Weiter →</button>` : ''}
+                ${_ytPrevPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytPrevPageToken}')">â† ZurÃ¼ck</button>` : ''}
+                ${_ytNextPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytNextPageToken}')">Weiter â†’</button>` : ''}
             `;
         }
 
@@ -984,17 +966,17 @@ function buildYTCard(item) {
     if (kind === 'youtube#video') {
         id = item.id.videoId;
         onclickAttr = `openYTPlayer('${id}', this.querySelector('.yt-card-title').textContent, 'video')`;
-        badge = '▶ Video';
-        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">▶</div></div>`;
+        badge = 'â–¶ Video';
+        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">â–¶</div></div>`;
     } else if (kind === 'youtube#playlist') {
         id = item.id.playlistId;
         onclickAttr = `openYTPlayer('${id}', this.querySelector('.yt-card-title').textContent, 'playlist')`;
-        badge = '📋 Playlist';
-        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">▶</div></div>`;
+        badge = 'ðŸ“‹ Playlist';
+        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">â–¶</div></div>`;
     } else {
         id = item.id.channelId;
         onclickAttr = `window.open('https://www.youtube.com/channel/${id}','_blank')`;
-        badge = '📺 Kanal';
+        badge = 'ðŸ“º Kanal';
         playOverlay = '';
     }
 
@@ -1038,16 +1020,16 @@ function closeYTPlayer() {
     if (wrap) wrap.style.display = 'none';
 }
 
-// ─── KI Chat (Groq – Llama 3.3 70B) ──────────────────────────────────────────
+// â”€â”€â”€ KI Chat (Groq â€“ Llama 3.3 70B) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // API Key liegt serverseitig in GROQ_API_KEY (Vercel Environment Variable)
 let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
 
-const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser läuft. ehoser ist eine private Plattform mit APK Store, Spielen, Chat und weiteren Features.
-Deine Persönlichkeit ist locker, nett und ein kleines bisschen charmant – aber nicht übertrieben. Keine Kosenamen wie "Schatz" oder "Süße". Sprich den Nutzer normal aber herzlich an.
-Wenn du den Nutzer persönlich ansprechen möchtest, schreibe ausschließlich [name] anstelle des echten Namens (zum Beispiel: "Hey [name], wie kann ich helfen?"). Verwende niemals den echten Namen direkt.
-Antworte IMMER ausschließlich auf Deutsch, egal in welcher Sprache der Nutzer schreibt. Keine Ausnahmen.
-Halte deine Antworten kurz und knapp – maximal 3-4 Sätze.`;
+const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser lÃ¤uft. ehoser ist eine private Plattform mit APK Store, Spielen, Chat und weiteren Features.
+Deine PersÃ¶nlichkeit ist locker, nett und ein kleines bisschen charmant â€“ aber nicht Ã¼bertrieben. Keine Kosenamen wie "Schatz" oder "SÃ¼ÃŸe". Sprich den Nutzer normal aber herzlich an.
+Wenn du den Nutzer persÃ¶nlich ansprechen mÃ¶chtest, schreibe ausschlieÃŸlich [name] anstelle des echten Namens (zum Beispiel: "Hey [name], wie kann ich helfen?"). Verwende niemals den echten Namen direkt.
+Antworte IMMER ausschlieÃŸlich auf Deutsch, egal in welcher Sprache der Nutzer schreibt. Keine Ausnahmen.
+Halte deine Antworten kurz und knapp â€“ maximal 3-4 SÃ¤tze.`;
 
 function startKIWithName() {
     const input = document.getElementById('kiNameInput');
@@ -1065,14 +1047,14 @@ function showKIChat() {
     document.getElementById('kiNameModal').style.display = 'none';
     document.getElementById('kiChatWrapper').style.display = 'flex';
 
-    // Anhang-Button nur für PRO sichtbar
+    // Anhang-Button nur fÃ¼r PRO sichtbar
     const attachBtn = document.getElementById('kiAttachBtn');
     if (attachBtn) attachBtn.style.display = localStorage.getItem('proStatus') === '1' ? 'flex' : 'none';
 
     // Nur beim ersten Mal initialisieren
     if (_kiHistory.length === 0) {
         _kiHistory = [{ role: 'system', content: KI_SYSTEM_PROMPT }];
-        const greeting = kiReplaceNamePlaceholder(`Hallo, [name]! 👋 Ich bin ehoser KI, dein persönlicher Assistent auf dem ehoser Server. Wie kann ich dir heute helfen?`);
+        const greeting = kiReplaceNamePlaceholder(`Hallo, [name]! ðŸ‘‹ Ich bin ehoser KI, dein persÃ¶nlicher Assistent auf dem ehoser Server. Wie kann ich dir heute helfen?`);
         appendKIBubble('ai', greeting);
     }
     setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
@@ -1082,7 +1064,7 @@ function kiHandleFileSelect(event) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
-        showAlert('Datei zu groß (max. 4 MB).', 'error');
+        showAlert('Datei zu groÃŸ (max. 4 MB).', 'error');
         event.target.value = '';
         return;
     }
@@ -1091,7 +1073,7 @@ function kiHandleFileSelect(event) {
     reader.onload = (e) => {
         _kiAttachment = { type: isImage ? 'image' : 'text', data: e.target.result, name: file.name };
         document.getElementById('kiAttachPreview').style.display = 'flex';
-        document.getElementById('kiAttachName').textContent = '📎 ' + file.name;
+        document.getElementById('kiAttachName').textContent = 'ðŸ“Ž ' + file.name;
     };
     if (isImage) reader.readAsDataURL(file);
     else reader.readAsText(file);
@@ -1143,7 +1125,7 @@ async function sendKIMessage() {
     input.value = '';
     if (sendBtn) sendBtn.disabled = true;
 
-    // ── Nachricht aufbauen ──────────────────────────────────────
+    // â”€â”€ Nachricht aufbauen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let apiMessage; // was an Groq geht (ggf. mit base64 Bild)
     let historyMsg; // was im Verlauf gespeichert wird (kein base64)
 
@@ -1167,7 +1149,7 @@ async function sendKIMessage() {
             { type: 'text', text: text || 'Was siehst du auf diesem Bild?' },
             { type: 'image_url', image_url: { url: _kiAttachment.data } }
         ]};
-        historyMsg = { role: 'user', content: `[Bild: ${_kiAttachment.name}]${text ? ' – ' + text : ''}` };
+        historyMsg = { role: 'user', content: `[Bild: ${_kiAttachment.name}]${text ? ' â€“ ' + text : ''}` };
     } else if (_kiAttachment?.type === 'text') {
         const combined = `Dateiinhalt (${_kiAttachment.name}):\n\`\`\`\n${_kiAttachment.data.slice(0, 8000)}\n\`\`\`${text ? '\n\n' + text : ''}`;
         // Zeige Datei-Badge + Text im Chat
@@ -1177,7 +1159,7 @@ async function sendKIMessage() {
             bubble.className = 'ki-bubble ki-bubble-user';
             const badge = document.createElement('div');
             badge.className = 'ki-bubble-file-badge';
-            badge.textContent = '📄 ' + _kiAttachment.name;
+            badge.textContent = 'ðŸ“„ ' + _kiAttachment.name;
             bubble.appendChild(badge);
             if (text) { const t = document.createElement('div'); t.style.marginTop='4px'; t.textContent = text; bubble.appendChild(t); }
             msgEl.appendChild(bubble);
@@ -1211,7 +1193,7 @@ async function sendKIMessage() {
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             const msg = err?.error?.message || `Fehler ${res.status}`;
-            appendKIBubble('error', '⚠️ ' + msg);
+            appendKIBubble('error', 'âš ï¸ ' + msg);
             _kiHistory.pop();
             return;
         }
@@ -1223,7 +1205,7 @@ async function sendKIMessage() {
         appendKIBubble('ai', reply);
     } catch (err) {
         typing?.remove();
-        appendKIBubble('error', '⚠️ Verbindungsfehler. Bitte versuche es erneut.');
+        appendKIBubble('error', 'âš ï¸ Verbindungsfehler. Bitte versuche es erneut.');
         _kiHistory.pop();
     } finally {
         if (sendBtn) sendBtn.disabled = false;
@@ -1236,209 +1218,8 @@ function clearKIChat() {
     _kiHistory = [{ role: 'system', content: KI_SYSTEM_PROMPT }];
     const messages = document.getElementById('kiMessages');
     if (messages) messages.innerHTML = '';
-    appendKIBubble('ai', kiReplaceNamePlaceholder('Verlauf geleert. 👋 Womit kann ich dir helfen, [name]?'));
+    appendKIBubble('ai', kiReplaceNamePlaceholder('Verlauf geleert. ðŸ‘‹ Womit kann ich dir helfen, [name]?'));
 }
-
-// ─── ehoser KI Browser Agent ──────────────────────────────────────────────────
-let _baWs = null;
-let _baConnected = false;
-let _baAgentRunning = false;
-
-function baSetStatus(text, state) {
-    // state: 'off' | 'on' | 'busy'
-    const el = document.getElementById('baStatus');
-    if (!el) return;
-    const dotClass = state === 'on' ? 'ba-dot-on' : state === 'busy' ? 'ba-dot-busy' : 'ba-dot-off';
-    el.innerHTML = `<span class="ba-dot ${dotClass}"></span> ${text}`;
-}
-
-function baAddThought(text, kind = 'ai') {
-    const panel = document.getElementById('baThoughts');
-    if (!panel) return;
-    // Leere-Meldung entfernen
-    const empty = panel.querySelector('.ba-thought-empty');
-    if (empty) empty.remove();
-    const div = document.createElement('div');
-    div.className = `ba-thought ba-thought-${kind}`;
-    div.textContent = text;
-    panel.appendChild(div);
-    panel.scrollTop = panel.scrollHeight;
-}
-
-function baMoveCursor(agentX, agentY) {
-    // agentX/agentY sind in 1280x720 Koordinaten
-    const wrap = document.getElementById('baViewportWrap');
-    const img = document.getElementById('baScreenshot');
-    const cursor = document.getElementById('baCursor');
-    if (!wrap || !img || !cursor) return;
-
-    const rect = img.getBoundingClientRect();
-    const wrapRect = wrap.getBoundingClientRect();
-    const scaleX = rect.width / 1280;
-    const scaleY = rect.height / 720;
-    const displayX = (rect.left - wrapRect.left) + agentX * scaleX;
-    const displayY = (rect.top - wrapRect.top) + agentY * scaleY;
-
-    cursor.style.display = 'block';
-    cursor.style.left = displayX + 'px';
-    cursor.style.top = displayY + 'px';
-
-    cursor.classList.remove('ba-cursor-click');
-    void cursor.offsetWidth; // reflow
-    cursor.classList.add('ba-cursor-click');
-    setTimeout(() => cursor.classList.remove('ba-cursor-click'), 350);
-}
-
-function baUpdateScreenshot(base64, url, title) {
-    const img = document.getElementById('baScreenshot');
-    const blank = document.getElementById('baBlankState');
-    if (!img || !blank) return;
-    img.src = 'data:image/jpeg;base64,' + base64;
-    img.style.display = 'block';
-    blank.style.display = 'none';
-    const urlEl = document.getElementById('baCurrentUrl');
-    if (urlEl) urlEl.textContent = url || 'about:blank';
-}
-
-function baConnect() {
-    const inp = document.getElementById('baServerInput');
-    let url = (inp?.value || '').trim();
-    if (!url) { showAlert('Bitte Server-URL eingeben.', 'error'); return; }
-
-    // ws:// or wss:// normalisieren
-    if (!/^wss?:\/\//i.test(url)) url = 'wss://' + url;
-    localStorage.setItem('baServerUrl', url);
-
-    if (_baWs) { _baWs.close(); _baWs = null; }
-    baSetStatus('Verbinde…', 'busy');
-
-    try {
-        _baWs = new WebSocket(url);
-    } catch (e) {
-        baSetStatus('Ungültige URL', 'off');
-        showAlert('Ungültige WebSocket-URL.', 'error');
-        return;
-    }
-
-    _baWs.onopen = () => {};
-
-    _baWs.onmessage = (event) => {
-        let msg;
-        try { msg = JSON.parse(event.data); } catch { return; }
-
-        switch (msg.type) {
-            case 'ready':
-                _baConnected = true;
-                baSetStatus('Verbunden', 'on');
-                document.getElementById('baConnectBtn').style.display = 'none';
-                document.getElementById('baDisconnectBtn').style.display = '';
-                document.getElementById('baStartBtn').disabled = false;
-                baAddThought('✅ Verbunden mit Browser-Server. Gib eine Aufgabe ein!', 'done');
-                break;
-
-            case 'screenshot':
-                baUpdateScreenshot(msg.data, msg.url, msg.title);
-                break;
-
-            case 'agent_thought':
-                baAddThought(msg.text, msg.kind || 'ai');
-                break;
-
-            case 'agent_action':
-                if (msg.action === 'click' && msg.x !== undefined) {
-                    baMoveCursor(msg.x, msg.y);
-                    baAddThought(`🖱 Klick auf (${msg.x}, ${msg.y})`, 'action');
-                } else if (msg.action === 'navigate') {
-                    baAddThought(`🌐 Navigiere zu: ${msg.detail}`, 'action');
-                } else if (msg.action === 'type') {
-                    baAddThought(`⌨️ Tippe: "${msg.detail}"`, 'action');
-                } else if (msg.action === 'scroll') {
-                    baAddThought('↕️ Scrolle…', 'action');
-                }
-                break;
-
-            case 'agent_done':
-                _baAgentRunning = false;
-                baSetStatus('Verbunden', 'on');
-                document.getElementById('baStopBtn').style.display = 'none';
-                document.getElementById('baStartBtn').style.display = '';
-                document.getElementById('baCursor').style.display = 'none';
-                baAddThought(msg.message, 'done');
-                break;
-
-            case 'error':
-                baAddThought('⚠️ ' + msg.message, 'error');
-                break;
-        }
-    };
-
-    _baWs.onclose = () => {
-        _baConnected = false;
-        _baAgentRunning = false;
-        _baWs = null;
-        baSetStatus('Nicht verbunden', 'off');
-        document.getElementById('baConnectBtn').style.display = '';
-        document.getElementById('baDisconnectBtn').style.display = 'none';
-        document.getElementById('baStartBtn').disabled = true;
-        document.getElementById('baStartBtn').style.display = '';
-        document.getElementById('baStopBtn').style.display = 'none';
-        document.getElementById('baCursor').style.display = 'none';
-    };
-
-    _baWs.onerror = () => {
-        baSetStatus('Verbindungsfehler', 'off');
-        baAddThought('❌ Verbindung fehlgeschlagen. Läuft der Server auf Railway?', 'error');
-    };
-}
-
-function baDisconnect() {
-    if (_baWs) { _baWs.close(); _baWs = null; }
-    baSetStatus('Nicht verbunden', 'off');
-}
-
-function baStartAgent() {
-    if (!_baConnected || !_baWs) {
-        showAlert('Bitte zuerst mit Server verbinden.', 'error');
-        return;
-    }
-    const taskInput = document.getElementById('baTaskInput');
-    const task = (taskInput?.value || '').trim();
-    if (!task) { taskInput?.focus(); return; }
-
-    _baAgentRunning = true;
-    baSetStatus('Agent läuft…', 'busy');
-    document.getElementById('baStartBtn').style.display = 'none';
-    document.getElementById('baStopBtn').style.display = '';
-    document.getElementById('baThoughts').innerHTML = ''; // Gedanken zurücksetzen
-
-    _baWs.send(JSON.stringify({ type: 'agent_start', task }));
-}
-
-function baStopAgent() {
-    if (_baWs && _baConnected) {
-        _baWs.send(JSON.stringify({ type: 'agent_stop' }));
-    }
-    _baAgentRunning = false;
-    baSetStatus('Verbunden', 'on');
-    document.getElementById('baStopBtn').style.display = 'none';
-    document.getElementById('baStartBtn').style.display = '';
-    document.getElementById('baCursor').style.display = 'none';
-}
-
-function baManualClick(event) {
-    // Nutzer klickt manuell auf den Screenshot → weiterleiten
-    if (!_baConnected || !_baWs || _baAgentRunning) return;
-    const img = event.currentTarget;
-    const rect = img.getBoundingClientRect();
-    const scaleX = 1280 / rect.width;
-    const scaleY = 720 / rect.height;
-    const x = Math.round((event.clientX - rect.left) * scaleX);
-    const y = Math.round((event.clientY - rect.top) * scaleY);
-    _baWs.send(JSON.stringify({ type: 'click', x, y }));
-    baMoveCursor(x, y);
-    baAddThought(`🖱 Manueller Klick auf (${x}, ${y})`, 'action');
-}
-
 function renderImageSearchResults(hits) {
     const grid = document.getElementById('imageSearchResults');
     if (!grid) return;
@@ -1486,8 +1267,8 @@ async function runImageSearch() {
     }
 
     imageSearchLastQuery = q;
-    status.textContent = 'Suche läuft...';
-    if (grid) grid.innerHTML = '<div class="games-loading">Bilder werden geladen…</div>';
+    status.textContent = 'Suche lÃ¤uft...';
+    if (grid) grid.innerHTML = '<div class="games-loading">Bilder werden geladenâ€¦</div>';
 
     try {
         const params = new URLSearchParams({ q });
@@ -1503,7 +1284,7 @@ async function runImageSearch() {
         }
 
         const hits = Array.isArray(data.hits) ? data.hits : [];
-        status.textContent = `${hits.length} Treffer für "${q}"`;
+        status.textContent = `${hits.length} Treffer fÃ¼r "${q}"`;
         renderImageSearchResults(hits);
     } catch {
         status.textContent = 'Verbindungsfehler bei der Bildersuche.';
@@ -1609,11 +1390,11 @@ function openSettingsModal() {
     // Login-Code laden und anzeigen
     const codeDisplay = document.getElementById('myLoginCodeDisplay');
     if (codeDisplay) {
-        codeDisplay.textContent = '••••••';
+        codeDisplay.textContent = 'â€¢â€¢â€¢â€¢â€¢â€¢';
         codeDisplay.dataset.revealed = 'false';
     }
     const toggleBtn = document.getElementById('toggleCodeBtn');
-    if (toggleBtn) toggleBtn.textContent = '👁 Anzeigen';
+    if (toggleBtn) toggleBtn.textContent = 'ðŸ‘ Anzeigen';
     fetchLoginCode();
     updatePlanBadge();
     modal.classList.add('show');
@@ -1632,7 +1413,7 @@ async function fetchLoginCode() {
         _cachedLoginCode = data.loginCode || null;
         const codeDisplay = document.getElementById('myLoginCodeDisplay');
         if (codeDisplay && codeDisplay.dataset.revealed === 'true') {
-            codeDisplay.textContent = _cachedLoginCode || '–';
+            codeDisplay.textContent = _cachedLoginCode || 'â€“';
         }
     } catch {}
 }
@@ -1642,20 +1423,20 @@ function toggleShowLoginCode() {
     const btn = document.getElementById('toggleCodeBtn');
     if (!codeDisplay) return;
     if (codeDisplay.dataset.revealed === 'true') {
-        codeDisplay.textContent = '••••••';
+        codeDisplay.textContent = 'â€¢â€¢â€¢â€¢â€¢â€¢';
         codeDisplay.dataset.revealed = 'false';
-        if (btn) btn.textContent = '👁 Anzeigen';
+        if (btn) btn.textContent = 'ðŸ‘ Anzeigen';
     } else {
         if (_cachedLoginCode) {
             codeDisplay.textContent = _cachedLoginCode;
             codeDisplay.dataset.revealed = 'true';
-            if (btn) btn.textContent = '🙈 Verbergen';
+            if (btn) btn.textContent = 'ðŸ™ˆ Verbergen';
         } else {
             fetchLoginCode().then(() => {
                 if (_cachedLoginCode) {
                     codeDisplay.textContent = _cachedLoginCode;
                     codeDisplay.dataset.revealed = 'true';
-                    if (btn) btn.textContent = '🙈 Verbergen';
+                    if (btn) btn.textContent = 'ðŸ™ˆ Verbergen';
                 }
             });
         }
@@ -1801,26 +1582,26 @@ function escapeAttribute(value) {
     return escapeHtml(value).replace(/`/g, '&#96;');
 }
 
-// ─── Online Spiele ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Online Spiele â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let gamesAllLoaded = [];
 let gamesFiltered = [];
 let gamesCurrentPage = 1;
 let gamesCurrentCategory = 'all';
 let gamesSearchText = '';
 
-// ─── Game Timer Variablen (15min Limit für Gratis) ─────────────────────────
+// â”€â”€â”€ Game Timer Variablen (15min Limit fÃ¼r Gratis) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let _gameTimerInterval = null;
 let _gameSecondsLeft = 0;
 let _gameStartTime = null;
-let _gameLimitSeconds = 900; // 15 Min = 900 Sekunden für Gratis
+let _gameLimitSeconds = 900; // 15 Min = 900 Sekunden fÃ¼r Gratis
 
 async function loadGames() {
     const grid = document.getElementById('gamesGrid');
-    grid.innerHTML = '<div class="games-loading">Spiele werden geladen…</div>';
+    grid.innerHTML = '<div class="games-loading">Spiele werden geladenâ€¦</div>';
 
     try {
         const res = await fetch(`${API_BASE}/games?page=${gamesCurrentPage}`);
-        if (!res.ok) throw new Error('Feed nicht verfügbar');
+        if (!res.ok) throw new Error('Feed nicht verfÃ¼gbar');
         const data = await res.json();
 
         if (!Array.isArray(data) || !data.length) {
@@ -1905,12 +1686,12 @@ function displayGames(games) {
         <article class="game-card" onclick="openGame('${gameUrl}', '${gTitle}')">
             <div class="game-thumb-wrap">
                 <img class="game-thumb" src="${thumb}" alt="${title}" loading="lazy" onerror="this.style.display='none'">
-                <div class="game-play-overlay">▶</div>
+                <div class="game-play-overlay">â–¶</div>
             </div>
             <div class="game-info">
                 <h3 class="game-title">${title}</h3>
                 ${category ? `<span class="game-category">${category}</span>` : ''}
-                <p class="game-desc">${desc}${(g.description || '').length > 120 ? '…' : ''}</p>
+                <p class="game-desc">${desc}${(g.description || '').length > 120 ? 'â€¦' : ''}</p>
                 <div class="game-tags">${tags}</div>
             </div>
         </article>`;
@@ -1920,7 +1701,7 @@ function displayGames(games) {
 function _formatGameTime(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+    return `â±ï¸ ${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 function _updateGameTimer() {
@@ -1937,7 +1718,7 @@ function _updateGameTimer() {
     
     if (_gameSecondsLeft <= 0) {
         _stopGameTimer();
-        alert('⏱️ Deine 15 Minuten sind vorbei! Jetzt Vollzugang freischalten für unbegrenzte Spielzeit.');
+        alert('â±ï¸ Deine 15 Minuten sind vorbei! Jetzt Vollzugang freischalten fÃ¼r unbegrenzte Spielzeit.');
         closeGameModal();
     }
 }
@@ -1970,7 +1751,7 @@ function _stopGameTimer() {
 function openGame(url, title) {
     if (!url) return;
     
-    // Wenn kein Pro → Timer starten (15 Min)
+    // Wenn kein Pro â†’ Timer starten (15 Min)
     if (currentProfile && !currentProfile.isPro) {
         _startGameTimer();
     } else {
@@ -1987,7 +1768,7 @@ function closeGameModal() {
     _stopGameTimer();
     document.getElementById('gameFrame').src = '';
     document.getElementById('gameModal').classList.remove('show');
-    // Zurück zu Spieleauswahl
+    // ZurÃ¼ck zu Spieleauswahl
     showSection('games');
 }
 
@@ -2001,7 +1782,7 @@ function changeGamesPage(delta) {
     loadGames();
 }
 
-// ─── Bildschirmübertragung (Nutzer = Sharer / WebRTC Answerer) ────────────────
+// â”€â”€â”€ BildschirmÃ¼bertragung (Nutzer = Sharer / WebRTC Answerer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let _srSession = null;
 let _srOffer = null;
 let _srPc = null;
@@ -2062,7 +1843,7 @@ async function acceptShareRequest() {
         });
         _srPc = pc;
 
-        // Video-Track hinzufügen
+        // Video-Track hinzufÃ¼gen
         stream.getTracks().forEach(track => {
             pc.addTrack(track, stream);
             track.onended = () => endShareSession();
