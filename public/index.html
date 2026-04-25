@@ -7,7 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=7">
+    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <!-- Sofort schwarzer Hintergrund + alles außer Splash verstecken -->
     <style>
         html { background: #000; }
@@ -105,6 +106,14 @@
                                 <span class="mode-badge mode-badge-weather">OpenWeather Live</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-map" onclick="selectMode('map')">
+                            <div class="mode-card-icon">🗺️</div>
+                            <div class="mode-card-body">
+                                <h3>Karte</h3>
+                                <p>Erkunde die Welt mit OpenStreetMap. Normal- und Satellitenansicht – Ort live suchen.</p>
+                                <span class="mode-badge mode-badge-map">OpenStreetMap</span>
+                            </div>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -124,6 +133,31 @@
                     <p id="imageSearchStatus" class="image-search-status">Bereit.</p>
                 </div>
                 <div id="imageSearchResults" class="image-search-grid"></div>
+            </section>
+
+            <section id="map" class="section">
+                <div class="map-wrapper">
+                    <div class="map-controls">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <div class="map-search-wrap">
+                            <input
+                                type="text"
+                                id="mapSearchInput"
+                                class="map-search-input"
+                                placeholder="Ort suchen... (z.B. Berlin, Paris, Tokyo)"
+                                oninput="onMapSearchInput()"
+                                onkeydown="if(event.key==='Escape'){closeMapDropdown()}"
+                                autocomplete="off"
+                            >
+                            <div id="mapSearchDropdown" class="map-search-dropdown"></div>
+                        </div>
+                        <div class="map-layer-toggle">
+                            <button id="mapLayerNormalBtn" class="map-layer-btn active" onclick="setMapLayer('normal')">🗺️ Normal</button>
+                            <button id="mapLayerSatBtn" class="map-layer-btn" onclick="setMapLayer('satellite')">🛰️ Satellit</button>
+                        </div>
+                    </div>
+                    <div id="mapContainer" class="map-container"></div>
+                </div>
             </section>
 
             <section id="weather" class="section">
@@ -455,6 +489,7 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
     <script src="app.js"></script>
 </body>
 </html>

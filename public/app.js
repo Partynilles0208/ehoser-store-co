@@ -624,6 +624,9 @@ function selectMode(mode) {
         document.getElementById('weatherStatus').textContent = '';
         document.getElementById('weatherResult').innerHTML = '';
         setTimeout(() => document.getElementById('weatherCityInput')?.focus(), 50);
+    } else if (mode === 'map') {
+        showSection('map');
+        setTimeout(initMap, 50); // kurz warten bis section sichtbar ist
     } else if (mode === 'facewarp') {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
@@ -737,6 +740,116 @@ async function runWeatherSearch() {
         status.textContent = 'Verbindungsfehler. Bitte versuche es erneut.';
     }
 }
+
+// ─── Karte (Leaflet + OpenStreetMap + Nominatim) ──────────────────────────────
+let _map = null;
+let _mapNormalLayer = null;
+let _mapSatLayer = null;
+let _mapCurrentLayer = 'normal';
+let _mapSearchTimer = null;
+
+function initMap() {
+    if (_map) {
+        _map.invalidateSize();
+        return;
+    }
+    _map = window.L?.map('mapContainer', { zoomControl: true, attributionControl: true })
+        .setView([51.1657, 10.4515], 6);
+    if (!_map) return;
+
+    _mapNormalLayer = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19
+    });
+    _mapSatLayer = window.L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri',
+        maxZoom: 19
+    });
+    _mapNormalLayer.addTo(_map);
+
+    // Dropdown schließen bei Klick auf Karte
+    _map.on('click', closeMapDropdown);
+}
+
+function setMapLayer(type) {
+    if (!_map) return;
+    if (type === 'satellite' && _mapCurrentLayer !== 'satellite') {
+        _map.removeLayer(_mapNormalLayer);
+        _mapSatLayer.addTo(_map);
+        _mapCurrentLayer = 'satellite';
+        document.getElementById('mapLayerNormalBtn')?.classList.remove('active');
+        document.getElementById('mapLayerSatBtn')?.classList.add('active');
+    } else if (type === 'normal' && _mapCurrentLayer !== 'normal') {
+        _map.removeLayer(_mapSatLayer);
+        _mapNormalLayer.addTo(_map);
+        _mapCurrentLayer = 'normal';
+        document.getElementById('mapLayerSatBtn')?.classList.remove('active');
+        document.getElementById('mapLayerNormalBtn')?.classList.add('active');
+    }
+}
+
+function onMapSearchInput() {
+    const val = document.getElementById('mapSearchInput')?.value.trim() || '';
+    const dropdown = document.getElementById('mapSearchDropdown');
+    clearTimeout(_mapSearchTimer);
+
+    if (val.length < 2) {
+        closeMapDropdown();
+        return;
+    }
+
+    _mapSearchTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(val)}&format=json&limit=7&addressdetails=1&accept-language=de`,
+                { headers: { 'Accept': 'application/json' } }
+            );
+            const results = await res.json();
+            if (!dropdown) return;
+
+            if (!results.length) {
+                dropdown.innerHTML = '<div class="map-search-item map-search-empty">Kein Ergebnis gefunden</div>';
+                dropdown.style.display = 'block';
+                return;
+            }
+
+            dropdown.innerHTML = '';
+            results.forEach(r => {
+                const item = document.createElement('div');
+                item.className = 'map-search-item';
+                item.textContent = r.display_name;
+                item.dataset.lat = r.lat;
+                item.dataset.lon = r.lon;
+                item.dataset.name = r.display_name;
+                item.addEventListener('click', () => goToMapResult(item.dataset.lat, item.dataset.lon, item.dataset.name));
+                dropdown.appendChild(item);
+            });
+            dropdown.style.display = 'block';
+        } catch {
+            closeMapDropdown();
+        }
+    }, 280);
+}
+
+function closeMapDropdown() {
+    const d = document.getElementById('mapSearchDropdown');
+    if (d) { d.innerHTML = ''; d.style.display = 'none'; }
+}
+
+function goToMapResult(lat, lon, name) {
+    if (!_map) return;
+    _map.setView([parseFloat(lat), parseFloat(lon)], 14);
+    closeMapDropdown();
+    const input = document.getElementById('mapSearchInput');
+    if (input) input.value = name.split(',')[0].trim();
+}
+
+// Dropdown schließen bei Klick außerhalb
+document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('mapSearchInput')?.closest('.map-search-wrap');
+    if (wrap && !wrap.contains(e.target)) closeMapDropdown();
+});
 
 function renderImageSearchResults(hits) {
     const grid = document.getElementById('imageSearchResults');
