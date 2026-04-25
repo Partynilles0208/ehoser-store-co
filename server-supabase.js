@@ -1666,26 +1666,49 @@ if (!process.env.VERCEL) {
   });
 }
 
-// ─── reCAPTCHA Verify ─────────────────────────────────────────────────────────
+// ─── reCAPTCHA Enterprise Verify ──────────────────────────────────────────────
 app.post('/api/verify-captcha', async (req, res) => {
-  const { token } = req.body;
+  const { token, action } = req.body;
   if (!token) return res.status(400).json({ success: false, error: 'Token fehlt' });
 
-  const secret = process.env.RECAPTCHA_SECRET_KEY;
-  if (!secret) return res.status(500).json({ success: false, error: 'RECAPTCHA_SECRET_KEY nicht konfiguriert' });
+  const projectId = process.env.RECAPTCHA_PROJECT_ID;
+  const apiKey    = process.env.RECAPTCHA_SECRET_KEY;
+  const siteKey   = '6Lf6esksAAAAAA7p5xYYHCrJze9a_ng_BUKHXyom';
+
+  // Ohne Konfiguration: immer erlauben (Fallback für lokale Entwicklung)
+  if (!projectId || !apiKey) {
+    console.warn('[reCAPTCHA] RECAPTCHA_PROJECT_ID oder RECAPTCHA_SECRET_KEY fehlt – Verifikation übersprungen');
+    return res.json({ success: true, score: 1.0 });
+  }
+
   try {
     const response = await fetch(
-      `https://www.google.com/recaptcha/api/siteverify?secret=${secret}&response=${token}`,
-      { method: 'POST' }
+      `https://recaptchaenterprise.googleapis.com/v1/projects/${projectId}/assessments?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: { token, siteKey, expectedAction: action || 'VISIT' }
+        })
+      }
     );
     const data = await response.json();
-    if (data.success) {
-      res.json({ success: true });
-    } else {
-      res.status(400).json({ success: false, error: 'Captcha ungültig' });
+
+    if (!data.tokenProperties?.valid) {
+      return res.json({ success: false, blocked: true, reason: 'invalid_token' });
     }
+
+    const score = data.riskAnalysis?.score ?? 0.5;
+    // Score < 0.3 → wahrscheinlich Bot
+    if (score < 0.3) {
+      return res.json({ success: false, blocked: true, score, reason: 'low_score' });
+    }
+
+    res.json({ success: true, score });
   } catch (err) {
-    res.status(502).json({ success: false, error: 'Captcha-Verifikation fehlgeschlagen' });
+    console.error('reCAPTCHA Enterprise error:', err.message);
+    // Bei API-Fehler: Zugang erlauben (nicht blockieren wegen Backend-Fehler)
+    res.json({ success: true, score: 0.5 });
   }
 });
 

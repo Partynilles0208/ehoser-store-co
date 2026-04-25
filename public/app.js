@@ -194,8 +194,8 @@ async function handleLogin(event) {
     }
 }
 
-// ── reCAPTCHA ────────────────────────────────────────────────────────────────
-let _captchaRendered = false;
+// ── reCAPTCHA Enterprise (Score-basiert, unsichtbar) ─────────────────────────
+const RECAPTCHA_SITE_KEY = '6Lf6esksAAAAAA7p5xYYHCrJze9a_ng_BUKHXyom';
 
 function showCaptcha() {
     if (sessionStorage.getItem('captcha_passed')) {
@@ -203,42 +203,48 @@ function showCaptcha() {
         return;
     }
     const overlay = document.getElementById('captchaOverlay');
-    if (!overlay) { startApp(); return; }
-    overlay.style.display = 'flex';
-    document.body.classList.add('captcha-active');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        document.body.classList.add('captcha-active');
+    }
 
-    // Explizites Rendering – Widget erst jetzt anzeigen, da vorher display:none war
-    const tryRender = () => {
-        if (_captchaRendered) return;
-        const widget = document.getElementById('captchaWidget');
-        if (!widget) return;
-        if (window.grecaptcha && window.grecaptcha.render) {
-            _captchaRendered = true;
-            window.grecaptcha.render(widget, {
-                sitekey: '6Lf6esksAAAAAA7p5xYYHCrJze9a_ng_BUKHXyom',
-                callback: window.onCaptchaSuccess,
-                theme: 'dark'
+    const tryExecute = () => {
+        if (window.grecaptcha && window.grecaptcha.enterprise) {
+            window.grecaptcha.enterprise.ready(async () => {
+                try {
+                    const token = await window.grecaptcha.enterprise.execute(RECAPTCHA_SITE_KEY, { action: 'VISIT' });
+                    _verifyCaptchaToken(token);
+                } catch {
+                    _captchaDone(); // Fallback
+                }
             });
         } else {
-            setTimeout(tryRender, 150);
+            setTimeout(tryExecute, 150);
         }
     };
-    setTimeout(tryRender, 50);
+    setTimeout(tryExecute, 50);
 }
 
-window.onCaptchaSuccess = function(token) {
+function _verifyCaptchaToken(token) {
     fetch('/api/verify-captcha', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
+        body: JSON.stringify({ token, action: 'VISIT' })
     })
     .then(r => r.json())
     .then(data => {
-        if (!data.success) { alert('Captcha fehlgeschlagen. Bitte neu laden.'); return; }
+        if (data.blocked) {
+            const overlay = document.getElementById('captchaOverlay');
+            if (overlay) {
+                overlay.querySelector('.captcha-sub').textContent = 'Zugriff verweigert. Bitte neu laden.';
+                overlay.querySelector('.captcha-spinner').style.display = 'none';
+            }
+            return;
+        }
         _captchaDone();
     })
-    .catch(() => _captchaDone()); // Fallback bei Netzwerkfehler
-};
+    .catch(() => _captchaDone()); // Bei Fehler: Zugang erlauben
+}
 
 function _captchaDone() {
     sessionStorage.setItem('captcha_passed', '1');

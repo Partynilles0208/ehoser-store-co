@@ -16,7 +16,7 @@
         body.splash-active > *:not(#introSplash) { display: none !important; }
         body.captcha-active { overflow: hidden !important; }
     </style>
-    <script src="https://www.google.com/recaptcha/api.js?render=explicit" async defer></script>
+    <script src="https://www.google.com/recaptcha/enterprise.js?render=6Lf6esksAAAAAA7p5xYYHCrJze9a_ng_BUKHXyom" async defer></script>
 </head>
 <body class="splash-active">
     <!-- ── Intro Splash ──────────────────────────────────────────────────── -->
@@ -28,13 +28,15 @@
         </div>
     </div>
 
-    <!-- ── reCAPTCHA Overlay ───────────────────────────────────────── -->
+    <!-- ── reCAPTCHA Enterprise Overlay (unsichtbar, automatisch) ─────── -->
     <div id="captchaOverlay" class="captcha-overlay" style="display:none">
         <div class="captcha-box">
             <div class="captcha-logo">E</div>
             <h2 class="captcha-title">Willkommen bei ehoser</h2>
-            <p class="captcha-sub">Bitte bestätige, dass du kein Roboter bist.</p>
-            <div id="captchaWidget"></div>
+            <p class="captcha-sub">Sicherheitsprüfung läuft...</p>
+            <div style="display:flex;justify-content:center;margin:16px 0">
+                <div class="captcha-spinner"></div>
+            </div>
             <p class="captcha-hint">🔒 Deine Daten werden geschützt.</p>
         </div>
     </div>
