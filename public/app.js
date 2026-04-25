@@ -10,6 +10,10 @@ let resetPollInterval = null;
 let pendingReferral = null;
 let imageSearchLastQuery = '';
 
+// Client-Konfiguration (API Keys sicher vom Backend laden)
+window.__ENV__ = {};
+fetch('/api/config').then(r => r.json()).then(cfg => { window.__ENV__ = cfg; }).catch(() => {});
+
 function switchAuthTab(tab, btn) {
     document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
     document.getElementById('loginForm').style.display = tab === 'login' ? '' : 'none';
@@ -948,7 +952,7 @@ document.addEventListener('click', (e) => {
 });
 
 // â”€â”€â”€ YouTube (YouTube Data API v3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const YT_API_KEY = 'AIzaSyBKmRUuR2URlYmdDHGC-6I5N7Vxv4SxScc';
+const YT_API_KEY = window.__ENV__?.YT_API_KEY || '';
 let _ytType = 'video';
 let _ytNextPageToken = null;
 let _ytPrevPageToken = null;
