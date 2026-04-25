@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS referral_invites (
       ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_vote BOOLEAN DEFAULT FALSE;
     `);
     await pool.query(`
+      ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_unlocked BOOLEAN DEFAULT FALSE;
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS referral_invites (
         code TEXT PRIMARY KEY,
         inviter_username TEXT NOT NULL,
@@ -940,10 +943,16 @@ app.get('/api/admin/users', async (req, res) => {
     const users = [];
     for (const userRow of (data || [])) {
       const profile = await getProfile(userRow.username);
+      const { data: up } = await supabase
+        .from('user_profiles')
+        .select('update_unlocked')
+        .eq('username', userRow.username)
+        .single();
       users.push({
         ...userRow,
         pro_until: profile.proUntil,
-        is_pro: profile.isPro
+        is_pro: profile.isPro,
+        update_unlocked: up?.update_unlocked === true
       });
     }
     res.json(users);
@@ -987,6 +996,35 @@ app.post('/api/admin/users/:id/pro', async (req, res) => {
   } catch (error) {
     console.error('Admin Pro Toggle Error:', error);
     return res.status(500).json({ error: 'Pro-Status konnte nicht geändert werden' });
+  }
+});
+
+// Admin: Update für bestimmten User freischalten/sperren
+app.post('/api/admin/users/:id/unlock-update', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  const enabled = req.body?.enabled !== false; // default true
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+  }
+
+  try {
+    const { data, error } = await supabase.from('users').select('username').eq('id', userId).single();
+    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const { error: upsertErr } = await supabase
+      .from('user_profiles')
+      .upsert({ username: data.username, update_unlocked: enabled }, { onConflict: 'username' });
+
+    if (upsertErr) return res.status(500).json({ error: upsertErr.message });
+    return res.json({ ok: true, username: data.username, update_unlocked: enabled });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -1853,17 +1891,24 @@ async function getVoteStatus() {
 app.get('/api/vote/status', async (req, res) => {
   try {
     const status = await getVoteStatus();
-    // Prüfen ob eingeloggter User bereits abgestimmt hat
     let myVote = false;
+    let myUnlocked = false;
     const token = req.headers.authorization?.split(' ')[1];
     if (token) {
       try {
         const auth = jwt.verify(token, JWT_SECRET);
-        const { data } = await supabase.from('user_profiles').select('update_vote').eq('username', auth.username).single();
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('update_vote, update_unlocked')
+          .eq('username', auth.username)
+          .single();
         myVote = data?.update_vote === true;
+        myUnlocked = data?.update_unlocked === true;
       } catch {}
     }
-    res.json({ ...status, myVote });
+    // unlocked = globale Schwelle erreicht ODER User hat persönliche Freischaltung
+    const unlocked = status.unlocked || myUnlocked;
+    res.json({ ...status, unlocked, myVote, myUnlocked });
   } catch {
     res.status(500).json({ error: 'Fehler beim Laden des Abstimmungsstatus.' });
   }
