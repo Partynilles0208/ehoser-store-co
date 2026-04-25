@@ -190,31 +190,74 @@ async function handleLogin(event) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    // Splash: nur einmal pro Browser-Session (Session-Cookie lÃ¶scht sich beim Browser-SchlieÃŸen)
-    const splash = document.getElementById('introSplash');
-    if (splash) {
-        const cookieSet = document.cookie.split(';').some(c => c.trim().startsWith('intro_shown='));
-        if (cookieSet) {
-            // Bereits in dieser Browser-Session gesehen â†’ sofort ausblenden
-            splash.remove();
-            document.body.classList.remove('splash-active');
-            document.body.style.overflow = '';
-        } else {
-            // Erste Ã–ffnung â†’ Intro abspielen, dann Session-Cookie setzen
-            setTimeout(() => {
-                splash.remove();
-                document.body.classList.remove('splash-active');
-                document.body.style.overflow = '';
-                document.cookie = 'intro_shown=1; path=/; SameSite=Strict'; // kein expires = Session-Cookie
-                // Sicherstellen dass die Seite sichtbar ist, egal was vorher passiert ist
-                if (!document.querySelector('.section.active')) {
-                    showSection('mode-select');
-                }
-            }, 16500);
-        }
-    }
+// ── reCAPTCHA ────────────────────────────────────────────────────────────────
+let _captchaRendered = false;
 
+function showCaptcha() {
+    if (sessionStorage.getItem('captcha_passed')) {
+        startApp();
+        return;
+    }
+    const overlay = document.getElementById('captchaOverlay');
+    if (!overlay) { startApp(); return; }
+    overlay.style.display = 'flex';
+    document.body.classList.add('captcha-active');
+
+    // Explizites Rendering – Widget erst jetzt anzeigen, da vorher display:none war
+    const tryRender = () => {
+        if (_captchaRendered) return;
+        const widget = document.getElementById('captchaWidget');
+        if (!widget) return;
+        if (window.grecaptcha && window.grecaptcha.render) {
+            _captchaRendered = true;
+            window.grecaptcha.render(widget, {
+                sitekey: '6Ld8c8ksAAAAFIV8RZqeiMvod-QJ64rIDf_H1tZ',
+                callback: window.onCaptchaSuccess,
+                theme: 'dark'
+            });
+        } else {
+            setTimeout(tryRender, 150);
+        }
+    };
+    setTimeout(tryRender, 50);
+}
+
+window.onCaptchaSuccess = function(token) {
+    fetch('/api/verify-captcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) { alert('Captcha fehlgeschlagen. Bitte neu laden.'); return; }
+        _captchaDone();
+    })
+    .catch(() => _captchaDone()); // Fallback bei Netzwerkfehler
+};
+
+function _captchaDone() {
+    sessionStorage.setItem('captcha_passed', '1');
+    const overlay = document.getElementById('captchaOverlay');
+    if (overlay) {
+        overlay.style.animation = 'captcha-out 0.3s ease forwards';
+        setTimeout(() => { overlay.style.display = 'none'; }, 300);
+    }
+    document.body.classList.remove('captcha-active');
+    startApp();
+}
+
+function startApp() {
+    const token = localStorage.getItem('token');
+    if (token) {
+        verifyToken(token);
+        return;
+    }
+    showSection('mode-select');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Referral-Code aus URL lesen
     const ref = new URLSearchParams(window.location.search).get('ref');
     pendingReferral = ref || localStorage.getItem('pendingReferralCode') || null;
     if (pendingReferral) {
@@ -223,12 +266,27 @@ document.addEventListener('DOMContentLoaded', () => {
         if (referralInput) referralInput.value = pendingReferral;
     }
 
-    const token = localStorage.getItem('token');
-    if (token) {
-        verifyToken(token);
-        return;
+    // Splash: nur einmal pro Browser-Session
+    const splash = document.getElementById('introSplash');
+    if (splash) {
+        const cookieSet = document.cookie.split(';').some(c => c.trim().startsWith('intro_shown='));
+        if (cookieSet) {
+            splash.remove();
+            document.body.classList.remove('splash-active');
+            document.body.style.overflow = '';
+            showCaptcha();
+        } else {
+            setTimeout(() => {
+                splash.remove();
+                document.body.classList.remove('splash-active');
+                document.body.style.overflow = '';
+                document.cookie = 'intro_shown=1; path=/; SameSite=Strict';
+                showCaptcha();
+            }, 16500);
+        }
+    } else {
+        showCaptcha();
     }
-    showSection('mode-select');
 });
 
 async function verifyToken(token) {
@@ -1397,6 +1455,17 @@ function openSettingsModal() {
     if (toggleBtn) toggleBtn.textContent = 'ðŸ‘ Anzeigen';
     fetchLoginCode();
     updatePlanBadge();
+    // Aktuelle E-Mail laden
+    const emailDisplay = document.getElementById('emailCurrentDisplay');
+    if (emailDisplay) {
+        fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+            .then(r => r.json())
+            .then(d => {
+                const mail = d.user?.email || null;
+                emailDisplay.textContent = mail ? `Verknüpft: ${mail}` : 'Noch keine E-Mail verknüpft.';
+            }).catch(() => {});
+    }
+    document.getElementById('emailCodeRow').style.display = 'none';
     modal.classList.add('show');
 }
 
@@ -1456,6 +1525,46 @@ async function copyLoginCode() {
 
 function closeSettingsModal() {
     document.getElementById('settingsModal').classList.remove('show');
+}
+
+// ── E-Mail Verknüpfung ────────────────────────────────────────────────────────
+async function sendEmailCode() {
+    const email = document.getElementById('emailInput')?.value?.trim();
+    if (!email) { showAlert('Bitte eine E-Mail-Adresse eingeben.', 'error'); return; }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const res = await fetch(`${API_BASE}/me/link-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (!res.ok) { showAlert(data.error || 'Fehler beim Senden.', 'error'); return; }
+        document.getElementById('emailCodeRow').style.display = 'block';
+        showAlert('Code wurde gesendet!', 'success');
+    } catch { showAlert('Netzwerkfehler.', 'error'); }
+}
+
+async function verifyEmailCode() {
+    const code = document.getElementById('emailCodeInput')?.value?.trim();
+    if (!code || code.length !== 6) { showAlert('Bitte den 6-stelligen Code eingeben.', 'error'); return; }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const res = await fetch(`${API_BASE}/me/verify-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+        if (!res.ok) { showAlert(data.error || 'Falscher Code.', 'error'); return; }
+        document.getElementById('emailCurrentDisplay').textContent = `Verknüpft: ${data.email}`;
+        document.getElementById('emailCodeRow').style.display = 'none';
+        document.getElementById('emailInput').value = '';
+        document.getElementById('emailCodeInput').value = '';
+        showAlert('E-Mail erfolgreich verknüpft!', 'success');
+    } catch { showAlert('Netzwerkfehler.', 'error'); }
 }
 
 async function saveAccountSettings() {

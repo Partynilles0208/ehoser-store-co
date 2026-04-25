@@ -684,11 +684,18 @@ app.get('/api/me', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
   const profile = await getProfile(auth.username);
+  // email aus users-Tabelle lesen
+  let email = null;
+  try {
+    const { data } = await supabase.from('users').select('email').eq('id', auth.id).single();
+    email = data?.email || null;
+  } catch {}
   res.json({
     user: {
       id: auth.id,
       username: auth.username,
-      isAdmin: Boolean(auth.isAdmin)
+      isAdmin: Boolean(auth.isAdmin),
+      email
     },
     profile
   });
@@ -1651,6 +1658,113 @@ if (!process.env.VERCEL) {
     console.log(`📊 Connected to Supabase: ${SUPABASE_URL}`);
   });
 }
+
+// ─── reCAPTCHA Verify ─────────────────────────────────────────────────────────
+app.post('/api/verify-captcha', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ success: false, error: 'Token fehlt' });
+
+  const secret = process.env.RECAPTCHA_SECRET_KEY || '6Ld8c8ksAAAAM2z0cOQBzHrK5Cloy6ZNNmQaRNj';
+  try {
+    const response = await fetch(
+      `https://www.google.com/recaptcha/api/siteverify?secret=${secret}&response=${token}`,
+      { method: 'POST' }
+    );
+    const data = await response.json();
+    if (data.success) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: 'Captcha ungültig' });
+    }
+  } catch (err) {
+    res.status(502).json({ success: false, error: 'Captcha-Verifikation fehlgeschlagen' });
+  }
+});
+
+// ─── Email-Verknüpfung ────────────────────────────────────────────────────────
+const emailCodes = new Map(); // userId → { code, email, expires, attempts }
+
+app.post('/api/me/link-email', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const { email } = req.body;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Ungültige E-Mail-Adresse.' });
+  }
+
+  // Rate limit: max 1 neuer Code pro 60s
+  const existing = emailCodes.get(auth.id);
+  if (existing && (existing.expires - 9 * 60 * 1000) > Date.now()) {
+    return res.status(429).json({ error: 'Bitte warte kurz, bevor du einen neuen Code anforderst.' });
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  emailCodes.set(auth.id, { code, email, expires: Date.now() + 10 * 60 * 1000, attempts: 0 });
+
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) {
+    console.log(`[DEV] Email-Code fuer ${auth.username} (${email}): ${code}`);
+    return res.json({ success: true });
+  }
+
+  try {
+    const mailRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'ehoser <noreply@ehoser.de>',
+        to: [email],
+        subject: 'Dein ehoser Bestätigungscode',
+        html: `<div style="font-family:sans-serif;max-width:420px;margin:0 auto;padding:32px;background:#0a1828;color:#fff;border-radius:16px">
+          <div style="font-size:2rem;font-weight:900;color:#4d9fff">E</div>
+          <h2 style="margin:8px 0 20px;font-size:1.4rem">E-Mail Bestätigung</h2>
+          <p style="color:#aaa;margin:0 0 8px">Dein Bestätigungscode für ehoser:</p>
+          <div style="font-size:2.8rem;font-weight:900;letter-spacing:0.35em;color:#4d9fff;padding:20px;background:#111827;border-radius:12px;text-align:center;margin:12px 0">${code}</div>
+          <p style="color:#666;font-size:12px;margin-top:20px">Gültig für 10 Minuten. Wenn du das nicht angefordert hast, ignoriere diese Mail.</p>
+        </div>`
+      })
+    });
+    if (!mailRes.ok) {
+      const err = await mailRes.text();
+      console.error('Resend error:', err);
+      return res.status(502).json({ error: 'E-Mail konnte nicht gesendet werden.' });
+    }
+    res.json({ success: true });
+  } catch {
+    res.status(502).json({ error: 'E-Mail konnte nicht gesendet werden.' });
+  }
+});
+
+app.post('/api/me/verify-email', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const { code } = req.body;
+  const stored = emailCodes.get(auth.id);
+
+  if (!stored || stored.expires < Date.now()) {
+    emailCodes.delete(auth.id);
+    return res.status(400).json({ error: 'Code abgelaufen. Bitte neuen Code anfordern.' });
+  }
+
+  stored.attempts = (stored.attempts || 0) + 1;
+  if (stored.attempts > 5) {
+    emailCodes.delete(auth.id);
+    return res.status(429).json({ error: 'Zu viele Fehlversuche. Bitte neuen Code anfordern.' });
+  }
+
+  if (stored.code !== String(code).trim()) {
+    return res.status(400).json({ error: `Falscher Code. Noch ${6 - stored.attempts} Versuche.` });
+  }
+
+  emailCodes.delete(auth.id);
+
+  const { error } = await supabase.from('users').update({ email: stored.email }).eq('id', auth.id);
+  if (error) return res.status(500).json({ error: 'E-Mail konnte nicht gespeichert werden.' });
+
+  res.json({ success: true, email: stored.email });
+});
 
 // ─── KI Proxy (Groq) ──────────────────────────────────────────────────────────
 app.post('/api/ki', async (req, res) => {
