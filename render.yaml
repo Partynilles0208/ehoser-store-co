@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ehoser-ki-browser-agent
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server-agent.js
+    plan: free
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "false"
+    healthCheckPath: /health
