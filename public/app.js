@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.classList.remove('splash-active');
                 document.body.style.overflow = '';
                 document.cookie = 'intro_shown=1; path=/; SameSite=Strict'; // kein expires = Session-Cookie
-            }, 21500);
+            }, 16500);
         }
     }
 

@@ -1975,7 +1975,7 @@ textarea:focus {
     z-index: 99999;
     background: #000000;
     overflow: hidden;
-    animation: splash-brighten 5s ease-in-out 16s forwards;
+    animation: splash-brighten 0.4s ease-out 16s forwards;
 }
 
 /* ─── Das rollende E – absolut zentriert im Viewport ─── */
