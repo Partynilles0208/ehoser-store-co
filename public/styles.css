@@ -2775,3 +2775,13 @@ textarea:focus {
     to   { opacity: 0; transform: scale(0.95); }
 }
 
+.captcha-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid rgba(77,159,255,0.2);
+    border-top-color: #4d9fff;
+    border-radius: 50%;
+    animation: captcha-spin 0.8s linear infinite;
+}
+@keyframes captcha-spin {
+    to { transform: rotate(360deg); }
+}
