@@ -191,14 +191,34 @@ async function handleLogin(event) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Splash Screen nach Animation entfernen (21s Gesamt + 0.5s Puffer)
+    // Tab-Zähler: Intro-Flag löschen wenn letzter Tab geschlossen wird
+    const tabCount = parseInt(localStorage.getItem('ehoser_tabs') || '0') + 1;
+    localStorage.setItem('ehoser_tabs', String(tabCount));
+    window.addEventListener('pagehide', () => {
+        const count = parseInt(localStorage.getItem('ehoser_tabs') || '1') - 1;
+        if (count <= 0) {
+            localStorage.removeItem('ehoser_tabs');
+            localStorage.removeItem('ehoser_intro_shown');
+        } else {
+            localStorage.setItem('ehoser_tabs', String(count));
+        }
+    });
+
+    // Splash Screen: nur zeigen wenn noch nicht in dieser Browser-Session
     const splash = document.getElementById('introSplash');
     if (splash) {
-        setTimeout(() => {
+        if (window._skipIntro) {
             splash.remove();
             document.body.classList.remove('splash-active');
             document.body.style.overflow = '';
-        }, 21500);
+        } else {
+            localStorage.setItem('ehoser_intro_shown', '1');
+            setTimeout(() => {
+                splash.remove();
+                document.body.classList.remove('splash-active');
+                document.body.style.overflow = '';
+            }, 21500);
+        }
     }
 
     const ref = new URLSearchParams(window.location.search).get('ref');

@@ -16,6 +16,17 @@
     </style>
 </head>
 <body class="splash-active">
+    <script>
+    (function () {
+        if (localStorage.getItem('ehoser_intro_shown')) {
+            document.body.classList.remove('splash-active');
+            var s = document.createElement('style');
+            s.textContent = '#introSplash{display:none!important}';
+            document.head.appendChild(s);
+            window._skipIntro = true;
+        }
+    }());
+    </script>
     <!-- ── Intro Splash ──────────────────────────────────────────────────── -->
     <div id="introSplash" class="intro-splash">
         <div class="intro-logo">E</div>
