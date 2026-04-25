@@ -1652,4 +1652,36 @@ if (!process.env.VERCEL) {
   });
 }
 
+// ─── KI Proxy (Groq) ──────────────────────────────────────────────────────────
+app.post('/api/ki', async (req, res) => {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY nicht konfiguriert' });
+
+  const { messages } = req.body;
+  if (!Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'messages fehlt' });
+  }
+
+  try {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqKey}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages,
+        stream: false
+      })
+    });
+
+    const data = await groqRes.json();
+    if (!groqRes.ok) return res.status(groqRes.status).json(data);
+    res.json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Verbindungsfehler zur Groq API' });
+  }
+});
+
 module.exports = app;
