@@ -2847,3 +2847,22 @@ textarea:focus {
 @keyframes captcha-spin {
     to { transform: rotate(360deg); }
 }
+
+/* ── Psychologischer Support (PS) ────────────────────────── */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.mode-card-ps {
+    border-color: rgba(77, 159, 255, 0.25) !important;
+}
+.mode-card-ps:hover {
+    border-color: rgba(77, 159, 255, 0.6) !important;
+    box-shadow: 0 8px 30px rgba(77, 159, 255, 0.12);
+}
+
+#psOverlay input[type="text"]:focus,
+#psOverlay textarea:focus {
+    border-color: rgba(77, 159, 255, 0.6) !important;
+    box-shadow: 0 0 0 2px rgba(77, 159, 255, 0.15);
+}

@@ -163,10 +163,11 @@ async function loadRegisteredUsers() {
             .map(
                 (user) => `
                 <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-                    <span>${escapeHtml(user.username)} ${user.is_pro ? '<strong style="color:#b45309">PRO</strong>' : ''} ${user.update_unlocked ? '<strong style="color:#2dbe6c">UPDATE</strong>' : ''}</span>
-                    <span style="display:flex;gap:6px;">
+                    <span>${escapeHtml(user.username)} ${user.is_pro ? '<strong style="color:#b45309">PRO</strong>' : ''} ${user.update_unlocked ? '<strong style="color:#2dbe6c">UPDATE</strong>' : ''} ${user.ps_account ? '<strong style="color:#4d9fff;background:rgba(77,159,255,0.15);padding:1px 6px;border-radius:6px;font-size:0.8em;">PS</strong>' : ''}</span>
+                    <span style="display:flex;gap:6px;flex-wrap:wrap;">
                         <button class="btn-small" onclick="toggleUserPro(${user.id}, ${user.is_pro ? 'false' : 'true'})">${user.is_pro ? 'PRO entfernen' : 'PRO geben'}</button>
                         <button class="btn-small" style="background:${user.update_unlocked ? 'rgba(220,50,50,0.2)' : 'rgba(45,190,108,0.2)'}" onclick="unlockUserUpdate(${user.id}, ${user.update_unlocked ? 'false' : 'true'})">${user.update_unlocked ? '🔒 Update sperren' : '🔓 Update freischalten'}</button>
+                        <button class="btn-small" style="background:${user.ps_account ? 'rgba(220,50,50,0.2)' : 'rgba(77,159,255,0.2)'}" onclick="toggleUserPs(${user.id}, ${user.ps_account ? 'false' : 'true'})">${user.ps_account ? '🔵 PS entfernen' : '🔵 PS geben'}</button>
                         <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
                         <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
                     </span>
@@ -217,6 +218,26 @@ async function unlockUserUpdate(userId, enabled) {
             return;
         }
         setStatus(enabled ? `✅ Update für ${data.username} freigeschaltet.` : `🔒 Update für ${data.username} gesperrt.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    }
+}
+
+async function toggleUserPs(userId, enabled) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/ps-account`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
+            body: JSON.stringify({ enabled })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'PS-Status-Änderung fehlgeschlagen.', 'error');
+            return;
+        }
+        setStatus(enabled ? `🔵 PS-Konto für ${data.username} aktiviert.` : `PS-Konto für ${data.username} entfernt.`, 'success');
         await loadRegisteredUsers();
     } catch (error) {
         setStatus(`Fehler: ${error.message}`, 'error');

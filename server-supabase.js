@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   settings JSONB DEFAULT '{}'::jsonb,
   pro_until TIMESTAMP NULL
 );
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_vote BOOLEAN DEFAULT FALSE;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_unlocked BOOLEAN DEFAULT FALSE;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS chat_token TEXT NULL;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ps_account BOOLEAN DEFAULT FALSE;
 CREATE TABLE IF NOT EXISTS referral_invites (
   code TEXT PRIMARY KEY,
   inviter_username TEXT NOT NULL,
@@ -82,6 +86,9 @@ CREATE TABLE IF NOT EXISTS referral_invites (
     `);
     await pool.query(`
       ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS chat_token TEXT NULL;
+    `);
+    await pool.query(`
+      ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ps_account BOOLEAN DEFAULT FALSE;
     `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS referral_invites (
@@ -178,6 +185,7 @@ async function getProfile(username) {
   // Primär: users Tabelle (existiert immer), optional: user_profiles für Settings
   let proUntil = null;
   let settings = null;
+  let psAccount = false;
 
   // Pro-Status aus users Tabelle holen (primary storage)
   try {
@@ -193,11 +201,12 @@ async function getProfile(username) {
   try {
     const { data, error } = await supabaseAdmin
       .from('user_profiles')
-      .select('settings, pro_until')
+      .select('settings, pro_until, ps_account')
       .eq('username', username)
       .single();
     if (!error && data) {
       settings = data.settings;
+      psAccount = data.ps_account === true;
       // Wenn user_profiles einen späteren pro_until hat, nutze den
       if (data.pro_until) {
         const a = proUntil ? Date.parse(proUntil) : 0;
@@ -220,7 +229,8 @@ async function getProfile(username) {
     username,
     settings: normalizeSettings(settings || mem?.settings),
     proUntil: proUntil || null,
-    isPro: Number.isFinite(ms) && ms > Date.now()
+    isPro: Number.isFinite(ms) && ms > Date.now(),
+    ps_account: psAccount || false
   };
 }
 
@@ -952,14 +962,15 @@ app.get('/api/admin/users', async (req, res) => {
       const profile = await getProfile(userRow.username);
       const { data: up } = await supabaseAdmin
         .from('user_profiles')
-        .select('update_unlocked')
+        .select('update_unlocked, ps_account')
         .eq('username', userRow.username)
         .single();
       users.push({
         ...userRow,
         pro_until: profile.proUntil,
         is_pro: profile.isPro,
-        update_unlocked: up?.update_unlocked === true
+        update_unlocked: up?.update_unlocked === true,
+        ps_account: up?.ps_account === true
       });
     }
     res.json(users);
@@ -1030,6 +1041,35 @@ app.post('/api/admin/users/:id/unlock-update', async (req, res) => {
 
     if (upsertErr) return res.status(500).json({ error: upsertErr.message });
     return res.json({ ok: true, username: data.username, update_unlocked: enabled });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: PS-Account für bestimmten User setzen/entfernen
+app.post('/api/admin/users/:id/ps-account', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  const enabled = req.body?.enabled !== false;
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+  }
+
+  try {
+    const { data, error } = await supabase.from('users').select('username').eq('id', userId).single();
+    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const { error: upsertErr } = await supabaseAdmin
+      .from('user_profiles')
+      .upsert({ username: data.username, ps_account: enabled }, { onConflict: 'username' });
+
+    if (upsertErr) return res.status(500).json({ error: upsertErr.message });
+    return res.json({ ok: true, username: data.username, ps_account: enabled });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -1978,6 +2018,103 @@ app.get('/api/admin/votes', async (req, res) => {
   }
   const status = await getVoteStatus();
   res.json({ ...status, threshold: VOTE_THRESHOLD, remaining: Math.max(0, VOTE_THRESHOLD - status.count) });
+});
+
+// ─── Psychologischer Support (PS) ────────────────────────────────────────────
+
+// PS: 4 initiale Antworten analysieren → 5 personalisierte Folgefragen
+app.post('/api/ps/analyze', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfügbar' });
+
+  const { name, answers } = req.body;
+  if (!Array.isArray(answers) || answers.length < 4) {
+    return res.status(400).json({ error: 'Antworten fehlen' });
+  }
+
+  const answersText = answers.map((a, i) => `Frage ${i + 1}: ${a.question}\nAntwort: ${a.answer}`).join('\n\n');
+
+  const systemPrompt = `Du bist ein einfühlsamer, psychologisch geschulter KI-Assistent.\nAnalysiere die Umfrageantworten von "${name || 'dem Nutzer'}" und erstelle genau 5 personalisierte Folgefragen auf Deutsch, die tiefer auf emotionale Bedürfnisse und Sorgen eingehen.\nAntworte NUR mit einem JSON-Array mit 5 Strings. Kein anderer Text.\nBeispiel: ["Frage 1?", "Frage 2?", "Frage 3?", "Frage 4?", "Frage 5?"]`;
+
+  try {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Bisherige Antworten:\n\n${answersText}\n\nErstelle 5 personalisierte Folgefragen.` }
+        ],
+        temperature: 0.7,
+        max_tokens: 600
+      })
+    });
+
+    const data = await groqRes.json();
+    if (!groqRes.ok) return res.status(groqRes.status).json(data);
+
+    const text = data.choices?.[0]?.message?.content || '[]';
+    let questions;
+    try {
+      const match = text.match(/\[[\s\S]*?\]/);
+      questions = match ? JSON.parse(match[0]) : [];
+    } catch {
+      questions = text.split('\n').filter(l => l.trim()).slice(0, 5).map(l => l.replace(/^\d+[\.\)]\s*/, '').replace(/^["']|["']$/g, '').trim());
+    }
+
+    const fallbacks = [
+      'Was beschäftigt dich gerade am meisten?',
+      'Gibt es Menschen in deinem Leben, mit denen du über deine Gefühle sprechen kannst?',
+      'Wie schläfst du momentan?',
+      'Was würde dir helfen, dich besser zu fühlen?',
+      'Hast du das Gefühl, dass du Unterstützung brauchst?'
+    ];
+    while (questions.length < 5) questions.push(fallbacks[questions.length]);
+    questions = questions.slice(0, 5);
+
+    res.json({ questions });
+  } catch {
+    res.status(502).json({ error: 'KI-Verbindungsfehler' });
+  }
+});
+
+// PS: Chat mit spezialisiertem psychologischen System-Prompt
+app.post('/api/ps/chat', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfügbar' });
+
+  const { name, messages, allAnswersSummary } = req.body;
+  if (!Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'messages fehlt' });
+  }
+
+  const systemPrompt = `Du bist ein einfühlsamer, psychologisch geschulter KI-Assistent auf der Plattform ehoser.\nDu hilfst ${name ? `"${name}"` : 'dem Nutzer'} dabei, Gefühle, Ängste und Sorgen zu verarbeiten.\nSei immer verständnisvoll, nicht wertend und ermutigend. Rede auf Deutsch, warm und natürlich.\nWenn ernsthafte psychische Probleme beschrieben werden: empfehle professionelle Hilfe.\nKrisentelefon Deutschland: 0800 111 0 111 (kostenlos, 24/7 erreichbar).\n${allAnswersSummary ? `\nHintergrund – Umfrageantworten des Nutzers:\n${allAnswersSummary}` : ''}`;
+
+  try {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        temperature: 0.8,
+        max_tokens: 1000
+      })
+    });
+
+    const data = await groqRes.json();
+    if (!groqRes.ok) return res.status(groqRes.status).json(data);
+    res.json({ reply: data.choices?.[0]?.message?.content || '' });
+  } catch {
+    res.status(502).json({ error: 'KI-Verbindungsfehler' });
+  }
 });
 
 // ─── KI Proxy (Groq) ──────────────────────────────────────────────────────────

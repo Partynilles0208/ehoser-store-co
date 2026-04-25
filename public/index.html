@@ -191,9 +191,80 @@
                             </div>
                         </button>
 
+                        <!-- PS-Hilfe-Karte: nur sichtbar für PS-Nutzer (via JS gesteuert) -->
+                        <button id="psModeCard" class="mode-card mode-card-ps" onclick="openPsHelp()" style="display:none;">
+                            <div class="mode-card-icon">💙</div>
+                            <div class="mode-card-body">
+                                <h3>Hilfe</h3>
+                                <p>Wenn es dir nicht so gut geht – Traurigkeit, Angst oder irgendetwas anderes – dann klick hier.</p>
+                                <span class="mode-badge" style="background:rgba(77,159,255,0.15);color:#4d9fff;border:1px solid rgba(77,159,255,0.3);">Persönliche Unterstützung</span>
+                            </div>
+                        </button>
+
                     </div>
                 </div>
             </section>
+
+            <!-- ── PS Overlay (Vollbild Umfrage + Chat) ──────────────────── -->
+            <div id="psOverlay" style="display:none;position:fixed;inset:0;z-index:10000;background:#07131d;overflow-y:auto;flex-direction:column;align-items:center;justify-content:center;">
+
+                <!-- Screen 1: Name eingeben -->
+                <div id="psScreenName" style="display:flex;flex-direction:column;align-items:center;gap:20px;max-width:480px;width:90%;text-align:center;padding:40px 20px;">
+                    <div style="width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,#0e4a8a,#4d9fff);display:grid;place-items:center;font-size:2.5rem;">💙</div>
+                    <h2 style="font-family:'Space Grotesk',sans-serif;font-size:1.8rem;font-weight:900;color:#fff;margin:0;">Persönliche Unterstützung</h2>
+                    <p style="color:#8ab4c9;font-size:1rem;line-height:1.6;margin:0;">Ich bin hier, um dir zuzuhören. Damit ich dir besser helfen kann, gib bitte deinen echten Vornamen ein.</p>
+                    <input id="psFirstNameInput" type="text" placeholder="Dein Vorname" maxlength="50" style="width:100%;padding:14px 18px;border-radius:12px;border:1px solid rgba(77,159,255,0.3);background:rgba(255,255,255,0.06);color:#fff;font-size:1rem;font-family:'Outfit',sans-serif;box-sizing:border-box;outline:none;" />
+                    <button onclick="startPsSurvey()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#0e4a8a,#4d9fff);color:#fff;font-size:1.05rem;font-weight:700;font-family:'Space Grotesk',sans-serif;cursor:pointer;">Starten</button>
+                    <button onclick="closePsOverlay()" style="background:none;border:none;color:#6a9bb8;cursor:pointer;font-size:0.9rem;">Abbrechen</button>
+                </div>
+
+                <!-- Screen 2: Umfrage -->
+                <div id="psScreenSurvey" style="display:none;flex-direction:column;align-items:center;gap:20px;max-width:540px;width:90%;text-align:center;padding:40px 20px;">
+                    <div style="font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#4d9fff;">Umfrage <span id="psSurveyNum">1</span> von <span id="psSurveyTotal">4</span></div>
+                    <div style="width:100%;background:rgba(255,255,255,0.07);border-radius:99px;height:6px;overflow:hidden;">
+                        <div id="psSurveyBar" style="height:100%;background:linear-gradient(90deg,#0e4a8a,#4d9fff);border-radius:99px;width:0%;transition:width 0.4s ease;"></div>
+                    </div>
+                    <h2 id="psSurveyQuestion" style="font-family:'Space Grotesk',sans-serif;font-size:1.5rem;font-weight:700;color:#fff;margin:0;line-height:1.4;"></h2>
+                    <textarea id="psSurveyAnswer" placeholder="Schreib deine Antwort hier..." rows="4" style="width:100%;padding:14px 18px;border-radius:12px;border:1px solid rgba(77,159,255,0.3);background:rgba(255,255,255,0.06);color:#fff;font-size:0.95rem;font-family:'Outfit',sans-serif;resize:vertical;box-sizing:border-box;outline:none;"></textarea>
+                    <button id="psNextBtn" style="width:100%;padding:15px;border-radius:12px;border:none;background:linear-gradient(135deg,#0e4a8a,#4d9fff);color:#fff;font-size:1rem;font-weight:700;font-family:'Space Grotesk',sans-serif;cursor:pointer;">Weiter →</button>
+                </div>
+
+                <!-- Screen 3: KI analysiert -->
+                <div id="psScreenAnalyzing" style="display:none;flex-direction:column;align-items:center;gap:20px;max-width:400px;width:90%;text-align:center;padding:60px 20px;">
+                    <div style="width:64px;height:64px;border-radius:50%;border:3px solid #4d9fff;border-top-color:transparent;animation:spin 1s linear infinite;"></div>
+                    <h3 style="font-family:'Space Grotesk',sans-serif;color:#fff;font-size:1.2rem;margin:0;">Die KI analysiert deine Antworten...</h3>
+                    <p style="color:#8ab4c9;font-size:0.9rem;margin:0;">Das dauert nur einen Moment.</p>
+                </div>
+
+                <!-- Screen 4: Ergebnis -->
+                <div id="psScreenResult" style="display:none;flex-direction:column;align-items:center;gap:20px;max-width:400px;width:90%;text-align:center;padding:60px 20px;">
+                    <div style="font-size:3rem;">💙</div>
+                    <h3 style="font-family:'Space Grotesk',sans-serif;color:#fff;font-size:1.3rem;margin:0;">Wird dem psychologischen Konto hinzugefügt...</h3>
+                    <p style="color:#8ab4c9;font-size:0.95rem;margin:0;">Ich habe deine Antworten gelesen. Jetzt öffnet sich der Chat.</p>
+                    <div style="width:40px;height:40px;border-radius:50%;border:3px solid #4d9fff;border-top-color:transparent;animation:spin 1s linear infinite;"></div>
+                </div>
+
+                <!-- Screen 5: Chat -->
+                <div id="psScreenChat" style="display:none;flex-direction:column;width:100%;max-width:640px;height:100vh;padding:0 0 0 0;box-sizing:border-box;">
+                    <!-- Header -->
+                    <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.3);">
+                        <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#0e4a8a,#4d9fff);display:grid;place-items:center;font-size:1.3rem;flex-shrink:0;">💙</div>
+                        <div>
+                            <div style="font-weight:700;color:#fff;font-size:1rem;">Persönliche KI-Unterstützung</div>
+                            <div style="font-size:0.8rem;color:#4d9fff;">Vertraulich · Einfühlsam · Jederzeit verfügbar</div>
+                        </div>
+                        <button onclick="closePsOverlay()" style="margin-left:auto;background:none;border:1px solid rgba(255,255,255,0.15);color:#8ab4c9;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:0.85rem;">✕ Schließen</button>
+                    </div>
+                    <!-- Messages -->
+                    <div id="psChatMessages" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;"></div>
+                    <!-- Input -->
+                    <div style="padding:16px 20px;border-top:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.2);display:flex;gap:10px;align-items:flex-end;">
+                        <textarea id="psChatInput" placeholder="Schreib etwas... (Enter zum Senden)" rows="2" onkeydown="psChatKeydown(event)" style="flex:1;padding:12px 16px;border-radius:12px;border:1px solid rgba(77,159,255,0.3);background:rgba(255,255,255,0.06);color:#fff;font-size:0.95rem;font-family:'Outfit',sans-serif;resize:none;outline:none;"></textarea>
+                        <button onclick="sendPsChat()" style="padding:12px 18px;border-radius:12px;border:none;background:linear-gradient(135deg,#0e4a8a,#4d9fff);color:#fff;font-weight:700;cursor:pointer;flex-shrink:0;">Senden</button>
+                    </div>
+                </div>
+
+            </div>
 
             <section id="ki" class="section">
                 <!-- Name-Eingabe Modal -->
@@ -660,6 +731,20 @@
                 </div>
             </div>
             <button class="btn-primary" onclick="saveAccountSettings()">Speichern</button>
+
+            <!-- Chat Token -->
+            <div style="background:rgba(0,0,0,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-top:12px;">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">Chat Token</div>
+                <div style="font-size:12px;color:var(--muted,#888);margin-bottom:10px;">Erstelle einen Token f&#252;r die Ehoser-KI-API.</div>
+                <div id="chatTokenDisplay" style="display:none;margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <span id="chatTokenValue" style="font-family:monospace;font-size:11px;word-break:break-all;color:var(--primary,#333);flex:1;"></span>
+                        <button onclick="copyChatToken()" class="btn-small" style="padding:4px 10px;font-size:12px;">&#128203; Kopieren</button>
+                    </div>
+                </div>
+                <button onclick="createChatToken()" class="btn-small" style="padding:8px 14px;">&#128273; Chat Token erstellen</button>
+                <small id="chatTokenMsg" style="display:block;margin-top:8px;color:var(--muted,#888);font-size:11px;"></small>
+            </div>
         </div>
     </div>
 
