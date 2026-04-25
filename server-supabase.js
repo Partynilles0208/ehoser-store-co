@@ -319,6 +319,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Öffentliche Client-Konfiguration (kein Authentifizierungs-Token nötig)
+app.get('/api/config', (req, res) => {
+  res.json({
+    ytApiKey: process.env.YT_API_KEY || ''
+  });
+});
+
 // API Routes
 
 // Registrierung
@@ -1664,7 +1671,8 @@ app.post('/api/verify-captcha', async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ success: false, error: 'Token fehlt' });
 
-  const secret = process.env.RECAPTCHA_SECRET_KEY || '6Ld8c8ksAAAAM2z0cOQBzHrK5Cloy6ZNNmQaRNj';
+  const secret = process.env.RECAPTCHA_SECRET_KEY;
+  if (!secret) return res.status(500).json({ success: false, error: 'RECAPTCHA_SECRET_KEY nicht konfiguriert' });
   try {
     const response = await fetch(
       `https://www.google.com/recaptcha/api/siteverify?secret=${secret}&response=${token}`,
