@@ -225,20 +225,42 @@ function applyUpdateFeatures(unlocked) {
 
 async function loadVoteStatus() {
     try {
-        const res = await fetch(`${API_BASE}/vote/status`);
+        const token = localStorage.getItem('token');
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const res = await fetch(`${API_BASE}/vote/status`, { headers });
         const data = await res.json();
         const count = data.count || 0;
         const unlocked = data.unlocked || false;
+        const myVote = data.myVote || false;
 
         const countEl = document.getElementById('voteCountDisplay');
         const bar = document.getElementById('voteProgressBar');
         if (countEl) countEl.textContent = `${count} / 10`;
         if (bar) bar.style.width = `${Math.min(100, count * 10)}%`;
 
+        // Abstimmen-Button je nach Status
+        const voteBtn = document.getElementById('voteBtn');
+        const voteMsg = document.getElementById('voteMsg');
+        if (voteBtn) {
+            if (!token) {
+                voteBtn.disabled = true;
+                voteBtn.style.opacity = '0.5';
+                if (voteMsg) voteMsg.textContent = 'Bitte anmelden um abstimmen zu können.';
+            } else if (myVote) {
+                voteBtn.disabled = true;
+                voteBtn.style.opacity = '0.5';
+                voteBtn.textContent = '✓ Bereits abgestimmt';
+                if (voteMsg) voteMsg.textContent = 'Du hast bereits abgestimmt.';
+            } else {
+                voteBtn.disabled = false;
+                voteBtn.style.opacity = '';
+            }
+        }
+
         applyUpdateFeatures(unlocked);
-        return { count, unlocked };
+        return { count, unlocked, myVote };
     } catch {
-        return { count: 0, unlocked: false };
+        return { count: 0, unlocked: false, myVote: false };
     }
 }
 
@@ -247,23 +269,12 @@ function showVoteScreen() {
     if (screen) screen.style.display = 'block';
     loadVoteStatus();
 
-    // Prüfen ob dieser User bereits abgestimmt hat
-    const token = localStorage.getItem('token');
-    const voteBtn = document.getElementById('voteBtn');
-    const voteMsg = document.getElementById('voteMsg');
-    if (!token && voteBtn) {
-        voteBtn.disabled = true;
-        voteBtn.style.opacity = '0.5';
-        if (voteMsg) voteMsg.textContent = 'Bitte anmelden um abstimmen zu können.';
-    }
-
     // Polling alle 5s – wenn 10 erreicht: alle Seiten refreshen
     clearInterval(_votePollingInterval);
     _votePollingInterval = setInterval(async () => {
         const status = await loadVoteStatus();
         if (status.unlocked) {
             clearInterval(_votePollingInterval);
-            // Kurz warten dann reload
             setTimeout(() => location.reload(), 1500);
         }
     }, 5000);

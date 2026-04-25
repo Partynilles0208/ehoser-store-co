@@ -1853,7 +1853,17 @@ async function getVoteStatus() {
 app.get('/api/vote/status', async (req, res) => {
   try {
     const status = await getVoteStatus();
-    res.json(status);
+    // Prüfen ob eingeloggter User bereits abgestimmt hat
+    let myVote = false;
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) {
+      try {
+        const auth = jwt.verify(token, JWT_SECRET);
+        const { data } = await supabase.from('user_profiles').select('update_vote').eq('username', auth.username).single();
+        myVote = data?.update_vote === true;
+      } catch {}
+    }
+    res.json({ ...status, myVote });
   } catch {
     res.status(500).json({ error: 'Fehler beim Laden des Abstimmungsstatus.' });
   }
@@ -1876,10 +1886,16 @@ app.post('/api/vote', async (req, res) => {
   }
 
   // Stimme setzen (upsert, andere Felder unberührt lassen)
-  await supabase.from('user_profiles').upsert({ username: auth.username, update_vote: true });
+  const { error: upsertError } = await supabase
+    .from('user_profiles')
+    .upsert({ username: auth.username, update_vote: true }, { onConflict: 'username' });
+
+  if (upsertError) {
+    return res.status(500).json({ error: 'Datenbankfehler: ' + upsertError.message });
+  }
 
   const status = await getVoteStatus();
-  res.json({ success: true, ...status });
+  res.json({ success: true, ...status, myVote: true });
 });
 
 // Admin: Abstimmungs-Übersicht
