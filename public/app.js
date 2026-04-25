@@ -504,15 +504,20 @@ function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
     const adminLabel = currentUser?.isAdmin ? 'Admin' : 'App hochladen';
     const plan = currentProfile?.isPro ? 'PRO' : 'Gratis';
+    const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('store')" class="nav-link">Store</a>
         <a href="#" onclick="showSection('my-apps')" class="nav-link">Meine Apps</a>
         <a href="admin.html" class="nav-link">${adminLabel}</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
         <span class="plan-badge ${currentProfile?.isPro ? 'pro' : ''}">${plan}</span>
-        <span class="hello-user">Hallo, ${escapeHtml(currentUser.username)}.</span>
+        <span class="hello-user">${psBadge} Hallo, ${escapeHtml(currentUser.username)}.</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
     `;
+
+    // PS-Hilfe-Karte zeigen/verstecken
+    const psCard = document.getElementById('psModeCard');
+    if (psCard) psCard.style.display = currentProfile?.ps_account ? '' : 'none';
 }
 
 async function loadApps() {
@@ -1690,6 +1695,206 @@ function copyChatToken() {
     });
 }
 
+// ─── Psychologischer Support (PS) ────────────────────────────────────────────
+
+let _psName = '';
+let _psAnswers = []; // { question, answer }
+let _psChatHistory = []; // { role, content }
+let _psAllSummary = '';
+
+const PS_FIXED_QUESTIONS = [
+    'Wie geht es dir heute?',
+    'Wie ging es dir in den letzten Wochen?',
+    'Was ist deine größte Angst?',
+    'Was ist dein größter Wunsch?'
+];
+
+function openPsHelp() {
+    const overlay = document.getElementById('psOverlay');
+    if (!overlay) return;
+    // Reset state
+    _psName = '';
+    _psAnswers = [];
+    _psChatHistory = [];
+    _psAllSummary = '';
+    // Show name screen
+    showPsScreen('psScreenName');
+    overlay.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closePsOverlay() {
+    const overlay = document.getElementById('psOverlay');
+    if (overlay) overlay.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function showPsScreen(id) {
+    ['psScreenName', 'psScreenSurvey', 'psScreenAnalyzing', 'psScreenResult', 'psScreenChat']
+        .forEach(s => {
+            const el = document.getElementById(s);
+            if (el) el.style.display = s === id ? 'flex' : 'none';
+        });
+}
+
+function startPsSurvey() {
+    const nameInput = document.getElementById('psFirstNameInput');
+    const name = nameInput?.value.trim();
+    if (!name) { showAlert('Bitte gib deinen Vornamen ein.', 'error'); return; }
+    _psName = name;
+    _psAnswers = [];
+    showPsSurveyQuestion(0, PS_FIXED_QUESTIONS);
+}
+
+function showPsSurveyQuestion(index, questions) {
+    const numEl = document.getElementById('psSurveyNum');
+    const totalEl = document.getElementById('psSurveyTotal');
+    const questionEl = document.getElementById('psSurveyQuestion');
+    const answerEl = document.getElementById('psSurveyAnswer');
+    const nextBtn = document.getElementById('psNextBtn');
+    const bar = document.getElementById('psSurveyBar');
+
+    if (numEl) numEl.textContent = index + 1;
+    if (totalEl) totalEl.textContent = questions.length;
+    if (questionEl) questionEl.textContent = questions[index];
+    if (answerEl) answerEl.value = '';
+    if (bar) bar.style.width = `${Math.round((index / questions.length) * 100)}%`;
+    if (nextBtn) nextBtn.onclick = () => submitPsSurveyAnswer(index, questions);
+    showPsScreen('psScreenSurvey');
+}
+
+async function submitPsSurveyAnswer(index, questions) {
+    const answerEl = document.getElementById('psSurveyAnswer');
+    const answer = answerEl?.value.trim();
+    if (!answer) { showAlert('Bitte schreib eine Antwort.', 'error'); return; }
+
+    _psAnswers.push({ question: questions[index], answer });
+
+    if (index + 1 < questions.length) {
+        // More questions in this phase
+        showPsSurveyQuestion(index + 1, questions);
+    } else if (questions === PS_FIXED_QUESTIONS) {
+        // Fixed questions done → AI generates follow-up questions
+        await fetchPsFollowUpQuestions();
+    } else {
+        // All personalized questions done → show result
+        await showPsResult();
+    }
+}
+
+async function fetchPsFollowUpQuestions() {
+    showPsScreen('psScreenAnalyzing');
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/ps/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ name: _psName, answers: _psAnswers.slice(0, 4) })
+        });
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data.questions)) {
+            showAlert('KI-Analyse fehlgeschlagen. Weiter mit Standard-Fragen.', 'error');
+            await showPsResult();
+            return;
+        }
+        showPsSurveyQuestion(0, data.questions);
+    } catch {
+        await showPsResult();
+    }
+}
+
+async function showPsResult() {
+    showPsScreen('psScreenResult');
+    // Build summary for AI chat context
+    _psAllSummary = _psAnswers.map((a, i) => `Frage ${i + 1}: ${a.question}\nAntwort: ${a.answer}`).join('\n\n');
+
+    // Small delay for effect
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Open chat and get initial AI analysis
+    await initPsChat();
+}
+
+async function initPsChat() {
+    showPsScreen('psScreenChat');
+    const chatMessages = document.getElementById('psChatMessages');
+    if (chatMessages) chatMessages.innerHTML = '';
+    _psChatHistory = [];
+
+    // AI sends opening message
+    const openingMessage = `Hallo ${_psName}, ich habe deine Antworten gelesen. Danke, dass du dich mir anvertraust. Ich bin hier, um dir zuzuhören und dir zu helfen. Lass uns gemeinsam schauen, wie es dir geht.`;
+    appendPsChatMessage('assistant', openingMessage);
+    _psChatHistory.push({ role: 'assistant', content: openingMessage });
+
+    // AI analyzes and responds
+    await sendPsChatToAI(null);
+}
+
+function appendPsChatMessage(role, text) {
+    const chatMessages = document.getElementById('psChatMessages');
+    if (!chatMessages) return;
+    const div = document.createElement('div');
+    div.style.cssText = `margin:8px 0;padding:12px 16px;border-radius:14px;max-width:85%;word-wrap:break-word;line-height:1.5;font-size:0.95rem;${role === 'user' ? 'background:rgba(77,159,255,0.15);border:1px solid rgba(77,159,255,0.3);margin-left:auto;text-align:right;' : 'background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);'}`;
+    div.textContent = text;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function sendPsChatToAI(userMessage) {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    if (userMessage) {
+        _psChatHistory.push({ role: 'user', content: userMessage });
+        appendPsChatMessage('user', userMessage);
+    }
+
+    // Typing indicator
+    const chatMessages = document.getElementById('psChatMessages');
+    const typing = document.createElement('div');
+    typing.id = 'psTyping';
+    typing.style.cssText = 'padding:10px 16px;color:#8ab4c9;font-style:italic;font-size:0.9rem;';
+    typing.textContent = '...';
+    if (chatMessages) chatMessages.appendChild(typing);
+
+    try {
+        const res = await fetch(`${API_BASE}/ps/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+                name: _psName,
+                messages: _psChatHistory.filter(m => m.role === 'user' || m.role === 'assistant'),
+                allAnswersSummary: _psAllSummary
+            })
+        });
+        const data = await res.json();
+        typing?.remove();
+        if (!res.ok) { appendPsChatMessage('assistant', 'Entschuldigung, ich konnte gerade nicht antworten. Versuch es nochmal.'); return; }
+        const reply = data.reply || '';
+        _psChatHistory.push({ role: 'assistant', content: reply });
+        appendPsChatMessage('assistant', reply);
+    } catch {
+        typing?.remove();
+        appendPsChatMessage('assistant', 'Verbindungsfehler. Bitte versuche es erneut.');
+    }
+}
+
+async function sendPsChat() {
+    const input = document.getElementById('psChatInput');
+    const message = input?.value.trim();
+    if (!message) return;
+    if (input) input.value = '';
+    await sendPsChatToAI(message);
+}
+
+function psChatKeydown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendPsChat();
+    }
+}
 
 async function unlinkEmail() {
     if (!confirm('E-Mail-Adresse wirklich entfernen?')) return;
