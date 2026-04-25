@@ -194,8 +194,118 @@ async function handleLogin(event) {
     }
 }
 
-// ── reCAPTCHA entfernt – direkt starten ──────────────────────────────────────
+// ── reCAPTCHA entfernt – Vote-Screen oder direkt starten ─────────────────────
 function showCaptcha() {
+    // Zuerst Vote-Status prüfen
+    fetch(`${API_BASE}/vote/status`)
+        .then(r => r.json())
+        .then(data => {
+            applyUpdateFeatures(data.unlocked || false);
+            if (data.unlocked) {
+                // Update schon freigeschaltet → direkt App
+                startApp();
+            } else {
+                // Update noch nicht freigeschaltet → Vote-Screen zeigen
+                showVoteScreen();
+            }
+        })
+        .catch(() => {
+            // Bei Fehler: direkt starten
+            startApp();
+        });
+}
+
+// ── Update-Abstimmung ─────────────────────────────────────────────────────────
+let _votePollingInterval = null;
+
+function applyUpdateFeatures(unlocked) {
+    const cards = document.querySelectorAll('[data-update-feature]');
+    cards.forEach(c => { c.style.display = unlocked ? '' : 'none'; });
+}
+
+async function loadVoteStatus() {
+    try {
+        const res = await fetch(`${API_BASE}/vote/status`);
+        const data = await res.json();
+        const count = data.count || 0;
+        const unlocked = data.unlocked || false;
+
+        const countEl = document.getElementById('voteCountDisplay');
+        const bar = document.getElementById('voteProgressBar');
+        if (countEl) countEl.textContent = `${count} / 10`;
+        if (bar) bar.style.width = `${Math.min(100, count * 10)}%`;
+
+        applyUpdateFeatures(unlocked);
+        return { count, unlocked };
+    } catch {
+        return { count: 0, unlocked: false };
+    }
+}
+
+function showVoteScreen() {
+    const screen = document.getElementById('voteScreen');
+    if (screen) screen.style.display = 'block';
+    loadVoteStatus();
+
+    // Prüfen ob dieser User bereits abgestimmt hat
+    const token = localStorage.getItem('token');
+    const voteBtn = document.getElementById('voteBtn');
+    const voteMsg = document.getElementById('voteMsg');
+    if (!token && voteBtn) {
+        voteBtn.disabled = true;
+        voteBtn.style.opacity = '0.5';
+        if (voteMsg) voteMsg.textContent = 'Bitte anmelden um abstimmen zu können.';
+    }
+
+    // Polling alle 5s – wenn 10 erreicht: alle Seiten refreshen
+    clearInterval(_votePollingInterval);
+    _votePollingInterval = setInterval(async () => {
+        const status = await loadVoteStatus();
+        if (status.unlocked) {
+            clearInterval(_votePollingInterval);
+            // Kurz warten dann reload
+            setTimeout(() => location.reload(), 1500);
+        }
+    }, 5000);
+}
+
+async function castVote() {
+    const token = localStorage.getItem('token');
+    if (!token) { showAlert('Bitte zuerst anmelden.', 'error'); return; }
+
+    const btn = document.getElementById('voteBtn');
+    const msg = document.getElementById('voteMsg');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Abstimmen…'; }
+
+    try {
+        const res = await fetch(`${API_BASE}/vote`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = '✓ Bereits abgestimmt'; }
+            if (msg) msg.textContent = data.error || 'Fehler.';
+            return;
+        }
+        if (btn) { btn.textContent = '✅ Stimme gezählt!'; btn.style.background = 'linear-gradient(135deg,#1a7a3a,#2dbe6c)'; }
+        if (msg) msg.textContent = `${data.count} von 10 Stimmen – danke!`;
+        loadVoteStatus();
+
+        if (data.unlocked) {
+            if (msg) msg.textContent = '🎉 Update freigeschaltet! Seite wird neu geladen…';
+            setTimeout(() => location.reload(), 1500);
+        }
+    } catch {
+        if (btn) { btn.disabled = false; btn.textContent = '🗳️ Für Update abstimmen'; }
+        if (msg) msg.textContent = 'Netzwerkfehler. Bitte erneut versuchen.';
+    }
+}
+
+function skipVote() {
+    clearInterval(_votePollingInterval);
+    const screen = document.getElementById('voteScreen');
+    if (screen) screen.style.display = 'none';
     startApp();
 }
 
