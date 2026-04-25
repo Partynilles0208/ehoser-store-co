@@ -1186,7 +1186,8 @@ const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer 
 Deine PersÃ¶nlichkeit ist locker, nett und ein kleines bisschen charmant â€“ aber nicht Ã¼bertrieben. Keine Kosenamen wie "Schatz" oder "SÃ¼ÃŸe". Sprich den Nutzer normal aber herzlich an.
 Wenn du den Nutzer persÃ¶nlich ansprechen mÃ¶chtest, schreibe ausschlieÃŸlich [name] anstelle des echten Namens (zum Beispiel: "Hey [name], wie kann ich helfen?"). Verwende niemals den echten Namen direkt.
 Antworte IMMER ausschlieÃŸlich auf Deutsch, egal in welcher Sprache der Nutzer schreibt. Keine Ausnahmen.
-Halte deine Antworten kurz und knapp â€“ maximal 3-4 SÃ¤tze.`;
+Halte deine Antworten kurz und knapp â€“ maximal 3-4 SÃ¤tze.
+Du kannst Bilder generieren! Wenn der Nutzer ein Bild moechte, antworte mit: BILD_GENERIEREN: [englischer Bildprompt]. Dieser Befehl wird automatisch erkannt und ein Bild erstellt.`;
 
 function startKIWithName() {
     const input = document.getElementById('kiNameInput');
@@ -1259,6 +1260,44 @@ function appendKIBubble(type, text) {
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
     return div;
+}
+
+function appendKIImageBubble(prompt, imageUrl) {
+    const messages = document.getElementById('kiMessages');
+    if (!messages) return;
+    const div = document.createElement('div');
+    div.className = 'ki-bubble ki-bubble-ai';
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:0.8rem;color:#8ab4c9;margin-bottom:8px;';
+    label.textContent = '🎨 Generiertes Bild: ' + prompt;
+    div.appendChild(label);
+    const loading = document.createElement('div');
+    loading.style.cssText = 'color:#8ab4c9;font-size:0.9rem;padding:4px 0;';
+    loading.textContent = '⏳ Bild wird generiert…';
+    div.appendChild(loading);
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.alt = prompt;
+    img.style.cssText = 'max-width:100%;border-radius:10px;display:none;cursor:pointer;margin-top:6px;';
+    img.title = 'Klicken zum Öffnen in neuem Tab';
+    img.onclick = () => window.open(imageUrl, '_blank', 'noopener');
+    img.onload = () => { loading.remove(); img.style.display = 'block'; messages.scrollTop = messages.scrollHeight; };
+    img.onerror = () => { loading.textContent = '❌ Bild konnte nicht generiert werden.'; };
+    div.appendChild(img);
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+}
+
+function kiHandleImageGenCommand(reply) {
+    const match = reply.match(/BILD_GENERIEREN:\s*(.+)/i);
+    if (!match) return false;
+    const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
+    const seed = Math.floor(Math.random() * 999999);
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+    const textBefore = reply.replace(/BILD_GENERIEREN:\s*.+/i, '').trim();
+    if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
+    appendKIImageBubble(prompt, url);
+    return true;
 }
 
 function showKITyping() {
@@ -1357,9 +1396,11 @@ async function sendKIMessage() {
 
         const data = await res.json();
         const rawReply = data?.choices?.[0]?.message?.content || '(Keine Antwort)';
-        const reply = kiReplaceNamePlaceholder(rawReply);
         _kiHistory.push({ role: 'assistant', content: rawReply });
-        appendKIBubble('ai', reply);
+        if (!kiHandleImageGenCommand(rawReply)) {
+            const reply = kiReplaceNamePlaceholder(rawReply);
+            appendKIBubble('ai', reply);
+        }
     } catch (err) {
         typing?.remove();
         appendKIBubble('error', 'âš ï¸ Verbindungsfehler. Bitte versuche es erneut.');
