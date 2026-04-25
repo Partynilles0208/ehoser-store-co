@@ -1713,11 +1713,34 @@ app.post('/api/verify-captcha', async (req, res) => {
 });
 
 // ─── Email-Verknüpfung ────────────────────────────────────────────────────────
-const emailCodes = new Map(); // userId → { code, email, expires, attempts }
+// Codes werden in user_profiles.settings._emailPending gespeichert (serverless-safe)
+
+async function getPendingEmailCode(username) {
+  const profile = await getProfile(username);
+  return profile?.settings?._emailPending || null;
+}
+
+async function setPendingEmailCode(username, data) {
+  const profile = await getProfile(username);
+  const settings = { ...(profile?.settings || {}), _emailPending: data };
+  await supabase.from('user_profiles').upsert({ username, settings });
+}
+
+async function clearPendingEmailCode(username) {
+  const profile = await getProfile(username);
+  const settings = { ...(profile?.settings || {}) };
+  delete settings._emailPending;
+  await supabase.from('user_profiles').upsert({ username, settings });
+}
 
 app.post('/api/me/link-email', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
+
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) {
+    return res.status(503).json({ error: 'E-Mail-Versand ist auf diesem Server nicht konfiguriert.' });
+  }
 
   const { email } = req.body;
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1725,19 +1748,13 @@ app.post('/api/me/link-email', async (req, res) => {
   }
 
   // Rate limit: max 1 neuer Code pro 60s
-  const existing = emailCodes.get(auth.id);
-  if (existing && (existing.expires - 9 * 60 * 1000) > Date.now()) {
-    return res.status(429).json({ error: 'Bitte warte kurz, bevor du einen neuen Code anforderst.' });
+  const existing = await getPendingEmailCode(auth.username);
+  if (existing && existing.expires && (existing.expires - 9 * 60 * 1000) > Date.now()) {
+    return res.status(429).json({ error: 'Bitte warte 60 Sekunden, bevor du einen neuen Code anforderst.' });
   }
 
   const code = Math.floor(100000 + Math.random() * 900000).toString();
-  emailCodes.set(auth.id, { code, email, expires: Date.now() + 10 * 60 * 1000, attempts: 0 });
-
-  const resendKey = process.env.RESEND_API_KEY;
-  if (!resendKey) {
-    console.log(`[DEV] Email-Code fuer ${auth.username} (${email}): ${code}`);
-    return res.json({ success: true });
-  }
+  await setPendingEmailCode(auth.username, { code, email, expires: Date.now() + 10 * 60 * 1000, attempts: 0 });
 
   try {
     const mailRes = await fetch('https://api.resend.com/emails', {
@@ -1772,24 +1789,30 @@ app.post('/api/me/verify-email', async (req, res) => {
   if (!auth) return;
 
   const { code } = req.body;
-  const stored = emailCodes.get(auth.id);
+  if (!code || String(code).trim().length !== 6) {
+    return res.status(400).json({ error: 'Bitte einen 6-stelligen Code eingeben.' });
+  }
 
-  if (!stored || stored.expires < Date.now()) {
-    emailCodes.delete(auth.id);
+  const stored = await getPendingEmailCode(auth.username);
+
+  if (!stored || !stored.expires || stored.expires < Date.now()) {
+    await clearPendingEmailCode(auth.username).catch(() => {});
     return res.status(400).json({ error: 'Code abgelaufen. Bitte neuen Code anfordern.' });
   }
 
-  stored.attempts = (stored.attempts || 0) + 1;
-  if (stored.attempts > 5) {
-    emailCodes.delete(auth.id);
+  const attempts = (stored.attempts || 0) + 1;
+  if (attempts > 5) {
+    await clearPendingEmailCode(auth.username).catch(() => {});
     return res.status(429).json({ error: 'Zu viele Fehlversuche. Bitte neuen Code anfordern.' });
   }
 
   if (stored.code !== String(code).trim()) {
-    return res.status(400).json({ error: `Falscher Code. Noch ${6 - stored.attempts} Versuche.` });
+    // Fehlversuch in DB speichern
+    await setPendingEmailCode(auth.username, { ...stored, attempts }).catch(() => {});
+    return res.status(400).json({ error: `Falscher Code. Noch ${6 - attempts} Versuche.` });
   }
 
-  emailCodes.delete(auth.id);
+  await clearPendingEmailCode(auth.username).catch(() => {});
 
   const { error } = await supabase.from('users').update({ email: stored.email }).eq('id', auth.id);
   if (error) return res.status(500).json({ error: 'E-Mail konnte nicht gespeichert werden.' });
