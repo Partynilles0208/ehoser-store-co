@@ -215,7 +215,7 @@ function showCaptcha() {
         if (window.grecaptcha && window.grecaptcha.render) {
             _captchaRendered = true;
             window.grecaptcha.render(widget, {
-                sitekey: '6Ld8c8ksAAAAFIV8RZqeiMvod-QJ64rIDf_H1tZ',
+                sitekey: '6Lf6esksAAAAAA7p5xYYHCrJze9a_ng_BUKHXyom',
                 callback: window.onCaptchaSuccess,
                 theme: 'dark'
             });
