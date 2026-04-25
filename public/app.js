@@ -1009,10 +1009,10 @@ function closeYTPlayer() {
     if (wrap) wrap.style.display = 'none';
 }
 
-// ─── KI Chat (Google Gemini) ──────────────────────────────────────────────────
-const GEMINI_API_KEY = 'AIzaSyDLaTeVl446BhMOjtRYhJA9ZndmCiRoHSs';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
-let _kiHistory = []; // { role: 'user'|'model', parts: [{text}] }
+// ─── KI Chat (DeepSeek) ─────────────────────────────────────────────────────
+const DEEPSEEK_API_KEY = 'sk-3d08c96bc4c24bd197db716b08c37fcd';
+const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
+let _kiHistory = []; // { role: 'user'|'assistant', content: string }
 
 function appendKIBubble(type, text) {
     const messages = document.getElementById('kiMessages');
@@ -1047,15 +1047,22 @@ async function sendKIMessage() {
     if (sendBtn) sendBtn.disabled = true;
 
     appendKIBubble('user', text);
-    _kiHistory.push({ role: 'user', parts: [{ text }] });
+    _kiHistory.push({ role: 'user', content: text });
 
     const typing = showKITyping();
 
     try {
-        const res = await fetch(GEMINI_URL, {
+        const res = await fetch(DEEPSEEK_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: _kiHistory })
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: 'deepseek-chat',
+                messages: _kiHistory,
+                stream: false
+            })
         });
 
         typing?.remove();
@@ -1064,14 +1071,13 @@ async function sendKIMessage() {
             const err = await res.json().catch(() => ({}));
             const msg = err?.error?.message || `Fehler ${res.status}`;
             appendKIBubble('error', '⚠️ ' + msg);
-            // Letzten User-Eintrag wieder entfernen damit Verlauf konsistent bleibt
             _kiHistory.pop();
             return;
         }
 
         const data = await res.json();
-        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || '(Keine Antwort)';
-        _kiHistory.push({ role: 'model', parts: [{ text: reply }] });
+        const reply = data?.choices?.[0]?.message?.content || '(Keine Antwort)';
+        _kiHistory.push({ role: 'assistant', content: reply });
         appendKIBubble('ai', reply);
     } catch (err) {
         typing?.remove();
