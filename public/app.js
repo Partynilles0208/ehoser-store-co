@@ -1269,20 +1269,30 @@ function appendKIImageBubble(prompt, imageUrl) {
     div.className = 'ki-bubble ki-bubble-ai';
     const label = document.createElement('div');
     label.style.cssText = 'font-size:0.8rem;color:#8ab4c9;margin-bottom:8px;';
-    label.textContent = '🎨 Generiertes Bild: ' + prompt;
+    label.textContent = '\uD83C\uDFA8 Generiertes Bild: ' + prompt;
     div.appendChild(label);
     const loading = document.createElement('div');
     loading.style.cssText = 'color:#8ab4c9;font-size:0.9rem;padding:4px 0;';
-    loading.textContent = '⏳ Bild wird generiert…';
+    loading.textContent = '\u23F3 Bild wird generiert\u2026 (kann bis zu 30 Sekunden dauern)';
     div.appendChild(loading);
     const img = document.createElement('img');
     img.src = imageUrl;
     img.alt = prompt;
     img.style.cssText = 'max-width:100%;border-radius:10px;display:none;cursor:pointer;margin-top:6px;';
-    img.title = 'Klicken zum Öffnen in neuem Tab';
+    img.title = 'Klicken zum \u00D6ffnen in neuem Tab';
     img.onclick = () => window.open(imageUrl, '_blank', 'noopener');
-    img.onload = () => { loading.remove(); img.style.display = 'block'; messages.scrollTop = messages.scrollHeight; };
-    img.onerror = () => { loading.textContent = '❌ Bild konnte nicht generiert werden.'; };
+    img.onload = () => {
+        loading.remove();
+        img.style.display = 'block';
+        messages.scrollTop = messages.scrollHeight;
+    };
+    img.onerror = () => {
+        loading.innerHTML = '\u274C Bild konnte nicht geladen werden. '
+            + '<a href="' + imageUrl + '" target="_blank" rel="noopener" style="color:#8ab4c9;text-decoration:underline;">Direkt \u00F6ffnen</a>'
+            + ' &nbsp;<button onclick="this.closest(\'.ki-bubble\').querySelector(\'img\').src=\'' + imageUrl + '?r=\'+Date.now()" '
+            + 'style="background:#1e3a4a;color:#8ab4c9;border:1px solid #8ab4c9;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.8rem;">'
+            + '\uD83D\uDD04 Erneut versuchen</button>';
+    };
     div.appendChild(img);
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
@@ -1293,7 +1303,7 @@ function kiHandleImageGenCommand(reply) {
     if (!match) return false;
     const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
     const seed = Math.floor(Math.random() * 999999);
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+    const url = `https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
     const textBefore = reply.replace(/BILD_GENERIEREN:\s*.+/i, '').trim();
     if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
     appendKIImageBubble(prompt, url);
