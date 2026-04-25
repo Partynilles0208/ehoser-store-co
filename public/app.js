@@ -1513,6 +1513,13 @@ async function copyLoginCode() {
 
 function closeSettingsModal() {
     document.getElementById('settingsModal').classList.remove('show');
+    // E-Mail-Eingaben beim Schließen zurücksetzen
+    const emailInput = document.getElementById('emailInput');
+    const emailCodeInput = document.getElementById('emailCodeInput');
+    const emailCodeRow = document.getElementById('emailCodeRow');
+    if (emailInput) emailInput.value = '';
+    if (emailCodeInput) emailCodeInput.value = '';
+    if (emailCodeRow) emailCodeRow.style.display = 'none';
 }
 
 // ── E-Mail Verknüpfung ────────────────────────────────────────────────────────
