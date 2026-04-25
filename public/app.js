@@ -627,6 +627,9 @@ function selectMode(mode) {
     } else if (mode === 'map') {
         showSection('map');
         setTimeout(initMap, 50); // kurz warten bis section sichtbar ist
+    } else if (mode === 'youtube') {
+        showSection('youtube');
+        setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
     } else if (mode === 'facewarp') {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
@@ -850,6 +853,145 @@ document.addEventListener('click', (e) => {
     const wrap = document.getElementById('mapSearchInput')?.closest('.map-search-wrap');
     if (wrap && !wrap.contains(e.target)) closeMapDropdown();
 });
+
+// ─── YouTube (YouTube Data API v3) ────────────────────────────────────────────
+const YT_API_KEY = 'AIzaSyBKmRUuR2URlYmdDHGC-6I5N7Vxv4SxScc';
+let _ytType = 'video';
+let _ytNextPageToken = null;
+let _ytPrevPageToken = null;
+let _ytLastQuery = '';
+
+function setYTType(type) {
+    _ytType = type;
+    ['video', 'playlist', 'channel'].forEach(t => {
+        const btn = document.getElementById('ytTab' + t.charAt(0).toUpperCase() + t.slice(1));
+        if (btn) btn.classList.toggle('active', t === type);
+    });
+    if (_ytLastQuery) runYTSearch();
+}
+
+async function runYTSearch(pageToken) {
+    const query = document.getElementById('ytSearchInput')?.value.trim();
+    if (!query) return;
+    _ytLastQuery = query;
+
+    const status = document.getElementById('ytStatus');
+    const results = document.getElementById('ytResults');
+    const pagination = document.getElementById('ytPagination');
+    if (status) status.textContent = 'Suche läuft…';
+    if (results) results.innerHTML = '';
+    if (pagination) pagination.innerHTML = '';
+    closeYTPlayer();
+
+    try {
+        let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=${_ytType}&maxResults=12&key=${YT_API_KEY}&safeSearch=moderate`;
+        if (pageToken) url += `&pageToken=${pageToken}`;
+
+        const res = await fetch(url);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            status.textContent = 'Fehler: ' + (err?.error?.message || res.statusText);
+            return;
+        }
+        const data = await res.json();
+        _ytNextPageToken = data.nextPageToken || null;
+        _ytPrevPageToken = data.prevPageToken || null;
+
+        if (!data.items?.length) {
+            status.textContent = 'Keine Ergebnisse gefunden.';
+            return;
+        }
+
+        status.textContent = '';
+        if (results) results.innerHTML = data.items.map(item => buildYTCard(item)).join('');
+
+        // Pagination
+        if (pagination && (_ytPrevPageToken || _ytNextPageToken)) {
+            pagination.innerHTML = `
+                ${_ytPrevPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytPrevPageToken}')">← Zurück</button>` : ''}
+                ${_ytNextPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytNextPageToken}')">Weiter →</button>` : ''}
+            `;
+        }
+
+        // Scroll to results
+        document.getElementById('ytResults')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+        if (status) status.textContent = 'Verbindungsfehler. Bitte versuche es erneut.';
+    }
+}
+
+function buildYTCard(item) {
+    const kind = item.id.kind; // youtube#video, youtube#playlist, youtube#channel
+    const thumb = item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '';
+    const title = escapeHtml(item.snippet.title);
+    const sub = escapeHtml(item.snippet.channelTitle || item.snippet.description || '');
+
+    let id, onclickAttr, badge, playOverlay;
+
+    if (kind === 'youtube#video') {
+        id = item.id.videoId;
+        onclickAttr = `openYTPlayer('${id}', this.querySelector('.yt-card-title').textContent, 'video')`;
+        badge = '▶ Video';
+        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">▶</div></div>`;
+    } else if (kind === 'youtube#playlist') {
+        id = item.id.playlistId;
+        onclickAttr = `openYTPlayer('${id}', this.querySelector('.yt-card-title').textContent, 'playlist')`;
+        badge = '📋 Playlist';
+        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">▶</div></div>`;
+    } else {
+        id = item.id.channelId;
+        onclickAttr = `window.open('https://www.youtube.com/channel/${id}','_blank')`;
+        badge = '📺 Kanal';
+        playOverlay = '';
+    }
+
+    return `
+        <div class="yt-card" onclick="${onclickAttr}">
+            <div class="yt-thumb-wrap">
+                ${thumb ? `<img class="yt-thumb" src="${thumb}" alt="" loading="lazy">` : ''}
+                ${playOverlay}
+            </div>
+            <div class="yt-card-body">
+                <div class="yt-card-title">${title}</div>
+                <div class="yt-card-sub">${sub}</div>
+                <span class="yt-card-type-badge">${badge}</span>
+            </div>
+        </div>`;
+}
+
+function openYTPlayer(id, title, type) {
+    const wrap = document.getElementById('ytPlayerWrap');
+    const iframe = document.getElementById('ytIframe');
+    const titleEl = document.getElementById('ytPlayerTitle');
+    if (!wrap || !iframe) return;
+
+    let src;
+    if (type === 'playlist') {
+        src = `https://www.youtube-nocookie.com/embed/videoseries?list=${id}&autoplay=1`;
+    } else {
+        src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`;
+    }
+
+    iframe.src = src;
+    if (titleEl) titleEl.textContent = title;
+    wrap.style.display = 'block';
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeYTPlayer() {
+    const wrap = document.getElementById('ytPlayerWrap');
+    const iframe = document.getElementById('ytIframe');
+    if (iframe) iframe.src = '';
+    if (wrap) wrap.style.display = 'none';
+}
+
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 
 function renderImageSearchResults(hits) {
     const grid = document.getElementById('imageSearchResults');
