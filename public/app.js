@@ -1303,7 +1303,7 @@ function kiHandleImageGenCommand(reply) {
     if (!match) return false;
     const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
     const seed = Math.floor(Math.random() * 999999);
-    const url = `https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+    const url = `/api/ki/image?prompt=${encodeURIComponent(prompt)}&seed=${seed}`;
     const textBefore = reply.replace(/BILD_GENERIEREN:\s*.+/i, '').trim();
     if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
     appendKIImageBubble(prompt, url);

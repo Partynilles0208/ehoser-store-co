@@ -2160,4 +2160,30 @@ app.post('/api/ki', async (req, res) => {
   }
 });
 
+// Pollinations.ai Bild-Proxy (Key bleibt sicher auf dem Server)
+app.get('/api/ki/image', async (req, res) => {
+  const prompt = req.query.prompt;
+  if (!prompt || prompt.trim().length === 0) {
+    return res.status(400).json({ error: 'Kein Prompt angegeben' });
+  }
+  const seed = req.query.seed || Math.floor(Math.random() * 999999);
+  const apiKey = process.env.POLLINATIONS_API_KEY;
+  const encodedPrompt = encodeURIComponent(prompt.slice(0, 500));
+  let pollinationsUrl = `https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`;
+  if (apiKey) pollinationsUrl += `&key=${encodeURIComponent(apiKey)}`;
+  try {
+    const imgRes = await fetch(pollinationsUrl);
+    if (!imgRes.ok) {
+      return res.status(imgRes.status).json({ error: `Pollinations Fehler: ${imgRes.status}` });
+    }
+    const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const buffer = await imgRes.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen' });
+  }
+});
+
 module.exports = app;
