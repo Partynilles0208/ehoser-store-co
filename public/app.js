@@ -286,13 +286,18 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.style.overflow = '';
             showCaptcha();
         } else {
+            // Intro läuft 12.8s, dann 0.5s fade-out, dann entfernen
             setTimeout(() => {
-                splash.remove();
-                document.body.classList.remove('splash-active');
-                document.body.style.overflow = '';
-                document.cookie = 'intro_shown=1; path=/; SameSite=Strict';
-                showCaptcha();
-            }, 16500);
+                splash.style.transition = 'opacity 0.5s ease';
+                splash.style.opacity = '0';
+                setTimeout(() => {
+                    splash.remove();
+                    document.body.classList.remove('splash-active');
+                    document.body.style.overflow = '';
+                    document.cookie = 'intro_shown=1; path=/; SameSite=Strict';
+                    showCaptcha();
+                }, 500);
+            }, 12800);
         }
     } else {
         showCaptcha();
