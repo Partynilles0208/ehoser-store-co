@@ -135,10 +135,29 @@
             </section>
 
             <section id="ki" class="section">
-                <div class="ki-wrapper">
+                <!-- Name-Eingabe Modal -->
+                <div id="kiNameModal" class="ki-name-modal">
+                    <div class="ki-name-box">
+                        <div class="ki-name-logo">🤖</div>
+                        <h3 class="ki-name-title">Willkommen bei ehoser KI</h3>
+                        <p class="ki-name-sub">Wie heißt du? Dein Name wird nur lokal gespeichert und nie an den Server übertragen.</p>
+                        <input
+                            type="text"
+                            id="kiNameInput"
+                            class="ki-name-input"
+                            placeholder="Dein echter Vorname..."
+                            maxlength="40"
+                            onkeydown="if(event.key==='Enter'){startKIWithName();}"
+                            autocomplete="off"
+                        >
+                        <button class="ki-name-btn" onclick="startKIWithName()">Starten →</button>
+                        <p class="ki-name-hint">🔒 Datenschutz: Dein Name verlasst nie dein Gerät. Die KI schreibt intern [name], wir ersetzen es lokal.</p>
+                    </div>
+                </div>
+                <div class="ki-wrapper" id="kiChatWrapper" style="display:none">
                     <div class="ki-header">
                         <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
-                        <h2 class="ki-title">🤖 KI – Llama 3.3 Chat</h2>
+                        <h2 class="ki-title">🤖 ehoser KI</h2>
                         <button class="ki-clear-btn" onclick="clearKIChat()">Verlauf leeren</button>
                     </div>
                     <div id="kiMessages" class="ki-messages"></div>

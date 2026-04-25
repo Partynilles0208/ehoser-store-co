@@ -649,11 +649,22 @@ function selectMode(mode) {
         showSection('youtube');
         setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
     } else if (mode === 'ki') {
-        showSection('ki');
-        if (document.getElementById('kiMessages')?.children.length === 0) {
-            appendKIBubble('ai', 'Hallo! 👋 Ich bin Gemini. Stell mir eine Frage oder schreib einfach drauf los.');
+        // Registrierung nötig
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showAlert('Bitte zuerst anmelden, um ehoser KI zu nutzen.', 'error');
+            showSection('auth');
+            return;
         }
-        setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
+        showSection('ki');
+        // Name bereits bekannt → direkt Chat öffnen, sonst Modal zeigen
+        if (sessionStorage.getItem('kiUserName')) {
+            showKIChat();
+        } else {
+            document.getElementById('kiNameModal').style.display = 'flex';
+            document.getElementById('kiChatWrapper').style.display = 'none';
+            setTimeout(() => document.getElementById('kiNameInput')?.focus(), 50);
+        }
     } else if (mode === 'facewarp') {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
@@ -1011,7 +1022,41 @@ function closeYTPlayer() {
 
 // ─── KI Chat (Groq – Llama 3.3 70B) ──────────────────────────────────────────
 // API Key liegt serverseitig in GROQ_API_KEY (Vercel Environment Variable)
-let _kiHistory = []; // { role: 'user'|'assistant', content: string }
+let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
+
+const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und hilfreicher KI-Assistent, der exklusiv auf den Servern von ehoser läuft. ehoser ist eine private Plattform mit APK Store, Spielen, Chat und weiteren Features.
+Wenn du den Nutzer persönlich ansprechen möchtest, schreibe ausschließlich [name] anstelle des echten Namens (zum Beispiel: "Wie geht es dir, [name]?"). Verwende niemals den echten Namen direkt. 
+Antworte auf Deutsch, es sei denn der Nutzer schreibt in einer anderen Sprache.`;
+
+function startKIWithName() {
+    const input = document.getElementById('kiNameInput');
+    const name = (input?.value || '').trim();
+    if (!name) {
+        input?.focus();
+        return;
+    }
+    sessionStorage.setItem('kiUserName', name);
+    showKIChat();
+}
+
+function showKIChat() {
+    const name = sessionStorage.getItem('kiUserName') || 'Nutzer';
+    document.getElementById('kiNameModal').style.display = 'none';
+    document.getElementById('kiChatWrapper').style.display = 'flex';
+
+    // Nur beim ersten Mal initialisieren
+    if (_kiHistory.length === 0) {
+        _kiHistory = [{ role: 'system', content: KI_SYSTEM_PROMPT }];
+        const greeting = kiReplaceNamePlaceholder(`Hallo, [name]! 👋 Ich bin ehoser KI, dein persönlicher Assistent auf dem ehoser Server. Wie kann ich dir heute helfen?`);
+        appendKIBubble('ai', greeting);
+    }
+    setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
+}
+
+function kiReplaceNamePlaceholder(text) {
+    const name = sessionStorage.getItem('kiUserName') || '';
+    return name ? text.replace(/\[name\]/gi, name) : text;
+}
 
 function appendKIBubble(type, text) {
     const messages = document.getElementById('kiMessages');
@@ -1068,8 +1113,9 @@ async function sendKIMessage() {
         }
 
         const data = await res.json();
-        const reply = data?.choices?.[0]?.message?.content || '(Keine Antwort)';
-        _kiHistory.push({ role: 'assistant', content: reply });
+        const rawReply = data?.choices?.[0]?.message?.content || '(Keine Antwort)';
+        const reply = kiReplaceNamePlaceholder(rawReply);
+        _kiHistory.push({ role: 'assistant', content: rawReply }); // Roh-Text im Verlauf (kein echter Name)
         appendKIBubble('ai', reply);
     } catch (err) {
         typing?.remove();
@@ -1082,10 +1128,10 @@ async function sendKIMessage() {
 }
 
 function clearKIChat() {
-    _kiHistory = [];
+    _kiHistory = [{ role: 'system', content: KI_SYSTEM_PROMPT }];
     const messages = document.getElementById('kiMessages');
     if (messages) messages.innerHTML = '';
-    appendKIBubble('ai', 'Verlauf geleert. 👋 Stell mir eine neue Frage!');
+    appendKIBubble('ai', kiReplaceNamePlaceholder('Verlauf geleert. 👋 Womit kann ich dir helfen, [name]?'));
 }
 
 function renderImageSearchResults(hits) {
