@@ -595,17 +595,20 @@
             <div style="background:rgba(0,0,0,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-top:12px;">
                 <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">E-Mail Adresse</div>
                 <div id="emailCurrentDisplay" style="font-size:0.85rem;color:var(--muted,#888);margin-bottom:10px;"></div>
+                <div id="emailUnlinkRow" style="display:none;margin-bottom:10px;">
+                    <button onclick="unlinkEmail()" class="btn-small" style="padding:6px 12px;background:rgba(255,60,60,0.15);border:1px solid rgba(255,60,60,0.35);color:#ff6b6b;">&#x1F5D1; E-Mail entfernen</button>
+                </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <input id="emailInput" type="email" placeholder="deine@email.de"
                         style="flex:1;min-width:0;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#111;color:#fff;font-size:14px;">
                     <button onclick="sendEmailCode()" class="btn-small" style="padding:8px 14px;white-space:nowrap;">Code senden</button>
                 </div>
                 <div id="emailCodeRow" style="display:none;margin-top:10px;">
-                    <div style="font-size:12px;color:#4d9fff;margin-bottom:6px;">✉️ Code wurde gesendet. Prüfe dein Postfach:</div>
+                    <div style="font-size:12px;color:#4d9fff;margin-bottom:6px;">&#x2709;&#xFE0F; Code wurde gesendet. Prüfe dein Postfach:</div>
                     <div style="display:flex;gap:8px;">
                         <input id="emailCodeInput" type="text" maxlength="6" placeholder="6-stelliger Code"
                             style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#111;color:#fff;font-size:16px;letter-spacing:0.3em;text-align:center;">
-                        <button onclick="verifyEmailCode()" class="btn-small" style="padding:8px 14px;">✓ Bestätigen</button>
+                        <button onclick="verifyEmailCode()" class="btn-small" style="padding:8px 14px;">&#x2713; Bestätigen</button>
                     </div>
                 </div>
             </div>

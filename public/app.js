@@ -1451,6 +1451,8 @@ function openSettingsModal() {
             .then(d => {
                 const mail = d.user?.email || null;
                 emailDisplay.textContent = mail ? `Verknüpft: ${mail}` : 'Noch keine E-Mail verknüpft.';
+                const unlinkRow = document.getElementById('emailUnlinkRow');
+                if (unlinkRow) unlinkRow.style.display = mail ? 'block' : 'none';
             }).catch(() => {});
     }
     document.getElementById('emailCodeRow').style.display = 'none';
@@ -1520,6 +1522,23 @@ function closeSettingsModal() {
     if (emailInput) emailInput.value = '';
     if (emailCodeInput) emailCodeInput.value = '';
     if (emailCodeRow) emailCodeRow.style.display = 'none';
+}
+
+async function unlinkEmail() {
+    if (!confirm('E-Mail-Adresse wirklich entfernen?')) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const res = await fetch(`${API_BASE}/me/unlink-email`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok) { showAlert(data.error || 'Fehler beim Entfernen.', 'error'); return; }
+        document.getElementById('emailCurrentDisplay').textContent = 'Noch keine E-Mail verknüpft.';
+        document.getElementById('emailUnlinkRow').style.display = 'none';
+        showAlert('E-Mail wurde entfernt.', 'success');
+    } catch { showAlert('Netzwerkfehler.', 'error'); }
 }
 
 // ── E-Mail Verknüpfung ────────────────────────────────────────────────────────

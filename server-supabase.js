@@ -1820,6 +1820,14 @@ app.post('/api/me/verify-email', async (req, res) => {
   res.json({ success: true, email: stored.email });
 });
 
+app.delete('/api/me/unlink-email', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const { error } = await supabase.from('users').update({ email: null }).eq('id', auth.id);
+  if (error) return res.status(500).json({ error: 'E-Mail konnte nicht entfernt werden.' });
+  res.json({ success: true });
+});
+
 // ─── KI Proxy (Groq) ──────────────────────────────────────────────────────────
 app.post('/api/ki', async (req, res) => {
   const groqKey = process.env.GROQ_API_KEY;
