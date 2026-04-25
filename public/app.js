@@ -648,6 +648,24 @@ function selectMode(mode) {
     } else if (mode === 'youtube') {
         showSection('youtube');
         setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
+    } else if (mode === 'browser-agent') {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showAlert('Bitte zuerst anmelden, um den KI Browser zu nutzen.', 'error');
+            showSection('auth');
+            return;
+        }
+        if (localStorage.getItem('proStatus') !== '1') {
+            showAlert('Der KI Browser ist ein PRO-Feature. Bitte upgrade deinen Account.', 'error');
+            return;
+        }
+        showSection('browser-agent');
+        // Gespeicherte Server-URL laden
+        const savedUrl = localStorage.getItem('baServerUrl');
+        if (savedUrl) {
+            const inp = document.getElementById('baServerInput');
+            if (inp) inp.value = savedUrl;
+        }
     } else if (mode === 'ki') {
         // Registrierung nötig
         const token = localStorage.getItem('token');
@@ -1219,6 +1237,206 @@ function clearKIChat() {
     const messages = document.getElementById('kiMessages');
     if (messages) messages.innerHTML = '';
     appendKIBubble('ai', kiReplaceNamePlaceholder('Verlauf geleert. 👋 Womit kann ich dir helfen, [name]?'));
+}
+
+// ─── ehoser KI Browser Agent ──────────────────────────────────────────────────
+let _baWs = null;
+let _baConnected = false;
+let _baAgentRunning = false;
+
+function baSetStatus(text, state) {
+    // state: 'off' | 'on' | 'busy'
+    const el = document.getElementById('baStatus');
+    if (!el) return;
+    const dotClass = state === 'on' ? 'ba-dot-on' : state === 'busy' ? 'ba-dot-busy' : 'ba-dot-off';
+    el.innerHTML = `<span class="ba-dot ${dotClass}"></span> ${text}`;
+}
+
+function baAddThought(text, kind = 'ai') {
+    const panel = document.getElementById('baThoughts');
+    if (!panel) return;
+    // Leere-Meldung entfernen
+    const empty = panel.querySelector('.ba-thought-empty');
+    if (empty) empty.remove();
+    const div = document.createElement('div');
+    div.className = `ba-thought ba-thought-${kind}`;
+    div.textContent = text;
+    panel.appendChild(div);
+    panel.scrollTop = panel.scrollHeight;
+}
+
+function baMoveCursor(agentX, agentY) {
+    // agentX/agentY sind in 1280x720 Koordinaten
+    const wrap = document.getElementById('baViewportWrap');
+    const img = document.getElementById('baScreenshot');
+    const cursor = document.getElementById('baCursor');
+    if (!wrap || !img || !cursor) return;
+
+    const rect = img.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const scaleX = rect.width / 1280;
+    const scaleY = rect.height / 720;
+    const displayX = (rect.left - wrapRect.left) + agentX * scaleX;
+    const displayY = (rect.top - wrapRect.top) + agentY * scaleY;
+
+    cursor.style.display = 'block';
+    cursor.style.left = displayX + 'px';
+    cursor.style.top = displayY + 'px';
+
+    cursor.classList.remove('ba-cursor-click');
+    void cursor.offsetWidth; // reflow
+    cursor.classList.add('ba-cursor-click');
+    setTimeout(() => cursor.classList.remove('ba-cursor-click'), 350);
+}
+
+function baUpdateScreenshot(base64, url, title) {
+    const img = document.getElementById('baScreenshot');
+    const blank = document.getElementById('baBlankState');
+    if (!img || !blank) return;
+    img.src = 'data:image/jpeg;base64,' + base64;
+    img.style.display = 'block';
+    blank.style.display = 'none';
+    const urlEl = document.getElementById('baCurrentUrl');
+    if (urlEl) urlEl.textContent = url || 'about:blank';
+}
+
+function baConnect() {
+    const inp = document.getElementById('baServerInput');
+    let url = (inp?.value || '').trim();
+    if (!url) { showAlert('Bitte Server-URL eingeben.', 'error'); return; }
+
+    // ws:// or wss:// normalisieren
+    if (!/^wss?:\/\//i.test(url)) url = 'wss://' + url;
+    localStorage.setItem('baServerUrl', url);
+
+    if (_baWs) { _baWs.close(); _baWs = null; }
+    baSetStatus('Verbinde…', 'busy');
+
+    try {
+        _baWs = new WebSocket(url);
+    } catch (e) {
+        baSetStatus('Ungültige URL', 'off');
+        showAlert('Ungültige WebSocket-URL.', 'error');
+        return;
+    }
+
+    _baWs.onopen = () => {};
+
+    _baWs.onmessage = (event) => {
+        let msg;
+        try { msg = JSON.parse(event.data); } catch { return; }
+
+        switch (msg.type) {
+            case 'ready':
+                _baConnected = true;
+                baSetStatus('Verbunden', 'on');
+                document.getElementById('baConnectBtn').style.display = 'none';
+                document.getElementById('baDisconnectBtn').style.display = '';
+                document.getElementById('baStartBtn').disabled = false;
+                baAddThought('✅ Verbunden mit Browser-Server. Gib eine Aufgabe ein!', 'done');
+                break;
+
+            case 'screenshot':
+                baUpdateScreenshot(msg.data, msg.url, msg.title);
+                break;
+
+            case 'agent_thought':
+                baAddThought(msg.text, msg.kind || 'ai');
+                break;
+
+            case 'agent_action':
+                if (msg.action === 'click' && msg.x !== undefined) {
+                    baMoveCursor(msg.x, msg.y);
+                    baAddThought(`🖱 Klick auf (${msg.x}, ${msg.y})`, 'action');
+                } else if (msg.action === 'navigate') {
+                    baAddThought(`🌐 Navigiere zu: ${msg.detail}`, 'action');
+                } else if (msg.action === 'type') {
+                    baAddThought(`⌨️ Tippe: "${msg.detail}"`, 'action');
+                } else if (msg.action === 'scroll') {
+                    baAddThought('↕️ Scrolle…', 'action');
+                }
+                break;
+
+            case 'agent_done':
+                _baAgentRunning = false;
+                baSetStatus('Verbunden', 'on');
+                document.getElementById('baStopBtn').style.display = 'none';
+                document.getElementById('baStartBtn').style.display = '';
+                document.getElementById('baCursor').style.display = 'none';
+                baAddThought(msg.message, 'done');
+                break;
+
+            case 'error':
+                baAddThought('⚠️ ' + msg.message, 'error');
+                break;
+        }
+    };
+
+    _baWs.onclose = () => {
+        _baConnected = false;
+        _baAgentRunning = false;
+        _baWs = null;
+        baSetStatus('Nicht verbunden', 'off');
+        document.getElementById('baConnectBtn').style.display = '';
+        document.getElementById('baDisconnectBtn').style.display = 'none';
+        document.getElementById('baStartBtn').disabled = true;
+        document.getElementById('baStartBtn').style.display = '';
+        document.getElementById('baStopBtn').style.display = 'none';
+        document.getElementById('baCursor').style.display = 'none';
+    };
+
+    _baWs.onerror = () => {
+        baSetStatus('Verbindungsfehler', 'off');
+        baAddThought('❌ Verbindung fehlgeschlagen. Läuft der Server auf Railway?', 'error');
+    };
+}
+
+function baDisconnect() {
+    if (_baWs) { _baWs.close(); _baWs = null; }
+    baSetStatus('Nicht verbunden', 'off');
+}
+
+function baStartAgent() {
+    if (!_baConnected || !_baWs) {
+        showAlert('Bitte zuerst mit Server verbinden.', 'error');
+        return;
+    }
+    const taskInput = document.getElementById('baTaskInput');
+    const task = (taskInput?.value || '').trim();
+    if (!task) { taskInput?.focus(); return; }
+
+    _baAgentRunning = true;
+    baSetStatus('Agent läuft…', 'busy');
+    document.getElementById('baStartBtn').style.display = 'none';
+    document.getElementById('baStopBtn').style.display = '';
+    document.getElementById('baThoughts').innerHTML = ''; // Gedanken zurücksetzen
+
+    _baWs.send(JSON.stringify({ type: 'agent_start', task }));
+}
+
+function baStopAgent() {
+    if (_baWs && _baConnected) {
+        _baWs.send(JSON.stringify({ type: 'agent_stop' }));
+    }
+    _baAgentRunning = false;
+    baSetStatus('Verbunden', 'on');
+    document.getElementById('baStopBtn').style.display = 'none';
+    document.getElementById('baStartBtn').style.display = '';
+    document.getElementById('baCursor').style.display = 'none';
+}
+
+function baManualClick(event) {
+    // Nutzer klickt manuell auf den Screenshot → weiterleiten
+    if (!_baConnected || !_baWs || _baAgentRunning) return;
+    const img = event.currentTarget;
+    const rect = img.getBoundingClientRect();
+    const scaleX = 1280 / rect.width;
+    const scaleY = 720 / rect.height;
+    const x = Math.round((event.clientX - rect.left) * scaleX);
+    const y = Math.round((event.clientY - rect.top) * scaleY);
+    _baWs.send(JSON.stringify({ type: 'click', x, y }));
+    baMoveCursor(x, y);
+    baAddThought(`🖱 Manueller Klick auf (${x}, ${y})`, 'action');
 }
 
 function renderImageSearchResults(hits) {
