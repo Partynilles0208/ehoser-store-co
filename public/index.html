@@ -161,7 +161,19 @@
                         <button class="ki-clear-btn" onclick="clearKIChat()">Verlauf leeren</button>
                     </div>
                     <div id="kiMessages" class="ki-messages"></div>
+                    <div class="ki-attach-preview" id="kiAttachPreview" style="display:none">
+                        <span id="kiAttachName"></span>
+                        <button class="ki-attach-remove" onclick="kiClearAttachment()" title="Entfernen">✕</button>
+                    </div>
                     <div class="ki-input-row">
+                        <input type="file" id="kiFileInput"
+                            accept="image/*,.txt,.json,.csv,.md,.js,.ts,.py,.html,.css,.xml"
+                            style="display:none"
+                            onchange="kiHandleFileSelect(event)">
+                        <button class="ki-attach-btn" id="kiAttachBtn"
+                            onclick="document.getElementById('kiFileInput').click()"
+                            title="Datei anhängen (PRO)"
+                            style="display:none">📎</button>
                         <textarea
                             id="kiInput"
                             class="ki-input"

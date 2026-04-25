@@ -1023,6 +1023,7 @@ function closeYTPlayer() {
 // ─── KI Chat (Groq – Llama 3.3 70B) ──────────────────────────────────────────
 // API Key liegt serverseitig in GROQ_API_KEY (Vercel Environment Variable)
 let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
+let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
 
 const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser läuft. ehoser ist eine private Plattform mit APK Store, Spielen, Chat und weiteren Features.
 Deine Persönlichkeit ist locker, nett und ein kleines bisschen charmant – aber nicht übertrieben. Keine Kosenamen wie "Schatz" oder "Süße". Sprich den Nutzer normal aber herzlich an.
@@ -1046,6 +1047,10 @@ function showKIChat() {
     document.getElementById('kiNameModal').style.display = 'none';
     document.getElementById('kiChatWrapper').style.display = 'flex';
 
+    // Anhang-Button nur für PRO sichtbar
+    const attachBtn = document.getElementById('kiAttachBtn');
+    if (attachBtn) attachBtn.style.display = localStorage.getItem('proStatus') === '1' ? 'flex' : 'none';
+
     // Nur beim ersten Mal initialisieren
     if (_kiHistory.length === 0) {
         _kiHistory = [{ role: 'system', content: KI_SYSTEM_PROMPT }];
@@ -1053,6 +1058,34 @@ function showKIChat() {
         appendKIBubble('ai', greeting);
     }
     setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
+}
+
+function kiHandleFileSelect(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+        showAlert('Datei zu groß (max. 4 MB).', 'error');
+        event.target.value = '';
+        return;
+    }
+    const isImage = file.type.startsWith('image/');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        _kiAttachment = { type: isImage ? 'image' : 'text', data: e.target.result, name: file.name };
+        document.getElementById('kiAttachPreview').style.display = 'flex';
+        document.getElementById('kiAttachName').textContent = '📎 ' + file.name;
+    };
+    if (isImage) reader.readAsDataURL(file);
+    else reader.readAsText(file);
+    event.target.value = '';
+}
+
+function kiClearAttachment() {
+    _kiAttachment = null;
+    const preview = document.getElementById('kiAttachPreview');
+    if (preview) preview.style.display = 'none';
+    const name = document.getElementById('kiAttachName');
+    if (name) name.textContent = '';
 }
 
 function kiReplaceNamePlaceholder(text) {
@@ -1087,13 +1120,64 @@ async function sendKIMessage() {
     const input = document.getElementById('kiInput');
     const sendBtn = document.querySelector('.ki-send-btn');
     const text = input?.value.trim();
-    if (!text) return;
+    if (!text && !_kiAttachment) return;
 
     input.value = '';
     if (sendBtn) sendBtn.disabled = true;
 
-    appendKIBubble('user', text);
-    _kiHistory.push({ role: 'user', content: text });
+    // ── Nachricht aufbauen ──────────────────────────────────────
+    let apiMessage; // was an Groq geht (ggf. mit base64 Bild)
+    let historyMsg; // was im Verlauf gespeichert wird (kein base64)
+
+    if (_kiAttachment?.type === 'image') {
+        // Bild-Bubble im Chat anzeigen
+        const msgEl = document.getElementById('kiMessages');
+        if (msgEl) {
+            const bubble = document.createElement('div');
+            bubble.className = 'ki-bubble ki-bubble-user';
+            const img = document.createElement('img');
+            img.src = _kiAttachment.data;
+            img.className = 'ki-bubble-img';
+            img.alt = _kiAttachment.name;
+            bubble.appendChild(img);
+            if (text) { const t = document.createElement('div'); t.style.marginTop='6px'; t.textContent = text; bubble.appendChild(t); }
+            msgEl.appendChild(bubble);
+            msgEl.scrollTop = msgEl.scrollHeight;
+        }
+        // Groq Vision Format
+        apiMessage = { role: 'user', content: [
+            { type: 'text', text: text || 'Was siehst du auf diesem Bild?' },
+            { type: 'image_url', image_url: { url: _kiAttachment.data } }
+        ]};
+        historyMsg = { role: 'user', content: `[Bild: ${_kiAttachment.name}]${text ? ' – ' + text : ''}` };
+    } else if (_kiAttachment?.type === 'text') {
+        const combined = `Dateiinhalt (${_kiAttachment.name}):\n\`\`\`\n${_kiAttachment.data.slice(0, 8000)}\n\`\`\`${text ? '\n\n' + text : ''}`;
+        // Zeige Datei-Badge + Text im Chat
+        const msgEl = document.getElementById('kiMessages');
+        if (msgEl) {
+            const bubble = document.createElement('div');
+            bubble.className = 'ki-bubble ki-bubble-user';
+            const badge = document.createElement('div');
+            badge.className = 'ki-bubble-file-badge';
+            badge.textContent = '📄 ' + _kiAttachment.name;
+            bubble.appendChild(badge);
+            if (text) { const t = document.createElement('div'); t.style.marginTop='4px'; t.textContent = text; bubble.appendChild(t); }
+            msgEl.appendChild(bubble);
+            msgEl.scrollTop = msgEl.scrollHeight;
+        }
+        apiMessage = { role: 'user', content: combined };
+        historyMsg = { role: 'user', content: combined };
+    } else {
+        appendKIBubble('user', text);
+        apiMessage = { role: 'user', content: text };
+        historyMsg = apiMessage;
+    }
+
+    kiClearAttachment();
+
+    // Verlauf + API-Nachrichten aufbauen
+    const historyForRequest = [..._kiHistory, apiMessage];
+    _kiHistory.push(historyMsg);
 
     const typing = showKITyping();
 
@@ -1101,7 +1185,7 @@ async function sendKIMessage() {
         const res = await fetch('/api/ki', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: _kiHistory })
+            body: JSON.stringify({ messages: historyForRequest })
         });
 
         typing?.remove();
@@ -1117,7 +1201,7 @@ async function sendKIMessage() {
         const data = await res.json();
         const rawReply = data?.choices?.[0]?.message?.content || '(Keine Antwort)';
         const reply = kiReplaceNamePlaceholder(rawReply);
-        _kiHistory.push({ role: 'assistant', content: rawReply }); // Roh-Text im Verlauf (kein echter Name)
+        _kiHistory.push({ role: 'assistant', content: rawReply });
         appendKIBubble('ai', reply);
     } catch (err) {
         typing?.remove();
@@ -1130,6 +1214,7 @@ async function sendKIMessage() {
 }
 
 function clearKIChat() {
+    kiClearAttachment();
     _kiHistory = [{ role: 'system', content: KI_SYSTEM_PROMPT }];
     const messages = document.getElementById('kiMessages');
     if (messages) messages.innerHTML = '';

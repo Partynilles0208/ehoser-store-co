@@ -1663,6 +1663,12 @@ app.post('/api/ki', async (req, res) => {
   }
 
   try {
+    // Bildnachrichten brauchen ein Vision-Modell
+    const hasImage = messages.some(m =>
+      Array.isArray(m.content) && m.content.some(c => c.type === 'image_url')
+    );
+    const model = hasImage ? 'llama-3.2-11b-vision-preview' : 'llama-3.3-70b-versatile';
+
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1670,7 +1676,7 @@ app.post('/api/ki', async (req, res) => {
         'Authorization': `Bearer ${groqKey}`
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model,
         messages,
         stream: false
       })
