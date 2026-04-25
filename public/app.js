@@ -1009,14 +1009,6 @@ function closeYTPlayer() {
     if (wrap) wrap.style.display = 'none';
 }
 
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
 // ─── KI Chat (Google Gemini) ──────────────────────────────────────────────────
 const GEMINI_API_KEY = 'AIzaSyDLaTeVl446BhMOjtRYhJA9ZndmCiRoHSs';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
