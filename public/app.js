@@ -24,6 +24,10 @@ let _repoUpdateInterval = null;
 let _lastSeenRepoSha = null;
 let _dismissedRepoSha = null;
 let _googleAuthInitialized = false;
+
+try {
+    _dismissedRepoSha = localStorage.getItem('dismissedRepoSha') || null;
+} catch {}
 let _pendingReloadSnapshot = null;
 
 try {
@@ -69,6 +73,7 @@ function restoreReloadSnapshot() {
 }
 
 function showRepoUpdateOverlay() {
+    if (_lastSeenRepoSha && _dismissedRepoSha === _lastSeenRepoSha) return;
     const overlay = document.getElementById('repoUpdateOverlay');
     if (overlay) overlay.style.display = 'flex';
 }
@@ -77,6 +82,9 @@ function dismissRepoUpdate() {
     const overlay = document.getElementById('repoUpdateOverlay');
     if (overlay) overlay.style.display = 'none';
     _dismissedRepoSha = _lastSeenRepoSha;
+    try {
+        if (_dismissedRepoSha) localStorage.setItem('dismissedRepoSha', _dismissedRepoSha);
+    } catch {}
 }
 
 function loadRepoUpdate() {
@@ -551,7 +559,6 @@ function showVoteScreen() {
         const status = await loadVoteStatus();
         if (status.unlocked) {
             clearInterval(_votePollingInterval);
-            _dismissedRepoSha = null;
             showRepoUpdateOverlay();
         }
     }, 5000);
@@ -582,7 +589,6 @@ async function castVote() {
 
         if (data.unlocked) {
             if (msg) msg.textContent = '🎉 Update freigeschaltet! Du kannst es jetzt laden.';
-            _dismissedRepoSha = null;
             showRepoUpdateOverlay();
         }
     } catch {
