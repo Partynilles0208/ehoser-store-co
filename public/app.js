@@ -1794,7 +1794,7 @@ function appendKIVideoBubble(prompt) {
     const status = document.createElement('div');
     status.className = 'ki-video-status';
     status.style.cssText = 'color:#8ab4c9;font-size:0.9rem;padding:4px 0;';
-    status.textContent = '\u23F3 Video wird generiert\u2026 (30-90 Sekunden)';
+    status.textContent = '\u23F3 Video wird generiert\u2026 (kann 1-3 Minuten dauern)';
     div.appendChild(status);
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
@@ -1812,49 +1812,41 @@ async function kiStartVideoGeneration(prompt) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt })
         });
-        const data = await res.json();
-        if (!res.ok || !data.video_id) {
-            status.textContent = '\u274C ' + (data.error || 'Video-Generierung fehlgeschlagen');
+
+        if (!res.ok) {
+            let error = 'Video-Generierung fehlgeschlagen';
+            try {
+                const data = await res.json();
+                if (data?.error) error = data.error;
+            } catch {
+                try {
+                    const text = await res.text();
+                    if (text) error = text;
+                } catch {}
+            }
+            status.textContent = '\u274C ' + error;
             return;
         }
-        const videoId = data.video_id;
-        let attempts = 0;
-        const maxAttempts = 36; // 3 Minuten max (36 * 5s)
-        const poll = setInterval(async () => {
-            attempts++;
-            if (attempts > maxAttempts) {
-                clearInterval(poll);
-                status.textContent = '\u274C Zeitüberschreitung – Video nicht verfügbar';
-                return;
-            }
-            try {
-                const r = await fetch(`/api/ki/video/${videoId}/status`);
-                const d = await r.json();
-                if (d.status === 'done' && d.url) {
-                    clearInterval(poll);
-                    status.remove();
-                    const video = document.createElement('video');
-                    video.src = d.url;
-                    video.controls = true;
-                    video.style.cssText = 'max-width:100%;border-radius:10px;margin-top:6px;';
-                    const link = document.createElement('a');
-                    link.href = d.url;
-                    link.target = '_blank';
-                    link.rel = 'noopener';
-                    link.style.cssText = 'display:block;font-size:0.8rem;color:#8ab4c9;margin-top:6px;text-decoration:underline;';
-                    link.textContent = '\u2B07\uFE0F Video herunterladen';
-                    div.appendChild(video);
-                    div.appendChild(link);
-                    if (messages) messages.scrollTop = messages.scrollHeight;
-                } else if (d.status === 'failed') {
-                    clearInterval(poll);
-                    status.textContent = '\u274C Video-Generierung fehlgeschlagen';
-                } else {
-                    const dots = '.'.repeat((attempts % 3) + 1);
-                    status.textContent = '\u23F3 Video wird generiert' + dots + ' (' + (attempts * 5) + 's)';
-                }
-            } catch (e) { /* nächster Versuch */ }
-        }, 5000);
+
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        status.remove();
+
+        const video = document.createElement('video');
+        video.src = objectUrl;
+        video.controls = true;
+        video.playsInline = true;
+        video.style.cssText = 'max-width:100%;border-radius:10px;margin-top:6px;';
+
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = 'ehoser-ki-video.mp4';
+        link.style.cssText = 'display:block;font-size:0.8rem;color:#8ab4c9;margin-top:6px;text-decoration:underline;';
+        link.textContent = '\u2B07\uFE0F Video herunterladen';
+
+        div.appendChild(video);
+        div.appendChild(link);
+        if (messages) messages.scrollTop = messages.scrollHeight;
     } catch (err) {
         status.textContent = '\u274C Verbindungsfehler';
     }

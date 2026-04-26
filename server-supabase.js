@@ -2653,52 +2653,71 @@ app.post('/api/ki', async (req, res) => {
   }
 });
 
-// PixVerse Video-KI: Job starten
+  // Hugging Face Video-KI: Wan2.2 Text-to-Video
 app.post('/api/ki/video/create', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
-  const apiKey = process.env.PIXVERSE_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'PIXVERSE_API_KEY nicht konfiguriert' });
+    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    if (!apiKey) return res.status(503).json({ error: 'HUGGINGFACE_API_KEY nicht konfiguriert' });
   try {
-    const r = await fetch('https://api.pixverse.ai/open/v2/video/text/generate', {
+      const r = await fetch('https://api-inference.huggingface.co/models/Wan-AI/Wan2.2-T2V-A14B', {
       method: 'POST',
       headers: {
-        'API-KEY': apiKey,
-        'Ai-trace-id': crypto.randomUUID(),
-        'Content-Type': 'application/json'
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'video/mp4',
+          'x-wait-for-model': 'true'
       },
-      body: JSON.stringify({ prompt: prompt.slice(0, 500), quality: '540p', duration: 5, ratio: '16:9' })
+        body: JSON.stringify({
+          inputs: prompt.slice(0, 500),
+          parameters: {
+            num_frames: 81,
+            num_inference_steps: 30,
+            guidance_scale: 5,
+            negative_prompt: [
+              'blurry',
+              'low quality',
+              'distorted',
+              'glitch',
+              'text watermark'
+            ]
+          }
+        })
     });
-    const data = await r.json();
-    if (!r.ok || data.ErrCode !== 0) {
-      return res.status(502).json({ error: data.Msg || 'PixVerse Fehler' });
+
+      if (!r.ok) {
+        const contentType = r.headers.get('content-type') || '';
+        let error = 'Hugging Face Video-Generierung fehlgeschlagen';
+        try {
+          if (contentType.includes('application/json')) {
+            const data = await r.json();
+            error = data.error || data.estimated_time || error;
+          } else {
+            const text = await r.text();
+            if (text) error = text;
+          }
+        } catch {}
+        return res.status(502).json({ error });
     }
-    res.json({ video_id: data.Resp.video_id });
+
+      const contentType = r.headers.get('content-type') || 'video/mp4';
+      if (!contentType.startsWith('video/')) {
+        const text = await r.text().catch(() => '');
+        return res.status(502).json({ error: text || 'Antwort war kein Video' });
+      }
+
+      const buffer = await r.arrayBuffer();
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(Buffer.from(buffer));
   } catch (err) {
-    res.status(502).json({ error: 'Verbindungsfehler zu PixVerse' });
+      res.status(502).json({ error: 'Verbindungsfehler zu Hugging Face' });
   }
 });
 
-// PixVerse Video-KI: Status abfragen
+  // Alter Polling-Endpunkt wird nicht mehr verwendet, da HF das Video direkt liefert.
 app.get('/api/ki/video/:id/status', async (req, res) => {
-  const apiKey = process.env.PIXVERSE_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'PIXVERSE_API_KEY nicht konfiguriert' });
-  try {
-    const r = await fetch(`https://api.pixverse.ai/open/v2/video/${encodeURIComponent(req.params.id)}/result`, {
-      headers: { 'API-KEY': apiKey, 'Ai-trace-id': crypto.randomUUID() }
-    });
-    const data = await r.json();
-    if (!r.ok || data.ErrCode !== 0) {
-      return res.status(502).json({ error: data.Msg || 'PixVerse Fehler' });
-    }
-    // status: 0=processing, 1=done, -1=failed
-    const { status, url } = data.Resp;
-    if (status === 1) return res.json({ status: 'done', url });
-    if (status === -1) return res.json({ status: 'failed' });
-    res.json({ status: 'processing' });
-  } catch (err) {
-    res.status(502).json({ error: 'Verbindungsfehler zu PixVerse' });
-  }
+    res.status(410).json({ error: 'Status-Polling wird nicht mehr verwendet. Video wird direkt erzeugt.' });
 });
 
 // Bild-Generierung (HuggingFace SDXL primär, Pollinations als Fallback)
