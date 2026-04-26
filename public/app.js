@@ -1,4 +1,5 @@
 ﻿const API_BASE = `${window.location.origin}/api`;
+const ENABLE_REPO_UPDATE_OVERLAY = false;
 let currentUser = null;
 let currentProfile = null;
 let allApps = [];
@@ -78,6 +79,7 @@ function restoreReloadSnapshot() {
 }
 
 function showRepoUpdateOverlay() {
+    if (!ENABLE_REPO_UPDATE_OVERLAY) return;
     if (!_repoUpdateAvailable) return;
     if (Date.now() < _repoUpdateSnoozeUntil) return;
     if (_lastSeenRepoSha && _dismissedRepoSha === _lastSeenRepoSha) return;
@@ -127,6 +129,7 @@ async function checkRepoVersion() {
 }
 
 function startRepoUpdatePolling() {
+    if (!ENABLE_REPO_UPDATE_OVERLAY) return;
     if (_repoUpdateInterval) return;
     checkRepoVersion();
     _repoUpdateInterval = setInterval(checkRepoVersion, 90000);
