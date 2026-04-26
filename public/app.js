@@ -23,10 +23,14 @@ fetch('/api/config').then(r => r.json()).then(cfg => {
 let _repoUpdateInterval = null;
 let _lastSeenRepoSha = null;
 let _dismissedRepoSha = null;
+let _repoUpdateSnoozeUntil = 0;
 let _googleAuthInitialized = false;
 
 try {
     _dismissedRepoSha = localStorage.getItem('dismissedRepoSha') || null;
+} catch {}
+try {
+    _repoUpdateSnoozeUntil = Number(localStorage.getItem('repoUpdateSnoozeUntil') || 0);
 } catch {}
 let _pendingReloadSnapshot = null;
 
@@ -73,6 +77,7 @@ function restoreReloadSnapshot() {
 }
 
 function showRepoUpdateOverlay() {
+    if (Date.now() < _repoUpdateSnoozeUntil) return;
     if (_lastSeenRepoSha && _dismissedRepoSha === _lastSeenRepoSha) return;
     const overlay = document.getElementById('repoUpdateOverlay');
     if (overlay) overlay.style.display = 'flex';
@@ -88,6 +93,14 @@ function dismissRepoUpdate() {
 }
 
 function loadRepoUpdate() {
+    const overlay = document.getElementById('repoUpdateOverlay');
+    if (overlay) overlay.style.display = 'none';
+    _dismissedRepoSha = _lastSeenRepoSha;
+    _repoUpdateSnoozeUntil = Date.now() + 10 * 60 * 1000;
+    try {
+        if (_dismissedRepoSha) localStorage.setItem('dismissedRepoSha', _dismissedRepoSha);
+        localStorage.setItem('repoUpdateSnoozeUntil', String(_repoUpdateSnoozeUntil));
+    } catch {}
     captureReloadSnapshot();
     window.location.reload();
 }
