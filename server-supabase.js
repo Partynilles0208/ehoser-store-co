@@ -2165,7 +2165,7 @@ WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklärender Text davor
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
       body: JSON.stringify({
-        model: 'moonshotai/kimi-k2-instruct',
+        model: 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMsg }
