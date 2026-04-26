@@ -13,7 +13,172 @@ let _lastPersonalizationSearchMiss = '';
 
 // Client-Konfiguration (API Keys sicher vom Backend laden)
 window.__ENV__ = {};
-fetch('/api/config').then(r => r.json()).then(cfg => { window.__ENV__ = cfg; }).catch(() => {});
+fetch('/api/config').then(r => r.json()).then(cfg => {
+    window.__ENV__ = cfg;
+    initGoogleAuth();
+}).catch(() => {});
+
+let _repoUpdateInterval = null;
+let _lastSeenRepoSha = null;
+let _googleAuthInitialized = false;
+let _pendingReloadSnapshot = null;
+
+try {
+    const rawReloadSnapshot = sessionStorage.getItem('pendingReloadSnapshot');
+    _pendingReloadSnapshot = rawReloadSnapshot ? JSON.parse(rawReloadSnapshot) : null;
+} catch {
+    _pendingReloadSnapshot = null;
+}
+
+function normalizeUnlockCodeValue(value) {
+    return String(value || '').replace(/\s+/g, '');
+}
+
+function getActiveAuthUnlockCode() {
+    const registerForm = document.getElementById('registerForm');
+    const registerVisible = registerForm && registerForm.style.display !== 'none';
+    const input = registerVisible
+        ? document.getElementById('unlockCode')
+        : document.getElementById('loginUnlockCode');
+    return normalizeUnlockCodeValue(input?.value || '');
+}
+
+function captureReloadSnapshot() {
+    const activeSection = document.querySelector('.section.active')?.id || 'mode-select';
+    sessionStorage.setItem('pendingReloadSnapshot', JSON.stringify({
+        sectionId: activeSection,
+        scrollY: window.scrollY || 0
+    }));
+}
+
+function restoreReloadSnapshot() {
+    if (!_pendingReloadSnapshot) return;
+    const { sectionId, scrollY } = _pendingReloadSnapshot;
+    const targetSection = document.getElementById(sectionId);
+    if (targetSection && sectionId !== 'voteScreen') {
+        showSection(sectionId);
+    }
+    requestAnimationFrame(() => {
+        window.scrollTo({ top: Number(scrollY) || 0, behavior: 'auto' });
+    });
+    sessionStorage.removeItem('pendingReloadSnapshot');
+    _pendingReloadSnapshot = null;
+}
+
+function showRepoUpdateOverlay() {
+    const overlay = document.getElementById('repoUpdateOverlay');
+    if (overlay) overlay.style.display = 'flex';
+}
+
+function dismissRepoUpdate() {
+    const overlay = document.getElementById('repoUpdateOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+function loadRepoUpdate() {
+    captureReloadSnapshot();
+    window.location.reload();
+}
+
+async function checkRepoVersion() {
+    try {
+        const res = await fetch(`${API_BASE}/repo/version?t=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!_lastSeenRepoSha && data?.latestSha) _lastSeenRepoSha = data.latestSha;
+        if (data?.hasUpdate || (_lastSeenRepoSha && data?.latestSha && _lastSeenRepoSha !== data.latestSha)) {
+            showRepoUpdateOverlay();
+        }
+        if (data?.latestSha) _lastSeenRepoSha = data.latestSha;
+    } catch {}
+}
+
+function startRepoUpdatePolling() {
+    if (_repoUpdateInterval) return;
+    checkRepoVersion();
+    _repoUpdateInterval = setInterval(checkRepoVersion, 90000);
+}
+
+async function handleGoogleCredentialResponse(response) {
+    const unlockCode = getActiveAuthUnlockCode();
+    if (unlockCode !== '020818') {
+        showAlert('Google-Anmeldung wird erst mit dem richtigen Zugangscode freigeschaltet.', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                idToken: response?.credential,
+                unlockCode
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Google-Anmeldung fehlgeschlagen');
+
+        localStorage.setItem('token', data.token);
+        currentUser = { id: data.userId, username: data.username, isAdmin: false };
+        currentProfile = data.profile || null;
+        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+        applyProfileSettings();
+        showLoggedInUI();
+        await loadApps();
+        showSection('mode-select');
+        restoreReloadSnapshot();
+        startOnlinePolling();
+        showAlert(`Erfolgreich mit Google angemeldet: ${data.username}`, 'success');
+    } catch (error) {
+        showAlert(error.message || 'Google-Anmeldung fehlgeschlagen', 'error');
+    }
+}
+
+function initGoogleAuth() {
+    if (_googleAuthInitialized) return;
+    const clientId = window.__ENV__?.googleClientId;
+    const buttonHost = document.getElementById('googleSignInButton');
+    if (!clientId || !buttonHost) return;
+    if (!window.google?.accounts?.id) {
+        // GSI script noch nicht geladen (async), nach kurzer Verzögerung erneut versuchen
+        setTimeout(() => { _googleAuthInitialized = false; initGoogleAuth(); }, 500);
+        return;
+    }
+
+    window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleCredentialResponse,
+        auto_select: false,
+        cancel_on_tap_outside: true
+    });
+    buttonHost.innerHTML = '';
+    window.google.accounts.id.renderButton(buttonHost, {
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+        text: 'signin_with',
+        width: 320
+    });
+    _googleAuthInitialized = true;
+    updateGoogleAuthVisibility();
+}
+
+function updateGoogleAuthVisibility() {
+    const gate = document.getElementById('googleAuthGate');
+    if (!gate) return;
+    const codeOk = getActiveAuthUnlockCode() === '020818';
+    gate.style.display = codeOk ? 'block' : 'none';
+    if (!codeOk) return;
+
+    const clientId = window.__ENV__?.googleClientId;
+    const notConfiguredMsg = document.getElementById('googleNotConfiguredMsg');
+    if (!clientId) {
+        if (notConfiguredMsg) notConfiguredMsg.style.display = 'block';
+        return;
+    }
+    if (notConfiguredMsg) notConfiguredMsg.style.display = 'none';
+    initGoogleAuth();
+}
 
 function getPersonalization() {
     if (currentProfile?.settings?.personalizationEnabled === false) return null;
@@ -67,6 +232,8 @@ function applyPersonalizationUI() {
 
     document.body.dataset.personalizationTone = personalization?.tone || 'neutral';
     document.body.dataset.personalizationLayout = personalization?.layout || 'standard';
+    document.body.dataset.personalizationPrimaryMode = personalization?.highlightModes?.[0] || 'default';
+    document.body.classList.toggle('personalized-ui', Boolean(personalization));
 
     if (titleEl) {
         titleEl.textContent = currentUser ? `Ehoser fuer ${currentUser.username}` : defaultTitle;
@@ -132,6 +299,7 @@ function switchAuthTab(tab, btn) {
     }
     document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    updateGoogleAuthVisibility();
 }
 
 function toggleResetHelp() {
@@ -296,6 +464,7 @@ async function handleLogin(event) {
         showLoggedInUI();
         await loadApps();
         showSection('mode-select');
+        restoreReloadSnapshot();
         startOnlinePolling();
         document.getElementById('loginForm').reset();
     } catch (err) {
@@ -307,6 +476,7 @@ async function handleLogin(event) {
 function showCaptcha() {
     applyUpdateFeatures(true);
     startApp();
+    startRepoUpdatePolling();
 }
 
 // ── Update-Abstimmung ─────────────────────────────────────────────────────────
@@ -369,7 +539,7 @@ function showVoteScreen() {
         const status = await loadVoteStatus();
         if (status.unlocked) {
             clearInterval(_votePollingInterval);
-            setTimeout(() => location.reload(), 1500);
+            showRepoUpdateOverlay();
         }
     }, 5000);
 }
@@ -398,8 +568,8 @@ async function castVote() {
         loadVoteStatus();
 
         if (data.unlocked) {
-            if (msg) msg.textContent = '🎉 Update freigeschaltet! Seite wird neu geladen…';
-            setTimeout(() => location.reload(), 1500);
+            if (msg) msg.textContent = '🎉 Update freigeschaltet! Du kannst es jetzt laden.';
+            showRepoUpdateOverlay();
         }
     } catch {
         if (btn) { btn.disabled = false; btn.textContent = '🗳️ Für Update abstimmen'; }
@@ -421,6 +591,7 @@ function startApp() {
         return;
     }
     showSection('mode-select');
+    restoreReloadSnapshot();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -432,6 +603,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const referralInput = document.getElementById('referralCode');
         if (referralInput) referralInput.value = pendingReferral;
     }
+
+    ['unlockCode', 'loginUnlockCode'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.addEventListener('input', updateGoogleAuthVisibility);
+    });
+    updateGoogleAuthVisibility();
 
     // Splash: nur einmal pro Tab-Session
     const splash = document.getElementById('introSplash');
@@ -527,6 +704,7 @@ async function verifyToken(token) {
         showLoggedInUI();
         await loadApps();
         showSection('mode-select');
+        restoreReloadSnapshot();
         startOnlinePolling();
     } catch (err) {
         // Netzwerkfehler: Token NICHT lÃ¶schen, Seite trotzdem zeigen
@@ -587,6 +765,7 @@ async function handleRegister(event) {
         showLoggedInUI();
         await loadApps();
         showSection('mode-select');
+        restoreReloadSnapshot();
         startOnlinePolling();
         document.getElementById('registerForm').reset();
     } catch (err) {
@@ -882,6 +1061,7 @@ let _unlockCode = null;
 async function loadUnlockCode() {
     if (_unlockCode) {
         document.getElementById('unlockCodeDisplay').textContent = _unlockCode;
+        updateGoogleAuthVisibility();
         return;
     }
     try {
@@ -889,6 +1069,7 @@ async function loadUnlockCode() {
         const data = await res.json();
         _unlockCode = data.code;
         document.getElementById('unlockCodeDisplay').textContent = _unlockCode;
+        updateGoogleAuthVisibility();
     } catch {
         document.getElementById('unlockCodeDisplay').textContent = 'â€“';
     }

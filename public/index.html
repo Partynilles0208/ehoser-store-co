@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css?v=8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <!-- Sofort schwarzer Hintergrund + alles außer Splash verstecken -->
     <style>
         html { background: #000; }
@@ -82,6 +83,18 @@
                     Überspringen – App ohne Update öffnen
                 </button>
                 <div id="voteMsg" style="text-align:center;font-size:0.88rem;color:#6a9bb8;min-height:20px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="repoUpdateOverlay" class="repo-update-overlay" style="display:none;">
+        <div class="repo-update-box">
+            <div class="repo-update-kicker">Neues GitHub Update erkannt</div>
+            <h2>Update laden</h2>
+            <p>Eine neuere Version von ehoser ist verfügbar. Du kannst das Update jetzt laden, ohne deinen aktuellen Bereich zu verlieren.</p>
+            <div class="repo-update-actions">
+                <button class="btn-primary" onclick="loadRepoUpdate()">Update laden</button>
+                <button class="btn-secondary" onclick="dismissRepoUpdate()">Später</button>
             </div>
         </div>
     </div>
@@ -445,6 +458,12 @@
                         <div class="auth-tabs">
                             <button class="auth-tab active" onclick="switchAuthTab('register', this)">Registrieren</button>
                             <button class="auth-tab" onclick="switchAuthTab('login', this)">Anmelden</button>
+                        </div>
+
+                        <div id="googleAuthGate" class="google-auth-gate" style="display:none;">
+                            <div class="google-auth-gate-title">Mit Google anmelden</div>
+                            <div id="googleSignInButton"></div>
+                            <p id="googleNotConfiguredMsg" style="display:none;color:#b63f2d;font-size:0.85rem;margin-top:8px;">Google Sign-In ist noch nicht konfiguriert (GOOGLE_CLIENT_ID fehlt in den Server-Einstellungen).</p>
                         </div>
 
                         <form id="registerForm" onsubmit="handleRegister(event)">
