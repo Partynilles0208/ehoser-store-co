@@ -2128,13 +2128,8 @@ app.post('/api/game/create', async (req, res) => {
   if (!auth) return;
 
   // Pro-Check
-  const { data: profile } = await supabaseAdmin
-    .from('user_profiles')
-    .select('is_pro, pro_until')
-    .eq('user_id', auth.userId)
-    .single();
-  const isPro = profile?.is_pro || (profile?.pro_until && new Date(profile.pro_until) > new Date());
-  if (!isPro) return res.status(403).json({ error: 'Diese Funktion erfordert PRO.' });
+  const profile = await getProfile(auth.username);
+  if (!profile.isPro) return res.status(403).json({ error: 'Diese Funktion erfordert PRO.' });
 
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return res.status(500).json({ error: 'KI nicht verfügbar' });
