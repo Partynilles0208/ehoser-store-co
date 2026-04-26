@@ -12,11 +12,13 @@ let imageSearchLastQuery = '';
 let _lastPersonalizationSearchMiss = '';
 
 // Client-Konfiguration (API Keys sicher vom Backend laden)
-window.__ENV__ = {};
+window.__ENV__ = { __loaded: false };
 fetch('/api/config').then(r => r.json()).then(cfg => {
-    window.__ENV__ = cfg;
-    initGoogleAuth();
-}).catch(() => {});
+    window.__ENV__ = { ...cfg, __loaded: true };
+    updateGoogleAuthVisibility();
+}).catch(() => {
+    window.__ENV__ = { __loaded: true };
+});
 
 let _repoUpdateInterval = null;
 let _lastSeenRepoSha = null;
@@ -169,6 +171,12 @@ function updateGoogleAuthVisibility() {
     const codeOk = getActiveAuthUnlockCode() === '020818';
     gate.style.display = codeOk ? 'block' : 'none';
     if (!codeOk) return;
+
+    // Config noch nicht geladen – kurz warten und neu prüfen
+    if (!window.__ENV__?.__loaded) {
+        setTimeout(updateGoogleAuthVisibility, 300);
+        return;
+    }
 
     const clientId = window.__ENV__?.googleClientId;
     const notConfiguredMsg = document.getElementById('googleNotConfiguredMsg');
