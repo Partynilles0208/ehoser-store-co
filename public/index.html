@@ -100,6 +100,11 @@
         </div>
     </div>
 
+    <!-- ── Tarnmodus Overlay ──────────────────────────────────────────── -->
+    <div id="tarnOverlay" class="tarn-overlay">
+        <div class="tarn-hint">🛡 Tarnmodus aktiv – bewege die Maus</div>
+    </div>
+
     <div class="bg-shape bg-shape-1"></div>
     <div class="bg-shape bg-shape-2"></div>
 
@@ -117,6 +122,7 @@
                 <div class="nav-links" id="navLinks">
                     <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
                     <a href="admin.html" class="nav-link">App hochladen</a>
+                    <button id="tarnBtn" class="tarn-nav-btn" onclick="toggleTarnmodus()" title="Tarnmodus umschalten">🛡</button>
                 </div>
             </div>
         </nav>

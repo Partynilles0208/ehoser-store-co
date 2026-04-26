@@ -101,6 +101,60 @@ function startRepoUpdatePolling() {
     _repoUpdateInterval = setInterval(checkRepoVersion, 90000);
 }
 
+// ── Tarnmodus ──────────────────────────────────────────────────────────────
+let _tarnActive = false;
+let _tarnMouseTimer = null;
+
+function toggleTarnmodus() {
+    _tarnActive = !_tarnActive;
+    if (_tarnActive) {
+        document.body.classList.add('tarn-active');
+        // Beim Aktivieren: Maus ist wahrscheinlich gerade auf der Seite → kurz sichtbar lassen
+        document.body.classList.add('tarn-mouse-inside');
+        localStorage.setItem('tarnmodus', '1');
+    } else {
+        document.body.classList.remove('tarn-active', 'tarn-mouse-inside');
+        localStorage.removeItem('tarnmodus');
+    }
+}
+
+// Mausbewegung im Fenster → echten Inhalt zeigen
+document.addEventListener('mousemove', function() {
+    if (!_tarnActive) return;
+    document.body.classList.add('tarn-mouse-inside');
+    clearTimeout(_tarnMouseTimer);
+    // Nach 2 Sekunden ohne Mausbewegung → Tarnbild wieder
+    _tarnMouseTimer = setTimeout(function() {
+        if (_tarnActive) document.body.classList.remove('tarn-mouse-inside');
+    }, 2000);
+});
+
+// Fenster verliert Fokus (Screenshot-Shortcut, Alt+Tab, OBS, Streaming) → sofort Tarnbild
+window.addEventListener('blur', function() {
+    if (_tarnActive) document.body.classList.remove('tarn-mouse-inside');
+});
+window.addEventListener('focus', function() {
+    if (_tarnActive) document.body.classList.add('tarn-mouse-inside');
+});
+
+// Tab versteckt (z.B. Alt+Tab, Screensharing) → Tarnbild
+document.addEventListener('visibilitychange', function() {
+    if (!_tarnActive) return;
+    if (document.hidden) {
+        document.body.classList.remove('tarn-mouse-inside');
+    } else {
+        document.body.classList.add('tarn-mouse-inside');
+    }
+});
+
+// Tarnmodus beim Laden wiederherstellen
+(function() {
+    if (localStorage.getItem('tarnmodus') === '1') {
+        _tarnActive = true;
+        document.body.classList.add('tarn-active', 'tarn-mouse-inside');
+    }
+})();
+
 async function handleGoogleCredentialResponse(response) {
     const unlockCode = getActiveAuthUnlockCode();
     if (unlockCode !== '020818') {
