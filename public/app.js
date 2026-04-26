@@ -16,6 +16,7 @@ window.__ENV__ = {};
 fetch('/api/config').then(r => r.json()).then(cfg => { window.__ENV__ = cfg; }).catch(() => {});
 
 function getPersonalization() {
+    if (currentProfile?.settings?.personalizationEnabled === false) return null;
     return currentProfile?.settings?.personalization || null;
 }
 
@@ -34,6 +35,7 @@ async function refreshCurrentProfile() {
 }
 
 async function trackPersonalizationEvent(type, payload) {
+    if (currentProfile?.settings?.personalizationEnabled === false) return;
     const token = localStorage.getItem('token');
     if (!token) return;
     try {
@@ -597,13 +599,17 @@ function showLoggedInUI() {
     const adminLabel = currentUser?.isAdmin ? 'Admin' : 'App hochladen';
     const plan = currentProfile?.isPro ? 'PRO' : 'Gratis';
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
+    const personalization = getPersonalization();
+    const helloText = personalization?.heroLine
+        ? `Hallo, ${escapeHtml(currentUser.username)}. ${escapeHtml(personalization.heroLine.slice(0, 72))}`
+        : `Hallo, ${escapeHtml(currentUser.username)}.`;
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('store')" class="nav-link">Store</a>
         <a href="#" onclick="showSection('my-apps')" class="nav-link">Meine Apps</a>
         <a href="admin.html" class="nav-link">${adminLabel}</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
         <span class="plan-badge ${currentProfile?.isPro ? 'pro' : ''}">${plan}</span>
-        <span class="hello-user">${psBadge} Hallo, ${escapeHtml(currentUser.username)}.</span>
+        <span class="hello-user">${psBadge} ${helloText}</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
     `;
 
@@ -1820,6 +1826,7 @@ function openSettingsModal() {
     document.getElementById('settingLanguage').value = p.settings?.language || 'de';
     document.getElementById('settingDesign').value = p.settings?.design || 'standard';
     document.getElementById('settingEnergySaver').checked = Boolean(p.settings?.energySaver);
+    document.getElementById('settingPersonalizationEnabled').checked = p.settings?.personalizationEnabled !== false;
     document.getElementById('inviteLinkWrap').style.display = 'none';
     // Login-Code laden und anzeigen
     const codeDisplay = document.getElementById('myLoginCodeDisplay');
@@ -2273,7 +2280,8 @@ async function saveAccountSettings() {
     const payload = {
         language: document.getElementById('settingLanguage').value,
         design: document.getElementById('settingDesign').value,
-        energySaver: document.getElementById('settingEnergySaver').checked
+        energySaver: document.getElementById('settingEnergySaver').checked,
+        personalizationEnabled: document.getElementById('settingPersonalizationEnabled').checked
     };
 
     try {
