@@ -1209,13 +1209,27 @@ function proxyNavigate(event) {
     proxyLoad(raw);
 }
 
+function proxyIsUrl(str) {
+    // Einfache Heuristik: hat eine TLD oder beginnt mit http
+    if (str.startsWith('http://') || str.startsWith('https://')) return true;
+    // domain.tld ohne Leerzeichen
+    const noSpace = !str.includes(' ');
+    const hasDot = str.includes('.');
+    return noSpace && hasDot;
+}
+
 function proxyLoad(rawUrl) {
     let url;
-    try {
-        url = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
-    } catch {
-        proxySetStatus('Ungueltige URL');
-        return;
+    if (!proxyIsUrl(rawUrl)) {
+        // Suchbegriff → DuckDuckGo
+        url = new URL('https://duckduckgo.com/?q=' + encodeURIComponent(rawUrl));
+    } else {
+        try {
+            url = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
+        } catch {
+            // Fallback auf Suche
+            url = new URL('https://duckduckgo.com/?q=' + encodeURIComponent(rawUrl));
+        }
     }
     _proxyHistory = _proxyHistory.slice(0, _proxyHistoryIndex + 1);
     _proxyHistory.push(url.toString());
