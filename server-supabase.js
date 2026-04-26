@@ -485,6 +485,37 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// News-Proxy (NewsAPI.org blockiert direkte Browser-Requests via CORS)
+app.get('/api/news', async (req, res) => {
+  const apiKey = process.env.NEWS_API_KEY || '';
+  if (!apiKey) return res.status(503).json({ error: 'NEWS_API_KEY nicht konfiguriert' });
+
+  const { cat, q } = req.query;
+  let url;
+  if (q) {
+    url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=de&sortBy=publishedAt&pageSize=20&apiKey=${apiKey}`;
+  } else {
+    const category = ['technology','science','business','sports','entertainment','health'].includes(cat) ? cat : null;
+    if (category) {
+      url = `https://newsapi.org/v2/top-headlines?country=de&category=${category}&pageSize=20&apiKey=${apiKey}`;
+    } else {
+      url = `https://newsapi.org/v2/top-headlines?country=de&pageSize=20&apiKey=${apiKey}`;
+    }
+  }
+
+  try {
+    const upstream = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!upstream.ok) {
+      const err = await upstream.json().catch(() => ({}));
+      return res.status(upstream.status).json({ error: err.message || 'NewsAPI Fehler' });
+    }
+    const data = await upstream.json();
+    res.json({ articles: data.articles || [] });
+  } catch (e) {
+    res.status(502).json({ error: 'NewsAPI nicht erreichbar' });
+  }
+});
+
 app.get('/api/repo/version', async (req, res) => {
   const repo = process.env.GITHUB_REPO || 'Partynilles0208/ehoser-store-co';
   const currentSha = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || null;
