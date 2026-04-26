@@ -140,6 +140,14 @@
                                 <span class="mode-badge">Registrierung nötig</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-proxy" onclick="selectMode('proxy')">
+                            <div class="mode-card-icon">🌐</div>
+                            <div class="mode-card-body">
+                                <h3>Proxy Browser</h3>
+                                <p>Öffne beliebige Webseiten direkt in ehoser – mit automatischem Fallback bei blockierten Seiten.</p>
+                                <span class="mode-badge mode-badge-proxy">iframe + Proxy</span>
+                            </div>
+                        </button>
                         <button class="mode-card mode-card-games" onclick="selectMode('games')">
                             <div class="mode-card-icon">🎮</div>
                             <div class="mode-card-body">
@@ -634,6 +642,47 @@
             </section>
 
             <!-- ── Online Spiele ─────────────────────────────────── -->
+            <!-- ── Proxy Browser ───────────────────────────────────── -->
+            <section id="proxy" class="section">
+                <div class="proxy-browser">
+                    <div class="proxy-toolbar">
+                        <button class="proxy-nav-btn" id="proxyBackBtn" onclick="proxyBack()" title="Zurück">&#8592;</button>
+                        <button class="proxy-nav-btn" id="proxyFwdBtn" onclick="proxyForward()" title="Vor">&#8594;</button>
+                        <button class="proxy-nav-btn" onclick="proxyReload()" title="Neu laden">&#8635;</button>
+                        <form class="proxy-url-form" onsubmit="proxyNavigate(event)">
+                            <div class="proxy-url-bar">
+                                <span class="proxy-lock" id="proxyLock">🔒</span>
+                                <input type="text" id="proxyUrlInput" class="proxy-url-input" placeholder="URL eingeben, z. B. wikipedia.org" autocomplete="off" spellcheck="false">
+                                <button type="submit" class="proxy-go-btn">Los</button>
+                            </div>
+                        </form>
+                        <button class="proxy-nav-btn" onclick="selectMode('mode-select')" title="Zurück zur Startseite" style="margin-left:4px;">✕</button>
+                    </div>
+
+                    <div id="proxyStatusBar" class="proxy-status-bar" style="display:none;"></div>
+
+                    <div class="proxy-viewport">
+                        <div id="proxyStart" class="proxy-start">
+                            <div class="proxy-start-icon">🌐</div>
+                            <h2>Proxy Browser</h2>
+                            <p>Gib eine URL ein und öffne beliebige Websites direkt hier.<br>Bei blockierten Seiten wechselt der Browser automatisch auf den Server-Proxy.</p>
+                            <div class="proxy-quick-links">
+                                <button class="proxy-quick-btn" onclick="proxyLoad('https://wikipedia.org')">Wikipedia</button>
+                                <button class="proxy-quick-btn" onclick="proxyLoad('https://news.ycombinator.com')">HN News</button>
+                                <button class="proxy-quick-btn" onclick="proxyLoad('https://example.com')">Example</button>
+                                <button class="proxy-quick-btn" onclick="proxyLoad('https://duckduckgo.com')">DuckDuckGo</button>
+                            </div>
+                        </div>
+                        <iframe id="proxyIframe" class="proxy-iframe" style="display:none;" sandbox="allow-scripts allow-forms allow-same-origin allow-popups" referrerpolicy="no-referrer"></iframe>
+                        <div id="proxyProxyContent" class="proxy-proxy-content" style="display:none;"></div>
+                        <div id="proxyLoadingSpinner" class="proxy-loading" style="display:none;">
+                            <div class="proxy-spinner"></div>
+                            <p id="proxyLoadingMsg">Seite wird geladen…</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section id="games" class="section">
                 <div class="games-header">
                     <div class="games-header-top">
