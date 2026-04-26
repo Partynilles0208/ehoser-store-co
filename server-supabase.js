@@ -160,13 +160,114 @@ function readAuthUser(req, res) {
   }
 }
 
+function uniqueStrings(values, limit = 6) {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const clean = String(value || '').trim().slice(0, 32);
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+function normalizePersonalization(raw) {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const allowedTone = new Set(['neutral', 'calm', 'focused', 'playful']);
+  const allowedLayout = new Set(['standard', 'simple', 'explore']);
+  const allowedModes = new Set(['store', 'games', 'facewarp', 'chat', 'images', 'weather', 'map', 'youtube', 'ki', 'ps', 'gameCreator']);
+  const highlightModes = uniqueStrings(src.highlightModes, 6).filter(mode => allowedModes.has(mode));
+  return {
+    tone: allowedTone.has(src.tone) ? src.tone : 'neutral',
+    layout: allowedLayout.has(src.layout) ? src.layout : 'standard',
+    simplifySearch: Boolean(src.simplifySearch),
+    prioritizePs: Boolean(src.prioritizePs),
+    heroLine: typeof src.heroLine === 'string' ? src.heroLine.trim().slice(0, 180) : '',
+    summary: typeof src.summary === 'string' ? src.summary.trim().slice(0, 280) : '',
+    interests: uniqueStrings(src.interests, 6),
+    highlightModes,
+    updatedAt: typeof src.updatedAt === 'string' ? src.updatedAt : null
+  };
+}
+
 function normalizeSettings(raw) {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
   return {
     language: typeof src.language === 'string' ? src.language : 'de',
     design: typeof src.design === 'string' ? src.design : 'standard',
-    energySaver: Boolean(src.energySaver)
+    energySaver: Boolean(src.energySaver),
+    personalization: normalizePersonalization(src.personalization)
   };
+}
+
+function mergePersonalization(currentRaw, patchRaw) {
+  const current = normalizePersonalization(currentRaw);
+  const patch = normalizePersonalization({ ...current, ...patchRaw, updatedAt: new Date().toISOString() });
+  return normalizePersonalization({
+    ...current,
+    ...patch,
+    interests: uniqueStrings([...(current.interests || []), ...(patch.interests || [])], 6),
+    highlightModes: uniqueStrings([...(patch.highlightModes || []), ...(current.highlightModes || [])], 6),
+    heroLine: patch.heroLine || current.heroLine,
+    summary: patch.summary || current.summary,
+    simplifySearch: Boolean(current.simplifySearch || patch.simplifySearch),
+    prioritizePs: Boolean(current.prioritizePs || patch.prioritizePs),
+    updatedAt: new Date().toISOString()
+  });
+}
+
+async function patchProfilePersonalization(username, patch) {
+  if (!username || !patch || typeof patch !== 'object') return null;
+  const profile = await getProfile(username);
+  const settings = normalizeSettings({
+    ...profile.settings,
+    personalization: mergePersonalization(profile.settings?.personalization, patch)
+  });
+  return upsertProfile(username, { settings });
+}
+
+async function inferPersonalizationPatch(groqKey, currentPersonalization, source, content) {
+  const text = String(content || '').trim();
+  if (!groqKey || !text) return null;
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: 'Du extrahierst nur UI-Personalisierung für ehoser. Antworte NUR mit JSON. Erlaube nur diese Felder: tone (neutral|calm|focused|playful), layout (standard|simple|explore), simplifySearch (boolean), prioritizePs (boolean), heroLine (string <= 180), summary (string <= 280), interests (Array bis 6 kurze Strings), highlightModes (Array aus store,games,facewarp,chat,images,weather,map,youtube,ki,ps,gameCreator). Erfinde nichts ohne klare Signale.'
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({ source, currentPersonalization, content: text.slice(0, 1600) })
+          }
+        ],
+        temperature: 0.2,
+        max_tokens: 220,
+        response_format: { type: 'json_object' }
+      })
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content || '{}';
+    return normalizePersonalization(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+async function personalizeFromInteraction(groqKey, username, source, content, fallbackPatch = null) {
+  if (!username) return null;
+  const profile = await getProfile(username);
+  const inferred = await inferPersonalizationPatch(groqKey, profile.settings?.personalization, source, content);
+  return patchProfilePersonalization(username, inferred || fallbackPatch || {});
 }
 
 function normalizeProfileRow(username, row) {
@@ -735,8 +836,39 @@ app.get('/api/me', async (req, res) => {
 app.put('/api/me/settings', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
-  const settings = normalizeSettings(req.body || {});
+  const current = await getProfile(auth.username);
+  const settings = normalizeSettings({
+    ...(req.body || {}),
+    personalization: current.settings?.personalization
+  });
   const profile = await upsertProfile(auth.username, { settings });
+  res.json({ ok: true, profile });
+});
+
+app.post('/api/me/personalization/event', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const type = String(req.body?.type || '').trim();
+  const query = String(req.body?.query || '').trim();
+  const category = String(req.body?.category || '').trim();
+  if (!type) return res.status(400).json({ error: 'type fehlt' });
+
+  let patch = null;
+  if (type === 'search-empty') {
+    patch = {
+      layout: 'simple',
+      simplifySearch: true,
+      heroLine: query ? `Ich passe ehoser an, damit du "${query.slice(0, 40)}" schneller findest.` : 'Ich mache ehoser gerade einfacher für dich.',
+      summary: category ? `Mehr Hilfe bei Suchen in ${category}.` : 'Mehr Hilfe bei leeren Suchergebnissen.',
+      highlightModes: ['store', 'ki'],
+      interests: query ? [query] : []
+    };
+  } else {
+    return res.status(400).json({ error: 'Unbekannter Event-Typ' });
+  }
+
+  const profile = await patchProfilePersonalization(auth.username, patch);
   res.json({ ok: true, profile });
 });
 
@@ -2116,6 +2248,20 @@ app.post('/api/ps/chat', async (req, res) => {
 
     const data = await groqRes.json();
     if (!groqRes.ok) return res.status(groqRes.status).json(data);
+    await personalizeFromInteraction(
+      groqKey,
+      auth.username,
+      'ps_chat',
+      `${allAnswersSummary || ''}\n${messages.slice(-4).map(m => `${m.role}: ${typeof m.content === 'string' ? m.content : ''}`).join('\n')}`,
+      {
+        tone: 'calm',
+        prioritizePs: true,
+        layout: 'simple',
+        highlightModes: ['ps', 'ki'],
+        heroLine: 'ehoser stellt gerade ruhigere, hilfreichere Wege für dich nach vorne.',
+        summary: 'PS-Unterstützung wurde genutzt.'
+      }
+    );
     res.json({ reply: data.choices?.[0]?.message?.content || '' });
   } catch {
     res.status(502).json({ error: 'KI-Verbindungsfehler' });
@@ -2326,6 +2472,18 @@ app.post('/api/ki', async (req, res) => {
 
     const data = await groqRes.json();
     if (!groqRes.ok) return res.status(groqRes.status).json(data);
+    if (username && lastUserMsg) {
+      const userText = typeof lastUserMsg.content === 'string'
+        ? lastUserMsg.content
+        : Array.isArray(lastUserMsg.content)
+          ? lastUserMsg.content.filter(c => c.type === 'text').map(c => c.text).join(' ')
+          : '';
+      await personalizeFromInteraction(groqKey, username, 'ki_chat', userText, {
+        tone: 'focused',
+        highlightModes: ['ki'],
+        summary: 'ehoser KI wurde genutzt.'
+      });
+    }
     res.json(data);
   } catch (err) {
     res.status(502).json({ error: 'Verbindungsfehler zur Groq API' });

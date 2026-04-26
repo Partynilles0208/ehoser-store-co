@@ -9,10 +9,117 @@ let resetToken = null;
 let resetPollInterval = null;
 let pendingReferral = null;
 let imageSearchLastQuery = '';
+let _lastPersonalizationSearchMiss = '';
 
 // Client-Konfiguration (API Keys sicher vom Backend laden)
 window.__ENV__ = {};
 fetch('/api/config').then(r => r.json()).then(cfg => { window.__ENV__ = cfg; }).catch(() => {});
+
+function getPersonalization() {
+    return currentProfile?.settings?.personalization || null;
+}
+
+async function refreshCurrentProfile() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const res = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok || !data?.profile) return;
+        currentProfile = data.profile;
+        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+        applyProfileSettings();
+        showLoggedInUI();
+    } catch {}
+}
+
+async function trackPersonalizationEvent(type, payload) {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        const res = await fetch(`${API_BASE}/me/personalization/event`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ type, ...(payload || {}) })
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.profile) return;
+        currentProfile = data.profile;
+        applyProfileSettings();
+        showLoggedInUI();
+    } catch {}
+}
+
+function applyPersonalizationUI() {
+    const titleEl = document.getElementById('modeTitle');
+    const subtitleEl = document.getElementById('modeSubtitle');
+    const bannerEl = document.getElementById('personalizationBanner');
+    const searchInput = document.getElementById('searchInput');
+    const cardsWrap = document.querySelector('.mode-cards');
+    const personalization = getPersonalization();
+    const defaultTitle = 'Ehoser – Offizielle Website';
+    const defaultSubtitle = 'Willkommen auf der offiziellen Website von Ehoser. Hier findest du exklusive Apps im APK Store, kostenlose Online-Spiele, KI-Tools, den Face-Warp-Editor und vieles mehr – alles an einem Ort, entwickelt von Nils Becker.';
+
+    document.body.dataset.personalizationTone = personalization?.tone || 'neutral';
+    document.body.dataset.personalizationLayout = personalization?.layout || 'standard';
+
+    if (titleEl) {
+        titleEl.textContent = currentUser ? `Ehoser fuer ${currentUser.username}` : defaultTitle;
+    }
+    if (subtitleEl) {
+        subtitleEl.textContent = personalization?.summary || defaultSubtitle;
+    }
+    if (bannerEl) {
+        if (currentUser && personalization?.heroLine) {
+            bannerEl.textContent = `${currentUser.username}: ${personalization.heroLine}`;
+            bannerEl.style.display = 'block';
+        } else {
+            bannerEl.style.display = 'none';
+            bannerEl.textContent = '';
+        }
+    }
+
+    if (searchInput) {
+        if (!searchInput.dataset.defaultPlaceholder) {
+            searchInput.dataset.defaultPlaceholder = searchInput.getAttribute('placeholder') || '';
+        }
+        searchInput.setAttribute(
+            'placeholder',
+            personalization?.simplifySearch
+                ? 'Beschreibe kurz, was du suchst - ehoser macht es einfacher'
+                : searchInput.dataset.defaultPlaceholder
+        );
+    }
+
+    if (cardsWrap) {
+        const getModeFromCard = (card) => {
+            if (card.id === 'psModeCard') return 'ps';
+            if (card.id === 'gameCreatorCard') return 'gameCreator';
+            const onclick = card.getAttribute('onclick') || '';
+            const match = onclick.match(/selectMode\('([^']+)'\)/);
+            return match ? match[1] : '';
+        };
+        const priority = new Map();
+        (personalization?.highlightModes || []).forEach((mode, index) => priority.set(mode, index));
+        if (personalization?.prioritizePs) priority.set('ps', -1);
+        const cards = Array.from(cardsWrap.querySelectorAll('.mode-card'));
+        cards.forEach(card => card.classList.remove('mode-card-personalized'));
+        cards.sort((a, b) => {
+            const pa = priority.has(getModeFromCard(a)) ? priority.get(getModeFromCard(a)) : 999;
+            const pb = priority.has(getModeFromCard(b)) ? priority.get(getModeFromCard(b)) : 999;
+            if (pa !== pb) return pa - pb;
+            return 0;
+        });
+        cards.forEach(card => {
+            const mode = getModeFromCard(card);
+            if (priority.has(mode)) card.classList.add('mode-card-personalized');
+            cardsWrap.appendChild(card);
+        });
+    }
+}
 
 function switchAuthTab(tab, btn) {
     document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
@@ -507,6 +614,8 @@ function showLoggedInUI() {
     // Spiel-erstellen-Karte zeigen/verstecken (nur Pro)
     const gameCard = document.getElementById('gameCreatorCard');
     if (gameCard) gameCard.style.display = currentProfile?.isPro ? '' : 'none';
+
+    applyPersonalizationUI();
 }
 
 async function loadApps() {
@@ -514,20 +623,23 @@ async function loadApps() {
         const response = await fetch(`${API_BASE}/apps`);
         const apps = await response.json();
         allApps = Array.isArray(apps) ? apps : [];
-        displayApps(allApps);
+        displayApps(allApps, { searchText: '', category: 'all' });
     } catch (err) {
         showAlert('Apps konnten nicht geladen werden.', 'error');
     }
 }
 
-function displayApps(apps) {
+function displayApps(apps, meta) {
     const appsList = document.getElementById('appsList');
+    const searchText = meta?.searchText || '';
+    const personalization = getPersonalization();
 
     if (!apps.length) {
         appsList.innerHTML = `
             <div class="empty-state" style="grid-column: 1/-1;">
                 <h3>Keine Apps gefunden</h3>
-                <p>Versuche eine andere Suche oder Kategorie.</p>
+                <p>${personalization?.simplifySearch ? 'Ich habe die Suche bereits vereinfacht. Versuche einen kuerzeren Begriff oder lass dir von ehoser KI etwas Passendes vorschlagen.' : 'Versuche eine andere Suche oder Kategorie.'}</p>
+                ${searchText ? `<button class="btn-small" onclick="selectMode('ki')" style="margin-top:12px;">KI nach ${escapeHtml(searchText)} fragen</button>` : ''}
             </div>
         `;
         return;
@@ -594,7 +706,17 @@ function applyFilters(searchText, category) {
         filtered = filtered.filter((app) => app.category === category);
     }
 
-    displayApps(filtered);
+    if (!filtered.length && searchText && currentUser) {
+        const missKey = `${category}:${searchText}`;
+        if (_lastPersonalizationSearchMiss !== missKey) {
+            _lastPersonalizationSearchMiss = missKey;
+            trackPersonalizationEvent('search-empty', { query: searchText, category });
+        }
+    } else if (filtered.length) {
+        _lastPersonalizationSearchMiss = '';
+    }
+
+    displayApps(filtered, { searchText, category });
 }
 
 async function installApp(appId, button) {
@@ -1420,6 +1542,7 @@ async function sendKIMessage() {
     const input = document.getElementById('kiInput');
     const sendBtn = document.querySelector('.ki-send-btn');
     const text = input?.value.trim();
+    const token = localStorage.getItem('token');
     if (!text && !_kiAttachment) return;
 
     input.value = '';
@@ -1484,7 +1607,10 @@ async function sendKIMessage() {
     try {
         const res = await fetch('/api/ki', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
             body: JSON.stringify({ messages: historyForRequest })
         });
 
@@ -1505,6 +1631,7 @@ async function sendKIMessage() {
             const reply = kiReplaceNamePlaceholder(rawReply);
             appendKIBubble('ai', reply);
         }
+        await refreshCurrentProfile();
     } catch (err) {
         typing?.remove();
         appendKIBubble('error', 'âš ï¸ Verbindungsfehler. Bitte versuche es erneut.');
@@ -1653,7 +1780,10 @@ async function fetchOnlineUsers() {
 
 function applyProfileSettings() {
     const settings = currentProfile?.settings;
-    if (!settings) return;
+    if (!settings) {
+        applyPersonalizationUI();
+        return;
+    }
 
     document.documentElement.dataset.design = settings.design || 'standard';
     if (settings.energySaver) {
@@ -1661,6 +1791,8 @@ function applyProfileSettings() {
     } else {
         document.body.classList.remove('energy-saver');
     }
+
+    applyPersonalizationUI();
 }
 
 function updatePlanBadge() {
@@ -1896,6 +2028,16 @@ function closePsOverlay() {
     document.body.style.overflow = '';
 }
 
+function resetPsChat() {
+    if (!confirm('Chat wirklich loeschen und neu starten?')) return;
+    localStorage.removeItem('ps_chat');
+    _psName = '';
+    _psAnswers = [];
+    _psChatHistory = [];
+    _psAllSummary = '';
+    closePsOverlay();
+}
+
 function showPsScreen(id) {
     ['psScreenName', 'psScreenSurvey', 'psScreenAnalyzing', 'psScreenResult', 'psScreenChat']
         .forEach(s => {
@@ -2045,6 +2187,7 @@ async function sendPsChatToAI(userMessage) {
         _psChatHistory.push({ role: 'assistant', content: reply });
         appendPsChatMessage('assistant', reply);
         _psSaveState();
+        await refreshCurrentProfile();
     } catch {
         typing?.remove();
         appendPsChatMessage('assistant', 'Verbindungsfehler. Bitte versuche es erneut.');

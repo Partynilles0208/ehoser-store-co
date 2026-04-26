@@ -2867,6 +2867,42 @@ textarea:focus {
     box-shadow: 0 0 0 2px rgba(77, 159, 255, 0.15);
 }
 
+.personalization-banner {
+    margin-top: 14px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(96, 170, 255, 0.28);
+    background: linear-gradient(135deg, rgba(19, 45, 78, 0.75), rgba(10, 24, 45, 0.9));
+    color: #d7ecff;
+    max-width: 760px;
+    line-height: 1.5;
+    box-shadow: 0 12px 40px rgba(7, 18, 33, 0.24);
+}
+
+.mode-card-personalized {
+    border-color: rgba(96, 170, 255, 0.45) !important;
+    box-shadow: 0 16px 44px rgba(27, 81, 140, 0.22);
+    transform: translateY(-2px);
+}
+
+body[data-personalization-layout="simple"] .mode-cards {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+body[data-personalization-layout="simple"] .mode-card {
+    min-height: 168px;
+}
+
+body[data-personalization-tone="calm"] .personalization-banner {
+    border-color: rgba(77, 159, 255, 0.32);
+    background: linear-gradient(135deg, rgba(10, 34, 56, 0.78), rgba(9, 26, 44, 0.96));
+}
+
+body[data-personalization-tone="focused"] .personalization-banner {
+    border-color: rgba(255, 193, 90, 0.34);
+    background: linear-gradient(135deg, rgba(68, 43, 13, 0.76), rgba(28, 20, 8, 0.92));
+}
+
 /* ── Game Creator ───────────────────────── */
 .mode-card-game { background: linear-gradient(135deg, rgba(255,177,0,0.08) 0%, rgba(255,120,0,0.04) 100%); border-color: rgba(255,177,0,0.2); }
 .mode-card-game:hover { border-color: rgba(255,177,0,0.5); box-shadow: 0 0 20px rgba(255,177,0,0.12); }

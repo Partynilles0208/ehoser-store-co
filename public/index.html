@@ -114,8 +114,9 @@
                 <div class="mode-select-container">
                     <div class="mode-hero">
                         <span class="logo-icon mode-logo">E</span>
-                        <h1 class="mode-title">Ehoser – Offizielle Website</h1>
-                        <p class="mode-subtitle">Willkommen auf der offiziellen Website von Ehoser. Hier findest du exklusive Apps im APK Store, kostenlose Online-Spiele, KI-Tools, den Face-Warp-Editor und vieles mehr – alles an einem Ort, entwickelt von Nils Becker.</p>
+                        <h1 id="modeTitle" class="mode-title">Ehoser – Offizielle Website</h1>
+                        <p id="modeSubtitle" class="mode-subtitle">Willkommen auf der offiziellen Website von Ehoser. Hier findest du exklusive Apps im APK Store, kostenlose Online-Spiele, KI-Tools, den Face-Warp-Editor und vieles mehr – alles an einem Ort, entwickelt von Nils Becker.</p>
+                        <div id="personalizationBanner" class="personalization-banner" style="display:none;"></div>
                     </div>
                     <div class="mode-cards">
                         <button class="mode-card" onclick="selectMode('store')">
@@ -264,7 +265,7 @@
                             <div style="font-size:0.8rem;color:#4d9fff;">Vertraulich · Einfühlsam · Jederzeit verfügbar</div>
                         </div>
                         <button onclick="closePsOverlay()" style="margin-left:auto;background:none;border:1px solid rgba(255,255,255,0.15);color:#8ab4c9;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:0.85rem;">✕ Schließen</button>
-                        <button onclick="if(confirm('Chat wirklich löschen und neu starten?')){localStorage.removeItem(\'ps_chat\');closePsOverlay();}" style="background:none;border:1px solid rgba(220,50,50,0.3);color:#e57373;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:0.8rem;">🗑 Neu</button>
+                        <button onclick="resetPsChat()" style="background:none;border:1px solid rgba(220,50,50,0.3);color:#e57373;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:0.8rem;">🗑 Neu</button>
                     </div>
                     <!-- Messages -->
                     <div id="psChatMessages" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;"></div>
