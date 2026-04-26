@@ -652,7 +652,7 @@
                         <form class="proxy-url-form" onsubmit="proxyNavigate(event)">
                             <div class="proxy-url-bar">
                                 <span class="proxy-lock" id="proxyLock">🔒</span>
-                                <input type="text" id="proxyUrlInput" class="proxy-url-input" placeholder="URL eingeben, z. B. wikipedia.org" autocomplete="off" spellcheck="false">
+                                <input type="text" id="proxyUrlInput" class="proxy-url-input" placeholder="URL oder Suchbegriff eingeben…" autocomplete="off" spellcheck="false">
                                 <button type="submit" class="proxy-go-btn">Los</button>
                             </div>
                         </form>
@@ -673,7 +673,7 @@
                                 <button class="proxy-quick-btn" onclick="proxyLoad('https://duckduckgo.com')">DuckDuckGo</button>
                             </div>
                         </div>
-                        <iframe id="proxyIframe" class="proxy-iframe" style="display:none;" sandbox="allow-scripts allow-forms allow-same-origin allow-popups" referrerpolicy="no-referrer"></iframe>
+                        <iframe id="proxyIframe" class="proxy-iframe" style="display:none;" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-pointer-lock allow-modals allow-orientation-lock" allow="autoplay; fullscreen; gamepad" referrerpolicy="no-referrer"></iframe>
                         <div id="proxyProxyContent" class="proxy-proxy-content" style="display:none;"></div>
                         <div id="proxyLoadingSpinner" class="proxy-loading" style="display:none;">
                             <div class="proxy-spinner"></div>
