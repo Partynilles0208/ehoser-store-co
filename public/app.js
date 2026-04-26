@@ -22,6 +22,7 @@ fetch('/api/config').then(r => r.json()).then(cfg => {
 
 let _repoUpdateInterval = null;
 let _lastSeenRepoSha = null;
+let _dismissedRepoSha = null;
 let _googleAuthInitialized = false;
 let _pendingReloadSnapshot = null;
 
@@ -75,6 +76,7 @@ function showRepoUpdateOverlay() {
 function dismissRepoUpdate() {
     const overlay = document.getElementById('repoUpdateOverlay');
     if (overlay) overlay.style.display = 'none';
+    _dismissedRepoSha = _lastSeenRepoSha;
 }
 
 function loadRepoUpdate() {
@@ -89,7 +91,9 @@ async function checkRepoVersion() {
         const data = await res.json();
         if (!_lastSeenRepoSha && data?.latestSha) _lastSeenRepoSha = data.latestSha;
         if (data?.hasUpdate || (_lastSeenRepoSha && data?.latestSha && _lastSeenRepoSha !== data.latestSha)) {
-            showRepoUpdateOverlay();
+            if (data?.latestSha && data.latestSha !== _dismissedRepoSha) {
+                showRepoUpdateOverlay();
+            }
         }
         if (data?.latestSha) _lastSeenRepoSha = data.latestSha;
     } catch {}
@@ -547,6 +551,7 @@ function showVoteScreen() {
         const status = await loadVoteStatus();
         if (status.unlocked) {
             clearInterval(_votePollingInterval);
+            _dismissedRepoSha = null;
             showRepoUpdateOverlay();
         }
     }, 5000);
@@ -577,6 +582,7 @@ async function castVote() {
 
         if (data.unlocked) {
             if (msg) msg.textContent = '🎉 Update freigeschaltet! Du kannst es jetzt laden.';
+            _dismissedRepoSha = null;
             showRepoUpdateOverlay();
         }
     } catch {
