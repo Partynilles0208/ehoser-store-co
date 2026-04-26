@@ -2691,8 +2691,9 @@ async function sendGamePrompt() {
         const data = await res.json();
         if (!res.ok || !data.code) {
             _gameShowLoading(false);
-            _gameSetStatus('Fehler: ' + (data.error || 'Unbekannter Fehler'));
-            _gameAddHistoryBubble('ai', 'Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            const errMsg = typeof data.error === 'object' ? (data.error?.message || JSON.stringify(data.error)) : (data.error || 'Unbekannter Fehler');
+            _gameSetStatus('Fehler: ' + errMsg);
+            _gameAddHistoryBubble('ai', 'Fehler: ' + errMsg);
             return;
         }
         _gameCurrentCode = data.code;
