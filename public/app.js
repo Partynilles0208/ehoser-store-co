@@ -532,7 +532,6 @@ function showVoteScreen() {
         const status = await loadVoteStatus();
         if (status.unlocked) {
             clearInterval(_votePollingInterval);
-            showRepoUpdateOverlay();
         }
     }, 5000);
 }
@@ -562,7 +561,6 @@ async function castVote() {
 
         if (data.unlocked) {
             if (msg) msg.textContent = '🎉 Update freigeschaltet! Du kannst es jetzt laden.';
-            showRepoUpdateOverlay();
         }
     } catch {
         if (btn) { btn.disabled = false; btn.textContent = '🗳️ Für Update abstimmen'; }
