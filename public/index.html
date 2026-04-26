@@ -116,7 +116,6 @@
                 </div>
                 <div class="nav-links" id="navLinks">
                     <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
-                    <a href="admin.html" class="nav-link">App hochladen</a>
                 </div>
             </div>
         </nav>
@@ -129,27 +128,27 @@
                     <div class="mode-hero">
                         <span class="logo-icon mode-logo">E</span>
                         <h1 id="modeTitle" class="mode-title">Ehoser – Offizielle Website</h1>
-                        <p id="modeSubtitle" class="mode-subtitle">Willkommen auf der offiziellen Website von Ehoser. Hier findest du exklusive Apps im APK Store, kostenlose Online-Spiele, KI-Tools, den Face-Warp-Editor und vieles mehr – alles an einem Ort, entwickelt von Nils Becker.</p>
+                        <p id="modeSubtitle" class="mode-subtitle">Deine All-in-One Toolbox im Browser – Spiele, KI, Karte, Kreativtools, Entwickler-Utilities und vieles mehr. Alles kostenlos, alles sofort, entwickelt von Nils Becker.</p>
                         <div id="personalizationBanner" class="personalization-banner" style="display:none;"></div>
                         <div class="mode-search-bar">
                             <input type="text" id="modeSearchInput" class="mode-search-input" placeholder="Feature suchen…" oninput="filterModeCards(this.value)" autocomplete="off">
                         </div>
                     </div>
                     <div class="mode-cards" id="modeCardsGrid">
-                        <button class="mode-card" onclick="selectMode('store')">
-                            <div class="mode-card-icon">📦</div>
-                            <div class="mode-card-body">
-                                <h3>APK Store</h3>
-                                <p>Exklusive, kuratierte Apps herunterladen &amp; installieren. Für Mitglieder mit Entsperrcode.</p>
-                                <span class="mode-badge">Registrierung nötig</span>
-                            </div>
-                        </button>
                         <button class="mode-card mode-card-games" onclick="selectMode('games')">
                             <div class="mode-card-icon">🎮</div>
                             <div class="mode-card-body">
                                 <h3>Online Spiele</h3>
                                 <p>Hunderte kostenlose HTML5-Spiele direkt im Browser – kein Account erforderlich.</p>
                                 <span class="mode-badge mode-badge-free">Kostenlos &amp; sofort</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-ki" onclick="selectMode('ki')" data-update-feature>
+                            <div class="mode-card-icon">🤖</div>
+                            <div class="mode-card-body">
+                                <h3>KI</h3>
+                                <p>Stell der künstlichen Intelligenz Fragen – Konversation mit Verlauf, powered by Llama.</p>
+                                <span class="mode-badge mode-badge-ki">Llama 3.3 70B</span>
                             </div>
                         </button>
                         <button class="mode-card mode-card-facewarp" onclick="selectMode('facewarp')">
@@ -164,24 +163,8 @@
                             <div class="mode-card-icon">💬</div>
                             <div class="mode-card-body">
                                 <h3>Chat</h3>
-                                <p>Chatte verschlüsselt mit anderen Mitgliedern – in Gruppen oder alleine. Ende-zu-Ende verschlüsselt.</p>
+                                <p>Chatte verschlüsselt mit anderen Mitgliedern – Ende-zu-Ende verschlüsselt.</p>
                                 <span class="mode-badge mode-badge-chat">🔒 E2E verschlüsselt</span>
-                            </div>
-                        </button>
-                        <button class="mode-card mode-card-images" onclick="selectMode('images')" data-update-feature>
-                            <div class="mode-card-icon">🖼️</div>
-                            <div class="mode-card-body">
-                                <h3>Bildersuche</h3>
-                                <p>Suche lizenzfreie Bilder direkt mit Pixabay und öffne sie sofort im Browser.</p>
-                                <span class="mode-badge mode-badge-images">Pixabay Suche</span>
-                            </div>
-                        </button>
-                        <button class="mode-card mode-card-weather" onclick="selectMode('weather')" data-update-feature>
-                            <div class="mode-card-icon">⛅</div>
-                            <div class="mode-card-body">
-                                <h3>Wetter</h3>
-                                <p>Gibt einen Ort ein und sieh das aktuelle Wetter – Temperatur, Regen, Wind und mehr live.</p>
-                                <span class="mode-badge mode-badge-weather">OpenWeather Live</span>
                             </div>
                         </button>
                         <button class="mode-card mode-card-map" onclick="selectMode('map')">
@@ -200,12 +183,20 @@
                                 <span class="mode-badge mode-badge-youtube">YouTube API v3</span>
                             </div>
                         </button>
-                        <button class="mode-card mode-card-ki" onclick="selectMode('ki')" data-update-feature>
-                            <div class="mode-card-icon">🤖</div>
+                        <button class="mode-card mode-card-images" onclick="selectMode('images')" data-update-feature>
+                            <div class="mode-card-icon">🖼️</div>
                             <div class="mode-card-body">
-                                <h3>KI</h3>
-                                <p>Stell der künstlichen Intelligenz Fragen – Konversation mit Verlauf, powered by Gemini.</p>
-                                <span class="mode-badge mode-badge-ki">Llama 3.3 70B</span>
+                                <h3>Bildersuche</h3>
+                                <p>Suche lizenzfreie Bilder direkt mit Pixabay und öffne sie sofort im Browser.</p>
+                                <span class="mode-badge mode-badge-images">Pixabay Suche</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-weather" onclick="selectMode('weather')" data-update-feature>
+                            <div class="mode-card-icon">⛅</div>
+                            <div class="mode-card-body">
+                                <h3>Wetter</h3>
+                                <p>Gibt einen Ort ein und sieh das aktuelle Wetter – Temperatur, Regen, Wind und mehr live.</p>
+                                <span class="mode-badge mode-badge-weather">OpenWeather Live</span>
                             </div>
                         </button>
                         <button class="mode-card mode-card-qr" onclick="selectMode('qr')">
@@ -213,7 +204,7 @@
                             <div class="mode-card-body">
                                 <h3>QR-Code Generator</h3>
                                 <p>Erstelle sofort QR-Codes aus jedem Text oder Link – als Bild herunterladen.</p>
-                                <span class="mode-badge mode-badge-qr">Kostenlos & Offline</span>
+                                <span class="mode-badge mode-badge-qr">Kostenlos &amp; Offline</span>
                             </div>
                         </button>
                         <button class="mode-card mode-card-calc" onclick="selectMode('calc')">
@@ -230,6 +221,168 @@
                                 <h3>Notizen</h3>
                                 <p>Erstelle Notizen die direkt im Browser gespeichert werden – keine Anmeldung nötig.</p>
                                 <span class="mode-badge mode-badge-notes">Lokal gespeichert</span>
+                            </div>
+                        </button>
+
+                        <!-- ─── 20 Neue Tech-Tools ─────────────────────────────── -->
+                        <button class="mode-card mode-card-pwd" onclick="selectMode('pwd')">
+                            <div class="mode-card-icon">🔐</div>
+                            <div class="mode-card-body">
+                                <h3>Passwort-Generator</h3>
+                                <p>Sichere Passwörter mit Symbolen, Zahlen und Längenauswahl – direkt kopieren.</p>
+                                <span class="mode-badge mode-badge-pwd">Crypto-Zufall</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-palette" onclick="selectMode('palette')">
+                            <div class="mode-card-icon">🎨</div>
+                            <div class="mode-card-body">
+                                <h3>Farbpaletten</h3>
+                                <p>Generiere harmonische Farbpaletten – kopiere HEX, RGB oder als CSS-Variable.</p>
+                                <span class="mode-badge mode-badge-palette">Color Theory</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-json" onclick="selectMode('json')">
+                            <div class="mode-card-icon">📊</div>
+                            <div class="mode-card-body">
+                                <h3>JSON Formatter</h3>
+                                <p>Formatiere, minifiziere und validiere JSON – mit Syntax-Highlighting.</p>
+                                <span class="mode-badge mode-badge-json">Dev Tool</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-stopwatch" onclick="selectMode('stopwatch')">
+                            <div class="mode-card-icon">⏱️</div>
+                            <div class="mode-card-body">
+                                <h3>Stoppuhr &amp; Timer</h3>
+                                <p>Stoppuhr mit Runden-Lap-Funktion und Countdown-Timer mit Alarm-Sound.</p>
+                                <span class="mode-badge mode-badge-stopwatch">Präzise</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-encode" onclick="selectMode('encode')">
+                            <div class="mode-card-icon">🔒</div>
+                            <div class="mode-card-body">
+                                <h3>Text Encoder</h3>
+                                <p>Base64, ROT13, URL-Encoding – kodieren und dekodieren in Echtzeit.</p>
+                                <span class="mode-badge mode-badge-encode">Instant</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-units" onclick="selectMode('units')">
+                            <div class="mode-card-icon">📐</div>
+                            <div class="mode-card-body">
+                                <h3>Einheiten-Umrechner</h3>
+                                <p>Länge, Gewicht, Temperatur, Datengrößen – sofort umrechnen ohne Suche.</p>
+                                <span class="mode-badge mode-badge-units">Alle Einheiten</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-rng" onclick="selectMode('rng')">
+                            <div class="mode-card-icon">🎲</div>
+                            <div class="mode-card-body">
+                                <h3>Zufallsgenerator</h3>
+                                <p>Würfeln, Zahlen, Namen ziehen, Münze werfen – echter Krypto-Zufall.</p>
+                                <span class="mode-badge mode-badge-rng">True Random</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-tone" onclick="selectMode('tone')">
+                            <div class="mode-card-icon">🎵</div>
+                            <div class="mode-card-body">
+                                <h3>Ton-Generator</h3>
+                                <p>Generiere Frequenzen per Web Audio API – Sinuswellen, Sägezahn, Binaural Beats.</p>
+                                <span class="mode-badge mode-badge-tone">Web Audio API</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-draw" onclick="selectMode('draw')">
+                            <div class="mode-card-icon">🖊️</div>
+                            <div class="mode-card-body">
+                                <h3>Zeichenpad</h3>
+                                <p>Zeichne frei auf einem Canvas – Farbe, Stärke, Radierer, Export als PNG.</p>
+                                <span class="mode-badge mode-badge-draw">Canvas API</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-habits" onclick="selectMode('habits')">
+                            <div class="mode-card-icon">🎯</div>
+                            <div class="mode-card-body">
+                                <h3>Habit Tracker</h3>
+                                <p>Verfolge tägliche Gewohnheiten mit Streak-Counter und Fortschrittsanzeige.</p>
+                                <span class="mode-badge mode-badge-habits">Streak-System</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-texttools" onclick="selectMode('texttools')">
+                            <div class="mode-card-icon">🔤</div>
+                            <div class="mode-card-body">
+                                <h3>Text Tools</h3>
+                                <p>Wörter zählen, Text umkehren, Groß-/Kleinschreibung, Duplikate entfernen.</p>
+                                <span class="mode-badge mode-badge-texttools">Multi-Tool</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-gradient" onclick="selectMode('gradient')">
+                            <div class="mode-card-icon">🌈</div>
+                            <div class="mode-card-body">
+                                <h3>Gradient Generator</h3>
+                                <p>Erstelle CSS-Gradients visuell – kopiere den fertigen CSS-Code.</p>
+                                <span class="mode-badge mode-badge-gradient">CSS Output</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-sandbox" onclick="selectMode('sandbox')">
+                            <div class="mode-card-icon">💻</div>
+                            <div class="mode-card-body">
+                                <h3>JS Sandbox</h3>
+                                <p>Schreibe und führe JavaScript direkt im Browser aus – mit Console-Output.</p>
+                                <span class="mode-badge mode-badge-sandbox">Live Runtime</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-regex" onclick="selectMode('regex')">
+                            <div class="mode-card-icon">🔍</div>
+                            <div class="mode-card-body">
+                                <h3>Regex Tester</h3>
+                                <p>Teste Regular Expressions live – alle Matches werden sofort hervorgehoben.</p>
+                                <span class="mode-badge mode-badge-regex">Real-time</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-wheel" onclick="selectMode('wheel')">
+                            <div class="mode-card-icon">🎰</div>
+                            <div class="mode-card-body">
+                                <h3>Glücksrad</h3>
+                                <p>Eigene Einträge hinzufügen und das Rad drehen – perfekt für Entscheidungen.</p>
+                                <span class="mode-badge mode-badge-wheel">Canvas Spin</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-hash" onclick="selectMode('hash')">
+                            <div class="mode-card-icon">🧬</div>
+                            <div class="mode-card-body">
+                                <h3>Hash Generator</h3>
+                                <p>SHA-256, SHA-1 direkt im Browser – via Web Crypto API ohne Server.</p>
+                                <span class="mode-badge mode-badge-hash">Web Crypto API</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-typing" onclick="selectMode('typing')">
+                            <div class="mode-card-icon">⌨️</div>
+                            <div class="mode-card-body">
+                                <h3>Tipp-Test</h3>
+                                <p>Miss deine Tippgeschwindigkeit in WPM – mit Genauigkeit und Highscore.</p>
+                                <span class="mode-badge mode-badge-typing">WPM Score</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-camera" onclick="selectMode('camera')">
+                            <div class="mode-card-icon">📷</div>
+                            <div class="mode-card-body">
+                                <h3>Kamera</h3>
+                                <p>Fotos direkt im Browser aufnehmen – Filter, Spiegeln, als PNG speichern.</p>
+                                <span class="mode-badge mode-badge-camera">getUserMedia</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-countdown" onclick="selectMode('countdown')">
+                            <div class="mode-card-icon">📅</div>
+                            <div class="mode-card-body">
+                                <h3>Countdown</h3>
+                                <p>Countdown bis zu einem Datum – Tage, Stunden, Minuten, Sekunden live.</p>
+                                <span class="mode-badge mode-badge-countdown">Live Timer</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-metronome" onclick="selectMode('metronome')">
+                            <div class="mode-card-icon">🥁</div>
+                            <div class="mode-card-body">
+                                <h3>Metronom</h3>
+                                <p>Präzises Web-Audio-Metronom – BPM einstellen, Taktart wählen, Klick-Sound.</p>
+                                <span class="mode-badge mode-badge-metronome">Web Audio API</span>
                             </div>
                         </button>
 
@@ -628,39 +781,6 @@
                 </div>
             </section>
 
-            <section id="store" class="section">
-                <div class="store-header">
-                    <h2>Store Bibliothek</h2>
-                    <div class="search-bar">
-                        <input 
-                            type="text" 
-                            id="searchInput" 
-                            placeholder="Apps durchsuchen..."
-                            onkeyup="filterApps()"
-                        >
-                    </div>
-                </div>
-
-                <div class="category-filter">
-                    <button class="filter-btn active" onclick="filterByCategory('all', event)">Alle</button>
-                    <button class="filter-btn" onclick="filterByCategory('Grafik', event)">Grafik</button>
-                    <button class="filter-btn" onclick="filterByCategory('Entwicklung', event)">Entwicklung</button>
-                    <button class="filter-btn" onclick="filterByCategory('Video', event)">Video</button>
-                    <button class="filter-btn" onclick="filterByCategory('Produktivität', event)">Produktivität</button>
-                    <button class="filter-btn" onclick="filterByCategory('Sicherheit', event)">Sicherheit</button>
-                    <button class="filter-btn" onclick="filterByCategory('Cloud', event)">Cloud</button>
-                </div>
-
-                <div id="appsList" class="apps-grid">
-                </div>
-            </section>
-
-            <section id="my-apps" class="section">
-                <h2>Meine Installationen</h2>
-                <div id="myAppsList" class="apps-grid">
-                </div>
-            </section>
-
             <!-- ── Online Spiele ─────────────────────────────────── -->
             <section id="games" class="section">
                 <div class="games-header">
@@ -772,7 +892,498 @@
                 </div>
             </section>
 
-        </main>
+            <!-- ── Passwort-Generator ────────────────────────────── -->
+            <section id="pwd" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🔐 Passwort-Generator</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="pwd-output" id="pwdOutput">Passwort erscheint hier…</div>
+                    <div class="pwd-strength" id="pwdStrength"></div>
+                    <div class="tool-row">
+                        <label>Länge: <strong id="pwdLenLabel">16</strong></label>
+                        <input type="range" id="pwdLen" min="6" max="64" value="16" oninput="document.getElementById('pwdLenLabel').textContent=this.value;pwdGenerate()">
+                    </div>
+                    <div class="tool-checkboxes">
+                        <label><input type="checkbox" id="pwdUpper" checked onchange="pwdGenerate()"> A–Z</label>
+                        <label><input type="checkbox" id="pwdLower" checked onchange="pwdGenerate()"> a–z</label>
+                        <label><input type="checkbox" id="pwdNums" checked onchange="pwdGenerate()"> 0–9</label>
+                        <label><input type="checkbox" id="pwdSyms" checked onchange="pwdGenerate()"> !@#$…</label>
+                    </div>
+                    <div class="tool-actions">
+                        <button class="btn-primary" onclick="pwdGenerate()">🔄 Neu generieren</button>
+                        <button class="btn-secondary" onclick="pwdCopy()">📋 Kopieren</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Farbpaletten ──────────────────────────────────── -->
+            <section id="palette" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎨 Farbpaletten-Generator</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="palette-grid" id="paletteGrid"></div>
+                    <div class="tool-actions">
+                        <button class="btn-primary" onclick="paletteGenerate()">🎲 Neue Palette</button>
+                        <button class="btn-secondary" onclick="paletteCopyCSS()">📋 CSS kopieren</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── JSON Formatter ────────────────────────────────── -->
+            <section id="json" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>📊 JSON Formatter</h2>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <label class="tool-label">Eingabe</label>
+                        <textarea id="jsonInput" class="tool-textarea" placeholder='{"name":"ehoser","cool":true}' oninput="jsonFormat()"></textarea>
+                        <div class="tool-actions">
+                            <button class="btn-primary" onclick="jsonFormat()">✨ Formatieren</button>
+                            <button class="btn-secondary" onclick="jsonMinify()">📦 Minify</button>
+                            <button class="btn-secondary" onclick="jsonClear()">✕ Leeren</button>
+                        </div>
+                    </div>
+                    <div class="split-right">
+                        <label class="tool-label">Ausgabe</label>
+                        <pre id="jsonOutput" class="tool-pre"></pre>
+                        <div id="jsonStatus" class="tool-status"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Stoppuhr & Timer ──────────────────────────────── -->
+            <section id="stopwatch" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>⏱️ Stoppuhr &amp; Timer</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="sw-tabs">
+                        <button class="sw-tab active" onclick="swSwitchTab('sw')">Stoppuhr</button>
+                        <button class="sw-tab" onclick="swSwitchTab('cd')">Countdown</button>
+                    </div>
+                    <div id="swPanel">
+                        <div class="sw-display" id="swDisplay">00:00:00.0</div>
+                        <div class="tool-actions" style="justify-content:center;">
+                            <button class="btn-primary" id="swStartBtn" onclick="swToggle()">▶ Start</button>
+                            <button class="btn-secondary" onclick="swLap()">🏁 Runde</button>
+                            <button class="btn-secondary" onclick="swReset()">↺ Reset</button>
+                        </div>
+                        <div id="swLaps" class="sw-laps"></div>
+                    </div>
+                    <div id="cdPanel" style="display:none;">
+                        <div class="sw-display" id="cdDisplay">00:00</div>
+                        <div class="tool-row" style="justify-content:center;gap:12px;">
+                            <input type="number" id="cdMin" min="0" max="99" value="1" class="tool-input-sm" style="width:70px;"> min
+                            <input type="number" id="cdSec" min="0" max="59" value="0" class="tool-input-sm" style="width:70px;"> sec
+                        </div>
+                        <div class="tool-actions" style="justify-content:center;">
+                            <button class="btn-primary" id="cdStartBtn" onclick="cdToggle()">▶ Start</button>
+                            <button class="btn-secondary" onclick="cdReset()">↺ Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Text Encoder ──────────────────────────────────── -->
+            <section id="encode" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🔒 Text Encoder / Decoder</h2>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <label class="tool-label">Eingabe</label>
+                        <textarea id="encInput" class="tool-textarea" placeholder="Text eingeben…" oninput="encUpdate()"></textarea>
+                        <div class="tool-checkboxes">
+                            <label><input type="radio" name="encMode" value="b64e" checked onchange="encUpdate()"> Base64 Encode</label>
+                            <label><input type="radio" name="encMode" value="b64d" onchange="encUpdate()"> Base64 Decode</label>
+                            <label><input type="radio" name="encMode" value="rot13" onchange="encUpdate()"> ROT13</label>
+                            <label><input type="radio" name="encMode" value="url" onchange="encUpdate()"> URL Encode</label>
+                            <label><input type="radio" name="encMode" value="urld" onchange="encUpdate()"> URL Decode</label>
+                        </div>
+                    </div>
+                    <div class="split-right">
+                        <label class="tool-label">Ausgabe</label>
+                        <textarea id="encOutput" class="tool-textarea" readonly></textarea>
+                        <div class="tool-actions">
+                            <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('encOutput').value)">📋 Kopieren</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Einheiten-Umrechner ───────────────────────────── -->
+            <section id="units" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>📐 Einheiten-Umrechner</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="tool-row">
+                        <select id="unitsCat" class="tool-select" onchange="unitsUpdateCat()">
+                            <option value="length">Länge</option>
+                            <option value="weight">Gewicht</option>
+                            <option value="temp">Temperatur</option>
+                            <option value="data">Datengröße</option>
+                            <option value="speed">Geschwindigkeit</option>
+                        </select>
+                    </div>
+                    <div class="tool-row units-row">
+                        <input type="number" id="unitsFrom" class="tool-input" value="1" oninput="unitsConvert()">
+                        <select id="unitsFromUnit" class="tool-select" onchange="unitsConvert()"></select>
+                        <span style="color:#8ab4c9;font-size:1.4rem;">→</span>
+                        <input type="number" id="unitsTo" class="tool-input" readonly>
+                        <select id="unitsToUnit" class="tool-select" onchange="unitsConvert()"></select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Zufallsgenerator ──────────────────────────────── -->
+            <section id="rng" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎲 Zufallsgenerator</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="rng-grid">
+                        <div class="rng-card">
+                            <div class="rng-label">Würfel (1–6)</div>
+                            <div class="rng-result" id="rngDice">🎲</div>
+                            <button class="btn-primary" onclick="rngRollDice()">Würfeln</button>
+                        </div>
+                        <div class="rng-card">
+                            <div class="rng-label">Zahl</div>
+                            <div class="rng-result" id="rngNum">–</div>
+                            <div class="tool-row" style="gap:6px;">
+                                <input type="number" id="rngMin" value="1" class="tool-input-sm">
+                                <span style="color:#8ab4c9;">bis</span>
+                                <input type="number" id="rngMax" value="100" class="tool-input-sm">
+                            </div>
+                            <button class="btn-primary" onclick="rngRollNum()">Ziehen</button>
+                        </div>
+                        <div class="rng-card">
+                            <div class="rng-label">Münze</div>
+                            <div class="rng-result" id="rngCoin">🪙</div>
+                            <button class="btn-primary" onclick="rngFlipCoin()">Werfen</button>
+                        </div>
+                        <div class="rng-card">
+                            <div class="rng-label">Name ziehen</div>
+                            <div class="rng-result" id="rngName" style="font-size:1.2rem;">–</div>
+                            <textarea id="rngNameList" class="tool-textarea" rows="3" placeholder="Namen (eine pro Zeile)">Alice\nBob\nCharlie\nDave</textarea>
+                            <button class="btn-primary" onclick="rngPickName()">Ziehen</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Ton-Generator ─────────────────────────────────── -->
+            <section id="tone" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎵 Ton-Generator</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="tool-row" style="justify-content:center;flex-wrap:wrap;gap:16px;">
+                        <div>
+                            <label class="tool-label">Frequenz (Hz)</label>
+                            <input type="range" id="toneFreq" min="20" max="2000" value="440" oninput="toneUpdate()">
+                            <div id="toneFreqLabel" style="color:#4d9fff;font-size:1.4rem;font-weight:700;">440 Hz</div>
+                        </div>
+                        <div>
+                            <label class="tool-label">Lautstärke</label>
+                            <input type="range" id="toneVol" min="0" max="1" step="0.01" value="0.3" oninput="toneUpdate()">
+                        </div>
+                        <div>
+                            <label class="tool-label">Wellenform</label>
+                            <select id="toneWave" class="tool-select" onchange="toneUpdate()">
+                                <option value="sine">Sinus</option>
+                                <option value="square">Rechteck</option>
+                                <option value="sawtooth">Sägezahn</option>
+                                <option value="triangle">Dreieck</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-top:20px;">
+                        <div class="tone-notes">
+                            <button class="tone-note-btn" onclick="toneSetFreq(261.63)">C4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(293.66)">D4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(329.63)">E4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(349.23)">F4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(392.00)">G4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(440.00)">A4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(493.88)">B4</button>
+                        </div>
+                    </div>
+                    <div class="tool-actions" style="justify-content:center;">
+                        <button class="btn-primary" id="tonePlayBtn" onclick="toneToggle()">▶ Play</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Zeichenpad ─────────────────────────────────────── -->
+            <section id="draw" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🖊️ Zeichenpad</h2>
+                    <div class="draw-controls">
+                        <input type="color" id="drawColor" value="#0e8a9b" title="Farbe">
+                        <input type="range" id="drawSize" min="1" max="40" value="4" title="Stärke">
+                        <button class="btn-secondary" onclick="drawSetTool('pen')" id="drawPenBtn">✏️ Stift</button>
+                        <button class="btn-secondary" onclick="drawSetTool('eraser')" id="drawEraserBtn">🧹 Radierer</button>
+                        <button class="btn-secondary" onclick="drawClear()">🗑 Löschen</button>
+                        <button class="btn-primary" onclick="drawExport()">⬇ PNG</button>
+                    </div>
+                </div>
+                <canvas id="drawCanvas" class="draw-canvas"></canvas>
+            </section>
+
+            <!-- ── Habit Tracker ──────────────────────────────────── -->
+            <section id="habits" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎯 Habit Tracker</h2>
+                    <button class="btn-primary" onclick="habitAdd()" style="margin-left:auto;">+ Gewohnheit</button>
+                </div>
+                <div id="habitsGrid" class="habits-grid"></div>
+                <div id="habitsEmpty" class="notes-empty" style="display:none;">
+                    <div style="font-size:3rem;">🎯</div>
+                    <p>Noch keine Gewohnheiten. Klicke oben auf <strong>+ Gewohnheit</strong>.</p>
+                </div>
+            </section>
+
+            <!-- ── Text Tools ─────────────────────────────────────── -->
+            <section id="texttools" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🔤 Text Tools</h2>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <textarea id="ttInput" class="tool-textarea" rows="8" placeholder="Text hier eingeben…" oninput="ttUpdate()"></textarea>
+                        <div class="tt-stats" id="ttStats">Wörter: 0 · Zeichen: 0 · Zeilen: 0</div>
+                    </div>
+                    <div class="split-right">
+                        <div class="tool-checkboxes" style="flex-direction:column;gap:8px;">
+                            <button class="btn-secondary" onclick="ttTransform('upper')">GROSSBUCHSTABEN</button>
+                            <button class="btn-secondary" onclick="ttTransform('lower')">kleinbuchstaben</button>
+                            <button class="btn-secondary" onclick="ttTransform('title')">Titelschreibweise</button>
+                            <button class="btn-secondary" onclick="ttTransform('reverse')">txeT nerkemhU</button>
+                            <button class="btn-secondary" onclick="ttTransform('trim')">Leerzeichen entfernen</button>
+                            <button class="btn-secondary" onclick="ttTransform('nodup')">Duplikate entfernen</button>
+                            <button class="btn-secondary" onclick="ttTransform('slug')">URL-Slug erstellen</button>
+                            <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('ttInput').value)">📋 Kopieren</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Gradient Generator ────────────────────────────── -->
+            <section id="gradient" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🌈 Gradient Generator</h2>
+                </div>
+                <div class="tool-body">
+                    <div id="gradPreview" class="grad-preview"></div>
+                    <div class="tool-row" style="flex-wrap:wrap;gap:16px;">
+                        <div><label class="tool-label">Typ</label>
+                            <select id="gradType" class="tool-select" onchange="gradUpdate()">
+                                <option value="linear">Linear</option>
+                                <option value="radial">Radial</option>
+                                <option value="conic">Conic</option>
+                            </select>
+                        </div>
+                        <div><label class="tool-label">Winkel (linear)</label>
+                            <input type="range" id="gradAngle" min="0" max="360" value="135" oninput="gradUpdate()">
+                            <span id="gradAngleLabel" style="color:#4d9fff;">135°</span>
+                        </div>
+                        <div><label class="tool-label">Farbe 1</label><input type="color" id="gradC1" value="#0e8a9b" oninput="gradUpdate()"></div>
+                        <div><label class="tool-label">Farbe 2</label><input type="color" id="gradC2" value="#f47c2a" oninput="gradUpdate()"></div>
+                        <div><label class="tool-label">Farbe 3</label><input type="color" id="gradC3" value="#a855f7" oninput="gradUpdate()"></div>
+                    </div>
+                    <div class="tool-row">
+                        <code id="gradCode" class="grad-code"></code>
+                        <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('gradCode').textContent)">📋 Kopieren</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── JS Sandbox ─────────────────────────────────────── -->
+            <section id="sandbox" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>💻 JS Sandbox</h2>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <label class="tool-label">JavaScript Code</label>
+                        <textarea id="sandboxInput" class="tool-textarea code-font" rows="12" placeholder="// Code hier schreiben&#10;console.log('Hallo ehoser!');&#10;const x = 2 + 2;&#10;x;"></textarea>
+                        <div class="tool-actions">
+                            <button class="btn-primary" onclick="sandboxRun()">▶ Ausführen</button>
+                            <button class="btn-secondary" onclick="sandboxClear()">✕ Leeren</button>
+                        </div>
+                    </div>
+                    <div class="split-right">
+                        <label class="tool-label">Output</label>
+                        <div id="sandboxOutput" class="sandbox-output"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Regex Tester ───────────────────────────────────── -->
+            <section id="regex" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🔍 Regex Tester</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="tool-row">
+                        <input type="text" id="regexPattern" class="tool-input" placeholder="Regex Pattern z.B. \d+" oninput="regexTest()">
+                        <select id="regexFlags" class="tool-select" onchange="regexTest()">
+                            <option value="g">g</option>
+                            <option value="gi">gi</option>
+                            <option value="gm">gm</option>
+                            <option value="gim">gim</option>
+                        </select>
+                    </div>
+                    <textarea id="regexInput" class="tool-textarea" rows="5" placeholder="Testtext hier eingeben…" oninput="regexTest()"></textarea>
+                    <div id="regexHighlight" class="regex-highlight"></div>
+                    <div id="regexMatches" class="regex-matches"></div>
+                </div>
+            </section>
+
+            <!-- ── Glücksrad ──────────────────────────────────────── -->
+            <section id="wheel" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎰 Glücksrad</h2>
+                </div>
+                <div class="tool-body" style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+                    <div style="flex:0 0 auto;text-align:center;">
+                        <canvas id="wheelCanvas" width="320" height="320" class="wheel-canvas"></canvas>
+                        <button class="btn-primary" onclick="wheelSpin()" id="wheelSpinBtn" style="margin-top:16px;width:200px;">🎰 Drehen!</button>
+                        <div id="wheelResult" class="wheel-result"></div>
+                    </div>
+                    <div style="flex:1;min-width:200px;">
+                        <label class="tool-label">Einträge (einer pro Zeile)</label>
+                        <textarea id="wheelEntries" class="tool-textarea" rows="8" oninput="wheelDraw()">Pizza
+Burger
+Sushi
+Döner
+Pasta
+Ramen</textarea>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Hash Generator ─────────────────────────────────── -->
+            <section id="hash" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🧬 Hash Generator</h2>
+                </div>
+                <div class="tool-body">
+                    <textarea id="hashInput" class="tool-textarea" rows="4" placeholder="Text eingeben um Hash zu generieren…" oninput="hashUpdate()"></textarea>
+                    <div class="hash-results" id="hashResults"></div>
+                </div>
+            </section>
+
+            <!-- ── Tipp-Test ──────────────────────────────────────── -->
+            <section id="typing" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>⌨️ Tipp-Test</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div id="typingStats" class="typing-stats">
+                        <span>⏱️ <strong id="typingTime">60</strong>s</span>
+                        <span>⌨️ <strong id="typingWPM">0</strong> WPM</span>
+                        <span>✅ <strong id="typingAcc">100</strong>% Genauigkeit</span>
+                    </div>
+                    <div id="typingWords" class="typing-words"></div>
+                    <input type="text" id="typingInput" class="typing-input" placeholder="Hier tippen…" oninput="typingCheck()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    <button class="btn-secondary" onclick="typingReset()">↺ Neu starten</button>
+                    <div id="typingResult" class="typing-result"></div>
+                </div>
+            </section>
+
+            <!-- ── Kamera ──────────────────────────────────────────── -->
+            <section id="camera" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>📷 Kamera</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="camera-wrapper">
+                        <video id="cameraVideo" class="camera-video" autoplay muted playsinline></video>
+                        <canvas id="cameraCanvas" class="camera-canvas" style="display:none;"></canvas>
+                    </div>
+                    <div class="tool-actions" style="justify-content:center;">
+                        <button class="btn-primary" id="cameraSnapBtn" onclick="cameraSnap()">📸 Foto aufnehmen</button>
+                        <button class="btn-secondary" id="cameraFlipBtn" onclick="cameraFlip()">🔄 Kamera wechseln</button>
+                        <button class="btn-secondary" id="cameraSaveBtn" onclick="cameraSave()" style="display:none;">⬇ Speichern</button>
+                    </div>
+                    <select id="cameraFilter" class="tool-select" style="max-width:200px;" onchange="cameraApplyFilter()">
+                        <option value="">Kein Filter</option>
+                        <option value="grayscale(100%)">Schwarz/Weiß</option>
+                        <option value="sepia(100%)">Sepia</option>
+                        <option value="invert(100%)">Invertiert</option>
+                        <option value="saturate(200%)">Satt</option>
+                        <option value="blur(3px)">Blur</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- ── Countdown ──────────────────────────────────────── -->
+            <section id="countdown" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>📅 Countdown</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="tool-row" style="justify-content:center;gap:12px;">
+                        <input type="text" id="cdEventName" class="tool-input" placeholder="Event-Name z.B. Geburtstag" style="max-width:240px;">
+                        <input type="datetime-local" id="cdTargetDate" class="tool-input" style="max-width:240px;">
+                        <button class="btn-primary" onclick="cdStart()">▶ Starten</button>
+                    </div>
+                    <div id="cdTimerDisplay" class="cd-display" style="display:none;"></div>
+                    <div id="cdEventLabel" style="color:#8ab4c9;margin-top:8px;font-size:1.1rem;"></div>
+                </div>
+            </section>
+
+            <!-- ── Metronom ───────────────────────────────────────── -->
+            <section id="metronome" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🥁 Metronom</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="metro-bpm-display" id="metroBpmDisplay">120 BPM</div>
+                    <input type="range" id="metroBpm" min="20" max="300" value="120" oninput="metroUpdateBpm()" style="width:min(400px,90%);margin:16px 0;">
+                    <div class="tool-row" style="justify-content:center;gap:16px;flex-wrap:wrap;">
+                        <div>
+                            <label class="tool-label">Taktart</label>
+                            <select id="metroBeats" class="tool-select" onchange="metroUpdateBeats()">
+                                <option value="4">4/4</option>
+                                <option value="3">3/4</option>
+                                <option value="2">2/4</option>
+                                <option value="6">6/8</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="metro-dots" id="metroDots"></div>
+                    <div class="tool-actions" style="justify-content:center;margin-top:20px;">
+                        <button class="btn-primary" id="metroStartBtn" onclick="metroToggle()">▶ Start</button>
+                    </div>
+                </div>
+            </section>
 
         <div id="appModal" class="modal">
             <div class="modal-content">
@@ -967,6 +1578,9 @@
                 <iframe id="gamePreviewFrame" style="flex:1;border:none;display:none;" sandbox="allow-scripts allow-forms allow-modals" title="Spielvorschau"></iframe>
             </div>
         </div>
+    </div>
+
+        </main>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>

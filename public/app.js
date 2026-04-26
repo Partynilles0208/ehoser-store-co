@@ -1107,7 +1107,7 @@ async function copyUnlockCode() {
 
 function selectMode(mode) {
     if (mode === 'store') {
-        showSection('auth');
+        showSection('mode-select');
     } else if (mode === 'games') {
         showSection('games');
     } else if (mode === 'images') {
@@ -1158,6 +1158,56 @@ function selectMode(mode) {
         showSection('notes');
         _notesLoad();
         _notesRender();
+    } else if (mode === 'pwd') {
+        showSection('pwd');
+        pwdGenerate();
+    } else if (mode === 'palette') {
+        showSection('palette');
+        paletteGenerate();
+    } else if (mode === 'json') {
+        showSection('json');
+    } else if (mode === 'stopwatch') {
+        showSection('stopwatch');
+    } else if (mode === 'encode') {
+        showSection('encode');
+    } else if (mode === 'units') {
+        showSection('units');
+        unitsUpdateCat();
+    } else if (mode === 'rng') {
+        showSection('rng');
+    } else if (mode === 'tone') {
+        showSection('tone');
+    } else if (mode === 'draw') {
+        showSection('draw');
+        drawInit();
+    } else if (mode === 'habits') {
+        showSection('habits');
+        habitsRender();
+    } else if (mode === 'texttools') {
+        showSection('texttools');
+    } else if (mode === 'gradient') {
+        showSection('gradient');
+        gradUpdate();
+    } else if (mode === 'sandbox') {
+        showSection('sandbox');
+    } else if (mode === 'regex') {
+        showSection('regex');
+    } else if (mode === 'wheel') {
+        showSection('wheel');
+        wheelDraw();
+    } else if (mode === 'hash') {
+        showSection('hash');
+    } else if (mode === 'typing') {
+        showSection('typing');
+        typingReset();
+    } else if (mode === 'camera') {
+        showSection('camera');
+        cameraStart();
+    } else if (mode === 'countdown') {
+        showSection('countdown');
+    } else if (mode === 'metronome') {
+        showSection('metronome');
+        metroInit();
     } else {
         showSection('mode-select');
     }
@@ -3292,4 +3342,783 @@ function notesDelete(idx) {
     _notesData.splice(idx, 1);
     _notesSave();
     _notesRender();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  PASSWORT-GENERATOR
+// ═══════════════════════════════════════════════════════════════
+function pwdGenerate() {
+    const len = parseInt(document.getElementById('pwdLen').value);
+    const upper = document.getElementById('pwdUpper').checked;
+    const lower = document.getElementById('pwdLower').checked;
+    const nums  = document.getElementById('pwdNums').checked;
+    const syms  = document.getElementById('pwdSyms').checked;
+    let chars = '';
+    if (upper) chars += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    if (lower) chars += 'abcdefghijklmnopqrstuvwxyz';
+    if (nums)  chars += '0123456789';
+    if (syms)  chars += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+    if (!chars) { chars = 'abcdefghijklmnopqrstuvwxyz'; }
+    const arr = new Uint32Array(len);
+    crypto.getRandomValues(arr);
+    let pwd = '';
+    for (let i = 0; i < len; i++) pwd += chars[arr[i] % chars.length];
+    document.getElementById('pwdOutput').textContent = pwd;
+    // Stärke-Anzeige
+    const strength = [upper, lower, nums, syms].filter(Boolean).length;
+    const labels = ['', 'Schwach', 'Mittel', 'Stark', 'Sehr Stark'];
+    const colors = ['', '#e53e3e', '#dd6b20', '#38a169', '#0e8a9b'];
+    const el = document.getElementById('pwdStrength');
+    el.textContent = labels[strength] || '';
+    el.style.color = colors[strength] || '';
+}
+function pwdCopy() {
+    const t = document.getElementById('pwdOutput').textContent;
+    if (t && t !== 'Passwort erscheint hier…') {
+        navigator.clipboard.writeText(t).then(() => showAlert('Passwort kopiert!', 'success'));
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  FARBPALETTEN-GENERATOR
+// ═══════════════════════════════════════════════════════════════
+let _paletteColors = [];
+function paletteGenerate() {
+    const baseH = Math.floor(Math.random() * 360);
+    const schemes = ['analogous', 'complementary', 'triadic', 'splitComp', 'monochromatic'];
+    const scheme = schemes[Math.floor(Math.random() * schemes.length)];
+    let hues = [];
+    if (scheme === 'analogous')       hues = [baseH, baseH+30, baseH+60, baseH+90, baseH+120];
+    else if (scheme === 'complementary') hues = [baseH, baseH+30, baseH+60, baseH+180, baseH+210];
+    else if (scheme === 'triadic')    hues = [baseH, baseH+120, baseH+240, baseH+60, baseH+180];
+    else if (scheme === 'splitComp')  hues = [baseH, baseH+150, baseH+210, baseH+30, baseH+330];
+    else hues = [baseH, baseH, baseH, baseH, baseH];
+    const sats = scheme === 'monochromatic' ? [20, 40, 60, 80, 100] : [60, 70, 75, 65, 80];
+    const lights = scheme === 'monochromatic' ? [80, 65, 50, 35, 20] : [80, 60, 45, 60, 35];
+    _paletteColors = hues.map((h, i) => {
+        h = ((h % 360) + 360) % 360;
+        const s = sats[i], l = lights[i];
+        return { hsl: `hsl(${h},${s}%,${l}%)`, hex: hslToHex(h, s, l) };
+    });
+    const grid = document.getElementById('paletteGrid');
+    grid.innerHTML = _paletteColors.map((c, i) => `
+        <div class="palette-swatch" style="background:${c.hsl};" onclick="navigator.clipboard.writeText('${c.hex}').then(()=>showAlert('${c.hex} kopiert!','success'))">
+            <span class="palette-hex">${c.hex}</span>
+        </div>`).join('');
+}
+function paletteCopyCSS() {
+    const css = _paletteColors.map((c, i) => `--color-${i+1}: ${c.hex};`).join('\n');
+    navigator.clipboard.writeText(`:root {\n${css}\n}`).then(() => showAlert('CSS kopiert!', 'success'));
+}
+function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    const k = n => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return '#' + [f(0), f(8), f(4)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  JSON FORMATTER
+// ═══════════════════════════════════════════════════════════════
+function jsonFormat() {
+    const input = document.getElementById('jsonInput').value.trim();
+    const out = document.getElementById('jsonOutput');
+    const status = document.getElementById('jsonStatus');
+    if (!input) { out.textContent = ''; status.textContent = ''; return; }
+    try {
+        const parsed = JSON.parse(input);
+        out.textContent = JSON.stringify(parsed, null, 2);
+        status.textContent = '✅ Gültiges JSON';
+        status.style.color = '#38a169';
+    } catch (e) {
+        out.textContent = '';
+        status.textContent = '❌ ' + e.message;
+        status.style.color = '#e53e3e';
+    }
+}
+function jsonMinify() {
+    const input = document.getElementById('jsonInput').value.trim();
+    const out = document.getElementById('jsonOutput');
+    const status = document.getElementById('jsonStatus');
+    try {
+        const parsed = JSON.parse(input);
+        out.textContent = JSON.stringify(parsed);
+        status.textContent = '✅ Minifiziert';
+        status.style.color = '#38a169';
+    } catch (e) {
+        status.textContent = '❌ ' + e.message;
+        status.style.color = '#e53e3e';
+    }
+}
+function jsonClear() {
+    document.getElementById('jsonInput').value = '';
+    document.getElementById('jsonOutput').textContent = '';
+    document.getElementById('jsonStatus').textContent = '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  STOPPUHR & TIMER
+// ═══════════════════════════════════════════════════════════════
+let _swRunning = false, _swStart = 0, _swElapsed = 0, _swTimer = null, _swLaps = [];
+let _cdRunning = false, _cdTimer = null, _cdRemaining = 0;
+
+function swSwitchTab(tab) {
+    document.getElementById('swPanel').style.display = tab === 'sw' ? '' : 'none';
+    document.getElementById('cdPanel').style.display = tab === 'cd' ? '' : 'none';
+    document.querySelectorAll('.sw-tab').forEach(b => b.classList.toggle('active', b.textContent === (tab === 'sw' ? 'Stoppuhr' : 'Countdown')));
+}
+function swToggle() {
+    if (_swRunning) {
+        clearInterval(_swTimer);
+        _swElapsed += Date.now() - _swStart;
+        _swRunning = false;
+        document.getElementById('swStartBtn').textContent = '▶ Start';
+    } else {
+        _swStart = Date.now();
+        _swRunning = true;
+        _swTimer = setInterval(swTick, 100);
+        document.getElementById('swStartBtn').textContent = '⏸ Pause';
+    }
+}
+function swTick() {
+    const total = _swElapsed + (Date.now() - _swStart);
+    const ms = Math.floor((total % 1000) / 100);
+    const s  = Math.floor(total / 1000) % 60;
+    const m  = Math.floor(total / 60000) % 60;
+    const h  = Math.floor(total / 3600000);
+    document.getElementById('swDisplay').textContent =
+        `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${ms}`;
+}
+function swLap() {
+    if (!_swRunning) return;
+    const total = _swElapsed + (Date.now() - _swStart);
+    _swLaps.push(total);
+    const laps = document.getElementById('swLaps');
+    const ms = Math.floor((total % 1000) / 100);
+    const s  = Math.floor(total / 1000) % 60;
+    const m  = Math.floor(total / 60000) % 60;
+    laps.innerHTML = `<div class="sw-lap">🏁 Runde ${_swLaps.length}: ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${ms}</div>` + laps.innerHTML;
+}
+function swReset() {
+    clearInterval(_swTimer);
+    _swRunning = false; _swElapsed = 0; _swLaps = [];
+    document.getElementById('swDisplay').textContent = '00:00:00.0';
+    document.getElementById('swStartBtn').textContent = '▶ Start';
+    document.getElementById('swLaps').innerHTML = '';
+}
+function cdToggle() {
+    if (_cdRunning) {
+        clearInterval(_cdTimer); _cdRunning = false;
+        document.getElementById('cdStartBtn').textContent = '▶ Start';
+    } else {
+        const m = parseInt(document.getElementById('cdMin').value) || 0;
+        const s = parseInt(document.getElementById('cdSec').value) || 0;
+        if (_cdRemaining <= 0) _cdRemaining = m * 60000 + s * 1000;
+        if (_cdRemaining <= 0) return;
+        _cdRunning = true;
+        document.getElementById('cdStartBtn').textContent = '⏸ Pause';
+        _cdTimer = setInterval(() => {
+            _cdRemaining -= 1000;
+            if (_cdRemaining <= 0) {
+                _cdRemaining = 0; clearInterval(_cdTimer); _cdRunning = false;
+                document.getElementById('cdStartBtn').textContent = '▶ Start';
+                cdTick();
+                // Beep
+                const ctx = new AudioContext();
+                const osc = ctx.createOscillator(); osc.connect(ctx.destination);
+                osc.frequency.value = 880; osc.start(); osc.stop(ctx.currentTime + 0.4);
+            }
+            cdTick();
+        }, 1000);
+    }
+}
+function cdTick() {
+    const m = Math.floor(_cdRemaining / 60000);
+    const s = Math.floor((_cdRemaining % 60000) / 1000);
+    document.getElementById('cdDisplay').textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function cdReset() {
+    clearInterval(_cdTimer); _cdRunning = false; _cdRemaining = 0;
+    document.getElementById('cdDisplay').textContent = '00:00';
+    document.getElementById('cdStartBtn').textContent = '▶ Start';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  TEXT ENCODER / DECODER
+// ═══════════════════════════════════════════════════════════════
+function encUpdate() {
+    const input = document.getElementById('encInput').value;
+    const mode = document.querySelector('input[name="encMode"]:checked').value;
+    let out = '';
+    try {
+        if (mode === 'b64e')   out = btoa(unescape(encodeURIComponent(input)));
+        else if (mode === 'b64d') out = decodeURIComponent(escape(atob(input)));
+        else if (mode === 'rot13') out = input.replace(/[a-zA-Z]/g, c => {
+            const base = c <= 'Z' ? 65 : 97;
+            return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base);
+        });
+        else if (mode === 'url')  out = encodeURIComponent(input);
+        else if (mode === 'urld') out = decodeURIComponent(input);
+    } catch (e) { out = '❌ Fehler: ' + e.message; }
+    document.getElementById('encOutput').value = out;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  EINHEITEN-UMRECHNER
+// ═══════════════════════════════════════════════════════════════
+const _unitsData = {
+    length:  { m:1, km:0.001, cm:100, mm:1000, mi:0.000621371, ft:3.28084, inch:39.3701, yd:1.09361 },
+    weight:  { kg:1, g:1000, mg:1e6, lb:2.20462, oz:35.274, t:0.001 },
+    data:    { B:1, KB:1/1024, MB:1/1024**2, GB:1/1024**3, TB:1/1024**4, bit:8 },
+    speed:   { 'km/h':1, 'm/s':0.277778, 'mph':0.621371, knots:0.539957 },
+    temp:    null
+};
+function unitsUpdateCat() {
+    const cat = document.getElementById('unitsCat').value;
+    const fromSel = document.getElementById('unitsFromUnit');
+    const toSel   = document.getElementById('unitsToUnit');
+    let keys = [];
+    if (cat === 'temp') keys = ['°C','°F','K'];
+    else keys = Object.keys(_unitsData[cat]);
+    const opts = keys.map(k => `<option value="${k}">${k}</option>`).join('');
+    fromSel.innerHTML = opts; toSel.innerHTML = opts;
+    if (keys.length > 1) toSel.selectedIndex = 1;
+    unitsConvert();
+}
+function unitsConvert() {
+    const cat = document.getElementById('unitsCat').value;
+    const val = parseFloat(document.getElementById('unitsFrom').value);
+    const from = document.getElementById('unitsFromUnit').value;
+    const to   = document.getElementById('unitsToUnit').value;
+    if (isNaN(val)) return;
+    let result;
+    if (cat === 'temp') {
+        let celsius;
+        if (from === '°C') celsius = val;
+        else if (from === '°F') celsius = (val - 32) * 5/9;
+        else celsius = val - 273.15;
+        if (to === '°C') result = celsius;
+        else if (to === '°F') result = celsius * 9/5 + 32;
+        else result = celsius + 273.15;
+    } else {
+        const table = _unitsData[cat];
+        const base = val / table[from];
+        result = base * table[to];
+    }
+    document.getElementById('unitsTo').value = parseFloat(result.toPrecision(7));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  ZUFALLSGENERATOR
+// ═══════════════════════════════════════════════════════════════
+function rngRollDice() {
+    const arr = new Uint32Array(1); crypto.getRandomValues(arr);
+    const val = (arr[0] % 6) + 1;
+    const faces = ['', '⚀','⚁','⚂','⚃','⚄','⚅'];
+    document.getElementById('rngDice').textContent = faces[val] + ' ' + val;
+}
+function rngRollNum() {
+    const min = parseInt(document.getElementById('rngMin').value) || 1;
+    const max = parseInt(document.getElementById('rngMax').value) || 100;
+    const arr = new Uint32Array(1); crypto.getRandomValues(arr);
+    document.getElementById('rngNum').textContent = min + (arr[0] % (max - min + 1));
+}
+function rngFlipCoin() {
+    const arr = new Uint32Array(1); crypto.getRandomValues(arr);
+    document.getElementById('rngCoin').textContent = arr[0] % 2 === 0 ? '🪙 Kopf' : '🪙 Zahl';
+}
+function rngPickName() {
+    const lines = document.getElementById('rngNameList').value.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+    const arr = new Uint32Array(1); crypto.getRandomValues(arr);
+    document.getElementById('rngName').textContent = '🎉 ' + lines[arr[0] % lines.length];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  TON-GENERATOR
+// ═══════════════════════════════════════════════════════════════
+let _toneCtx = null, _toneOsc = null, _toneGain = null, _tonePlaying = false;
+function toneUpdate() {
+    const freq = parseFloat(document.getElementById('toneFreq').value);
+    const vol  = parseFloat(document.getElementById('toneVol').value);
+    const wave = document.getElementById('toneWave').value;
+    document.getElementById('toneFreqLabel').textContent = freq + ' Hz';
+    if (_toneOsc) { _toneOsc.frequency.value = freq; _toneOsc.type = wave; }
+    if (_toneGain) _toneGain.gain.value = vol;
+}
+function toneSetFreq(f) {
+    document.getElementById('toneFreq').value = f;
+    toneUpdate();
+}
+function toneToggle() {
+    if (_tonePlaying) {
+        _toneOsc?.stop();
+        _toneOsc = null;
+        _tonePlaying = false;
+        document.getElementById('tonePlayBtn').textContent = '▶ Play';
+    } else {
+        _toneCtx = _toneCtx || new AudioContext();
+        _toneGain = _toneCtx.createGain();
+        _toneGain.gain.value = parseFloat(document.getElementById('toneVol').value);
+        _toneGain.connect(_toneCtx.destination);
+        _toneOsc = _toneCtx.createOscillator();
+        _toneOsc.type = document.getElementById('toneWave').value;
+        _toneOsc.frequency.value = parseFloat(document.getElementById('toneFreq').value);
+        _toneOsc.connect(_toneGain);
+        _toneOsc.start();
+        _tonePlaying = true;
+        document.getElementById('tonePlayBtn').textContent = '⏹ Stop';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  ZEICHENPAD
+// ═══════════════════════════════════════════════════════════════
+let _drawCtx = null, _drawTool = 'pen', _drawMouseDown = false;
+function drawInit() {
+    const canvas = document.getElementById('drawCanvas');
+    if (_drawCtx) return;
+    canvas.width = canvas.offsetWidth || 800;
+    canvas.height = canvas.offsetHeight || 500;
+    _drawCtx = canvas.getContext('2d');
+    _drawCtx.fillStyle = '#1a2332';
+    _drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+    const getPos = (e) => {
+        const r = canvas.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return { x: t.clientX - r.left, y: t.clientY - r.top };
+    };
+    const down = (e) => { _drawMouseDown = true; const p = getPos(e); _drawCtx.beginPath(); _drawCtx.moveTo(p.x, p.y); e.preventDefault(); };
+    const move = (e) => {
+        if (!_drawMouseDown) return;
+        const p = getPos(e);
+        _drawCtx.lineWidth = document.getElementById('drawSize').value;
+        _drawCtx.lineCap = 'round';
+        if (_drawTool === 'eraser') { _drawCtx.globalCompositeOperation = 'destination-out'; _drawCtx.strokeStyle = 'rgba(0,0,0,1)'; }
+        else { _drawCtx.globalCompositeOperation = 'source-over'; _drawCtx.strokeStyle = document.getElementById('drawColor').value; }
+        _drawCtx.lineTo(p.x, p.y); _drawCtx.stroke(); e.preventDefault();
+    };
+    const up = () => { _drawMouseDown = false; };
+    canvas.addEventListener('mousedown', down); canvas.addEventListener('mousemove', move); canvas.addEventListener('mouseup', up);
+    canvas.addEventListener('touchstart', down, {passive:false}); canvas.addEventListener('touchmove', move, {passive:false}); canvas.addEventListener('touchend', up);
+}
+function drawSetTool(t) { _drawTool = t; }
+function drawClear() { if (_drawCtx) { const c = document.getElementById('drawCanvas'); _drawCtx.globalCompositeOperation = 'source-over'; _drawCtx.fillStyle = '#1a2332'; _drawCtx.fillRect(0, 0, c.width, c.height); } }
+function drawExport() {
+    const canvas = document.getElementById('drawCanvas');
+    const a = document.createElement('a'); a.download = 'zeichnung.png'; a.href = canvas.toDataURL(); a.click();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  HABIT TRACKER
+// ═══════════════════════════════════════════════════════════════
+let _habits = [];
+function habitsLoad() { try { _habits = JSON.parse(localStorage.getItem('ehoser_habits') || '[]'); } catch(e) { _habits = []; } }
+function habitsSave() { localStorage.setItem('ehoser_habits', JSON.stringify(_habits)); }
+function habitsRender() {
+    habitsLoad();
+    const today = new Date().toISOString().split('T')[0];
+    const grid = document.getElementById('habitsGrid');
+    const empty = document.getElementById('habitsEmpty');
+    if (!_habits.length) { grid.innerHTML = ''; empty.style.display = ''; return; }
+    empty.style.display = 'none';
+    grid.innerHTML = _habits.map((h, i) => {
+        const doneTodday = h.daysCompleted && h.daysCompleted.includes(today);
+        return `<div class="habit-card ${doneTodday ? 'habit-done' : ''}">
+            <div class="habit-name">${escapeHtml(h.name)}</div>
+            <div class="habit-streak">🔥 ${h.streak || 0} Tage Streak</div>
+            <div class="habit-actions">
+                <button class="btn-primary" onclick="habitToggle(${i})">${doneTodday ? '✅ Erledigt' : '⬜ Heute erledigen'}</button>
+                <button class="btn-secondary" onclick="habitDelete(${i})">🗑</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+function habitAdd() {
+    const name = prompt('Gewohnheit (z.B. Sport, Lesen, Wasser trinken):');
+    if (!name || !name.trim()) return;
+    habitsLoad();
+    _habits.push({ name: name.trim(), streak: 0, daysCompleted: [] });
+    habitsSave(); habitsRender();
+}
+function habitToggle(i) {
+    habitsLoad();
+    const today = new Date().toISOString().split('T')[0];
+    const h = _habits[i];
+    if (!h.daysCompleted) h.daysCompleted = [];
+    if (h.daysCompleted.includes(today)) {
+        h.daysCompleted = h.daysCompleted.filter(d => d !== today);
+        h.streak = Math.max(0, (h.streak || 1) - 1);
+    } else {
+        h.daysCompleted.push(today);
+        h.streak = (h.streak || 0) + 1;
+    }
+    habitsSave(); habitsRender();
+}
+function habitDelete(i) {
+    habitsLoad();
+    _habits.splice(i, 1);
+    habitsSave(); habitsRender();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  TEXT TOOLS
+// ═══════════════════════════════════════════════════════════════
+function ttUpdate() {
+    const v = document.getElementById('ttInput').value;
+    const words = v.trim() ? v.trim().split(/\s+/).length : 0;
+    document.getElementById('ttStats').textContent = `Wörter: ${words} · Zeichen: ${v.length} · Zeilen: ${v.split('\n').length}`;
+}
+function ttTransform(action) {
+    const el = document.getElementById('ttInput');
+    let v = el.value;
+    if (action === 'upper')  v = v.toUpperCase();
+    else if (action === 'lower')  v = v.toLowerCase();
+    else if (action === 'title')  v = v.replace(/\b\w/g, c => c.toUpperCase());
+    else if (action === 'reverse') v = v.split('').reverse().join('');
+    else if (action === 'trim')   v = v.split('\n').map(l => l.trim()).join('\n');
+    else if (action === 'nodup')  v = [...new Set(v.split('\n'))].join('\n');
+    else if (action === 'slug')   v = v.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    el.value = v;
+    ttUpdate();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  GRADIENT GENERATOR
+// ═══════════════════════════════════════════════════════════════
+function gradUpdate() {
+    const type  = document.getElementById('gradType').value;
+    const angle = document.getElementById('gradAngle').value;
+    document.getElementById('gradAngleLabel').textContent = angle + '°';
+    const c1 = document.getElementById('gradC1').value;
+    const c2 = document.getElementById('gradC2').value;
+    const c3 = document.getElementById('gradC3').value;
+    let css;
+    if (type === 'linear')       css = `linear-gradient(${angle}deg, ${c1}, ${c2}, ${c3})`;
+    else if (type === 'radial')  css = `radial-gradient(circle, ${c1}, ${c2}, ${c3})`;
+    else                          css = `conic-gradient(from ${angle}deg, ${c1}, ${c2}, ${c3})`;
+    document.getElementById('gradPreview').style.background = css;
+    document.getElementById('gradCode').textContent = `background: ${css};`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  JS SANDBOX
+// ═══════════════════════════════════════════════════════════════
+function sandboxRun() {
+    const code = document.getElementById('sandboxInput').value;
+    const out  = document.getElementById('sandboxOutput');
+    const logs = [];
+    const fakeConsole = { log: (...a) => logs.push(a.map(x => typeof x === 'object' ? JSON.stringify(x, null, 2) : String(x)).join(' ')), warn: (...a) => logs.push('⚠️ ' + a.join(' ')), error: (...a) => logs.push('❌ ' + a.join(' ')) };
+    try {
+        const fn = new Function('console', code);
+        const ret = fn(fakeConsole);
+        if (ret !== undefined) logs.push('→ ' + (typeof ret === 'object' ? JSON.stringify(ret, null, 2) : String(ret)));
+        out.innerHTML = logs.map(l => `<div class="sandbox-line">${escapeHtml(l)}</div>`).join('') || '<div class="sandbox-line" style="color:#8ab4c9;">Kein Output</div>';
+    } catch(e) {
+        out.innerHTML = `<div class="sandbox-line" style="color:#e53e3e;">❌ ${escapeHtml(e.message)}</div>`;
+    }
+}
+function sandboxClear() {
+    document.getElementById('sandboxInput').value = '';
+    document.getElementById('sandboxOutput').innerHTML = '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  REGEX TESTER
+// ═══════════════════════════════════════════════════════════════
+function regexTest() {
+    const pattern = document.getElementById('regexPattern').value;
+    const flags   = document.getElementById('regexFlags').value;
+    const text    = document.getElementById('regexInput').value;
+    const hl      = document.getElementById('regexHighlight');
+    const matches = document.getElementById('regexMatches');
+    if (!pattern) { hl.innerHTML = escapeHtml(text); matches.textContent = ''; return; }
+    try {
+        const re = new RegExp(pattern, flags);
+        const found = [...text.matchAll(re)];
+        hl.innerHTML = escapeHtml(text).replace(new RegExp(escapeHtml(pattern), flags), m => `<mark class="regex-mark">${m}</mark>`);
+        matches.textContent = found.length ? `${found.length} Match${found.length > 1 ? 'es' : ''}: ${found.map(m => '"' + m[0] + '"').slice(0, 10).join(', ')}` : 'Keine Matches';
+        matches.style.color = found.length ? '#38a169' : '#e53e3e';
+    } catch(e) {
+        hl.textContent = '';
+        matches.textContent = '❌ ' + e.message;
+        matches.style.color = '#e53e3e';
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  GLÜCKSRAD
+// ═══════════════════════════════════════════════════════════════
+let _wheelAngle = 0, _wheelSpinning = false;
+const _wheelColors = ['#0e8a9b','#f47c2a','#a855f7','#38a169','#e53e3e','#ecc94b','#3182ce','#dd6b20','#2f855a','#b794f4'];
+function wheelDraw() {
+    const canvas = document.getElementById('wheelCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const entries = document.getElementById('wheelEntries').value.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!entries.length) return;
+    const cx = canvas.width / 2, cy = canvas.height / 2, r = Math.min(cx, cy) - 10;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const step = (Math.PI * 2) / entries.length;
+    entries.forEach((e, i) => {
+        const start = _wheelAngle + i * step, end = start + step;
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, start, end);
+        ctx.fillStyle = _wheelColors[i % _wheelColors.length];
+        ctx.fill(); ctx.strokeStyle = '#1a2332'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(start + step / 2);
+        ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(10, 16 - entries.length)}px "Space Grotesk"`;
+        ctx.fillText(e.length > 12 ? e.slice(0, 12) + '…' : e, r - 10, 5);
+        ctx.restore();
+    });
+    // Pointer
+    ctx.beginPath(); ctx.moveTo(cx + r - 5, cy - 8); ctx.lineTo(cx + r + 15, cy); ctx.lineTo(cx + r - 5, cy + 8);
+    ctx.fillStyle = '#fff'; ctx.fill();
+}
+function wheelSpin() {
+    if (_wheelSpinning) return;
+    const entries = document.getElementById('wheelEntries').value.split('\n').map(l => l.trim()).filter(Boolean);
+    if (entries.length < 2) return;
+    _wheelSpinning = true;
+    document.getElementById('wheelSpinBtn').disabled = true;
+    document.getElementById('wheelResult').textContent = '';
+    const arr = new Uint32Array(1); crypto.getRandomValues(arr);
+    const totalRot = (Math.PI * 2 * (5 + arr[0] % 5)) + (Math.PI * 2 * (arr[0] % entries.length) / entries.length);
+    const duration = 3000 + arr[0] % 2000;
+    const start = performance.now(); const startAngle = _wheelAngle;
+    function frame(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const ease = 1 - Math.pow(1 - t, 4);
+        _wheelAngle = startAngle + totalRot * ease;
+        wheelDraw();
+        if (t < 1) { requestAnimationFrame(frame); }
+        else {
+            _wheelSpinning = false;
+            document.getElementById('wheelSpinBtn').disabled = false;
+            const step = (Math.PI * 2) / entries.length;
+            const norm = ((-_wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            const idx = Math.floor(norm / step) % entries.length;
+            document.getElementById('wheelResult').textContent = '🎉 ' + entries[(entries.length - 1 - idx + entries.length) % entries.length];
+        }
+    }
+    requestAnimationFrame(frame);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  HASH GENERATOR
+// ═══════════════════════════════════════════════════════════════
+async function hashUpdate() {
+    const text = document.getElementById('hashInput').value;
+    const results = document.getElementById('hashResults');
+    if (!text) { results.innerHTML = ''; return; }
+    const enc = new TextEncoder();
+    const data = enc.encode(text);
+    const algos = ['SHA-1', 'SHA-256', 'SHA-384', 'SHA-512'];
+    const hashes = await Promise.all(algos.map(async alg => {
+        const buf = await crypto.subtle.digest(alg, data);
+        const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+        return { alg, hex };
+    }));
+    results.innerHTML = hashes.map(h => `
+        <div class="hash-row">
+            <span class="hash-algo">${h.alg}</span>
+            <code class="hash-val">${h.hex}</code>
+            <button class="btn-secondary" onclick="navigator.clipboard.writeText('${h.hex}').then(()=>showAlert('${h.alg} kopiert!','success'))">📋</button>
+        </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  TIPP-TEST
+// ═══════════════════════════════════════════════════════════════
+const _typingTexts = [
+    'Der schnelle braune Fuchs springt über den faulen Hund. Packe jetzt zwölf Boxkämpfer und halte sie zurück.',
+    'Technologie verändert die Welt schneller als je zuvor. Jeden Tag entstehen neue Innovationen die unser Leben revolutionieren.',
+    'ehoser ist eine Plattform für Kreativität und Technologie. Hier findest du Tools die deinen Alltag einfacher machen.',
+    'JavaScript ist eine der beliebtesten Programmiersprachen der Welt. Mit ihr lassen sich moderne Webanwendungen entwickeln.',
+    'Musik ist die universelle Sprache der Menschheit. Sie verbindet Kulturen und Generationen auf der ganzen Welt.'
+];
+let _typingWords = [], _typingIdx = 0, _typingTimer = null, _typingSeconds = 60, _typingStarted = false, _typingCorrect = 0, _typingTotal = 0;
+function typingReset() {
+    clearInterval(_typingTimer);
+    _typingStarted = false; _typingSeconds = 60; _typingIdx = 0; _typingCorrect = 0; _typingTotal = 0;
+    const arr = new Uint32Array(1); crypto.getRandomValues(arr);
+    const text = _typingTexts[arr[0] % _typingTexts.length];
+    _typingWords = text.split(' ');
+    document.getElementById('typingTime').textContent = '60';
+    document.getElementById('typingWPM').textContent = '0';
+    document.getElementById('typingAcc').textContent = '100';
+    document.getElementById('typingInput').value = '';
+    document.getElementById('typingInput').disabled = false;
+    document.getElementById('typingResult').textContent = '';
+    typingRenderWords();
+}
+function typingRenderWords() {
+    const el = document.getElementById('typingWords');
+    el.innerHTML = _typingWords.map((w, i) => `<span class="tw${i === _typingIdx ? ' tw-cur' : (i < _typingIdx ? ' tw-done' : '')}">${escapeHtml(w)}</span>`).join(' ');
+    const cur = el.querySelector('.tw-cur');
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
+}
+function typingCheck() {
+    if (!_typingStarted) {
+        _typingStarted = true;
+        _typingTimer = setInterval(() => {
+            _typingSeconds--;
+            document.getElementById('typingTime').textContent = _typingSeconds;
+            const elapsed = 60 - _typingSeconds;
+            if (elapsed > 0) document.getElementById('typingWPM').textContent = Math.round(_typingCorrect / (elapsed / 60));
+            if (_typingSeconds <= 0) {
+                clearInterval(_typingTimer);
+                document.getElementById('typingInput').disabled = true;
+                const acc = _typingTotal ? Math.round(_typingCorrect / _typingTotal * 100) : 0;
+                document.getElementById('typingResult').textContent = `Fertig! ${_typingCorrect} WPM · ${acc}% Genauigkeit`;
+            }
+        }, 1000);
+    }
+    const input = document.getElementById('typingInput').value;
+    if (input.endsWith(' ') || input === _typingWords[_typingIdx]) {
+        const typed = input.trim();
+        _typingTotal++;
+        if (typed === _typingWords[_typingIdx]) _typingCorrect++;
+        _typingIdx++;
+        document.getElementById('typingInput').value = '';
+        if (_typingIdx >= _typingWords.length) {
+            clearInterval(_typingTimer);
+            document.getElementById('typingInput').disabled = true;
+            const elapsed = Math.max(1, 60 - _typingSeconds);
+            const acc = Math.round(_typingCorrect / _typingTotal * 100);
+            document.getElementById('typingWPM').textContent = Math.round(_typingCorrect / (elapsed / 60));
+            document.getElementById('typingResult').textContent = `🎉 Text abgeschlossen! ${Math.round(_typingCorrect / (elapsed / 60))} WPM · ${acc}% Genauigkeit`;
+        }
+        typingRenderWords();
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  KAMERA
+// ═══════════════════════════════════════════════════════════════
+let _cameraStream = null, _cameraFacing = 'user';
+async function cameraStart() {
+    if (_cameraStream) { _cameraStream.getTracks().forEach(t => t.stop()); _cameraStream = null; }
+    try {
+        _cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: _cameraFacing }, audio: false });
+        const video = document.getElementById('cameraVideo');
+        video.srcObject = _cameraStream;
+        document.getElementById('cameraCanvas').style.display = 'none';
+        video.style.display = '';
+        document.getElementById('cameraSaveBtn').style.display = 'none';
+    } catch(e) {
+        showAlert('Kamera konnte nicht gestartet werden: ' + e.message, 'error');
+    }
+}
+function cameraFlip() {
+    _cameraFacing = _cameraFacing === 'user' ? 'environment' : 'user';
+    cameraStart();
+}
+function cameraSnap() {
+    const video = document.getElementById('cameraVideo');
+    const canvas = document.getElementById('cameraCanvas');
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    const filter = document.getElementById('cameraFilter').value;
+    ctx.filter = filter || 'none';
+    ctx.drawImage(video, 0, 0);
+    canvas.style.display = '';
+    video.style.display = 'none';
+    document.getElementById('cameraSaveBtn').style.display = '';
+}
+function cameraApplyFilter() {
+    const video = document.getElementById('cameraVideo');
+    video.style.filter = document.getElementById('cameraFilter').value;
+}
+function cameraSave() {
+    const canvas = document.getElementById('cameraCanvas');
+    const a = document.createElement('a'); a.download = 'foto.png'; a.href = canvas.toDataURL(); a.click();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  COUNTDOWN
+// ═══════════════════════════════════════════════════════════════
+let _cdEventTimer = null;
+function cdStart() {
+    clearInterval(_cdEventTimer);
+    const name = document.getElementById('cdEventName').value.trim() || 'Event';
+    const target = new Date(document.getElementById('cdTargetDate').value).getTime();
+    if (!target || isNaN(target)) { showAlert('Bitte ein gültiges Datum wählen.', 'error'); return; }
+    document.getElementById('cdEventLabel').textContent = '⏳ bis ' + name;
+    document.getElementById('cdTimerDisplay').style.display = '';
+    const tick = () => {
+        const diff = target - Date.now();
+        if (diff <= 0) {
+            clearInterval(_cdEventTimer);
+            document.getElementById('cdTimerDisplay').innerHTML = '<span style="color:#38a169;font-size:2rem;">🎉 Jetzt!</span>';
+            return;
+        }
+        const d = Math.floor(diff / 86400000);
+        const h = Math.floor((diff % 86400000) / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        document.getElementById('cdTimerDisplay').innerHTML =
+            `<span class="cd-unit"><strong>${d}</strong><small>Tage</small></span>
+             <span class="cd-sep">:</span>
+             <span class="cd-unit"><strong>${String(h).padStart(2,'0')}</strong><small>Std</small></span>
+             <span class="cd-sep">:</span>
+             <span class="cd-unit"><strong>${String(m).padStart(2,'0')}</strong><small>Min</small></span>
+             <span class="cd-sep">:</span>
+             <span class="cd-unit"><strong>${String(s).padStart(2,'0')}</strong><small>Sek</small></span>`;
+    };
+    tick(); _cdEventTimer = setInterval(tick, 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ██████  METRONOM
+// ═══════════════════════════════════════════════════════════════
+let _metroCtx = null, _metroRunning = false, _metroBeat = 0, _metroBeats = 4, _metroNext = 0, _metroWorker = null;
+function metroInit() {
+    metroRenderDots();
+}
+function metroUpdateBpm() {
+    const bpm = document.getElementById('metroBpm').value;
+    document.getElementById('metroBpmDisplay').textContent = bpm + ' BPM';
+    if (_metroRunning) { metroStop(); metroStart(); }
+}
+function metroUpdateBeats() {
+    _metroBeats = parseInt(document.getElementById('metroBeats').value);
+    _metroBeat = 0;
+    metroRenderDots();
+}
+function metroRenderDots() {
+    const dots = document.getElementById('metroDots');
+    dots.innerHTML = Array.from({length: _metroBeats}, (_, i) =>
+        `<div class="metro-dot ${i === _metroBeat ? 'metro-dot-active' : ''}" id="metroDot${i}"></div>`).join('');
+}
+function metroToggle() {
+    if (_metroRunning) metroStop(); else metroStart();
+}
+function metroStart() {
+    _metroCtx = _metroCtx || new AudioContext();
+    _metroRunning = true; _metroBeat = 0;
+    document.getElementById('metroStartBtn').textContent = '⏹ Stop';
+    const bpm = parseInt(document.getElementById('metroBpm').value);
+    const interval = 60 / bpm * 1000;
+    metroClick();
+    _metroWorker = setInterval(() => {
+        _metroBeat = (_metroBeat + 1) % _metroBeats;
+        metroRenderDots();
+        metroClick();
+    }, interval);
+}
+function metroStop() {
+    clearInterval(_metroWorker); _metroRunning = false;
+    document.getElementById('metroStartBtn').textContent = '▶ Start';
+}
+function metroClick() {
+    if (!_metroCtx) return;
+    const osc = _metroCtx.createOscillator();
+    const gain = _metroCtx.createGain();
+    osc.connect(gain); gain.connect(_metroCtx.destination);
+    osc.frequency.value = _metroBeat === 0 ? 1000 : 800;
+    gain.gain.setValueAtTime(0.3, _metroCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, _metroCtx.currentTime + 0.1);
+    osc.start(_metroCtx.currentTime); osc.stop(_metroCtx.currentTime + 0.1);
 }
