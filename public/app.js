@@ -102,39 +102,32 @@ function startRepoUpdatePolling() {
 }
 
 // ── Tarnmodus: RTL-Trick – Stream sieht Tarnbild, User sieht echte Seite ──────
-let _tarnActive = false;
-let _tarnMouseTimer = null;
-let _screenShareActive = false;
-let _recordingActive = false;
-let _tarnbild = null;  // Cache für das Tarnbild
-let _tarnCanvas = null;  // Canvas für den Fake-Stream
+let _tarnActive = false;  // Tarnmodus manuell aktiviert
+let _tarnScreenshareActive = false;  // Screenshare läuft WIRKLICH
+let _tarnbild = null;
+let _tarnCanvas = null;
 
-// Tarnbild laden und cachen
+// Tarnbild laden
 function _loadTarnbild() {
     return new Promise((resolve) => {
         if (_tarnbild) return resolve(_tarnbild);
         const img = new Image();
-        img.onload = function() {
-            _tarnbild = img;
-            resolve(img);
-        };
+        img.onload = () => { _tarnbild = img; resolve(img); };
         img.onerror = () => resolve(null);
         img.src = '/tarnbild.png';
     });
 }
 
-// Fake-Stream erzeugen: Canvas mit Tarnbild → Streaming-Video
+// Fake-Stream mit Tarnbild
 async function _createFakeStreamWithTarnbild() {
     await _loadTarnbild();
     if (!_tarnbild) return null;
     
-    // Canvas mit Tarnbild-Größe erzeugen
     const canvas = document.createElement('canvas');
     canvas.width = 1920;
     canvas.height = 1080;
     const ctx = canvas.getContext('2d');
     
-    // Tarnbild zeichnen
     if (_tarnbild.width && _tarnbild.height) {
         const ratio = Math.max(canvas.width / _tarnbild.width, canvas.height / _tarnbild.height);
         const x = (canvas.width - _tarnbild.width * ratio) / 2;
@@ -145,14 +138,9 @@ async function _createFakeStreamWithTarnbild() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     
-    _tarnCanvas = canvas;
-    
-    // Canvas zu Video-Stream konvertieren (30fps Loop)
-    let lastFrameTime = 0;
     const fakeStream = canvas.captureStream(30);
-    
-    // Video Track ersetzen um kontinuierlich Tarnbild zu zeigen
     let animFrameId = null;
+    
     const redrawTarn = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (_tarnbild && _tarnbild.width) {
@@ -168,7 +156,6 @@ async function _createFakeStreamWithTarnbild() {
     };
     redrawTarn();
     
-    // Stop-Handler
     fakeStream.getTracks().forEach(track => {
         const originalStop = track.stop;
         track.stop = function() {
@@ -180,133 +167,93 @@ async function _createFakeStreamWithTarnbild() {
     return fakeStream;
 }
 
-function toggleTarnmodus() {
-    _tarnActive = !_tarnActive;
-    if (_tarnActive) {
-        document.body.classList.add('tarn-active');
-        document.body.classList.add('tarn-mouse-inside');
-        localStorage.setItem('tarnmodus', '1');
-        console.log('[Tarnmodus] AKTIVIERT – Screenshare wird Tarnbild zeigen');
+// Update Overlay: NUR via JavaScript, nicht CSS-Klassen
+function _updateTarnOverlay() {
+    const overlay = document.getElementById('tarnOverlay');
+    if (!overlay) return;
+    
+    if (_tarnScreenshareActive && _tarnActive) {
+        overlay.style.display = 'block';
+        overlay.style.opacity = '1';
+        console.log('[Tarnmodus] Overlay SICHTBAR (Screenshare aktiv)');
     } else {
-        document.body.classList.remove('tarn-active', 'tarn-mouse-inside');
-        localStorage.removeItem('tarnmodus');
-        console.log('[Tarnmodus] DEAKTIVIERT');
+        overlay.style.display = 'none';
+        overlay.style.opacity = '0';
+        console.log('[Tarnmodus] Overlay VERSTECKT (kein Screenshare)');
     }
 }
 
-// RTL-TRICK: getDisplayMedia Hook – Stream sieht Tarnbild, User sieht echte Seite
+function toggleTarnmodus() {
+    _tarnActive = !_tarnActive;
+    if (_tarnActive) {
+        localStorage.setItem('tarnmodus', '1');
+        console.log('[Tarnmodus] AKTIVIERT (wird bei Screenshare sichtbar)');
+    } else {
+        localStorage.removeItem('tarnmodus');
+        console.log('[Tarnmodus] DEAKTIVIERT');
+    }
+    _updateTarnOverlay();
+}
+
+// getDisplayMedia Hook - DER KERN DES RTL-TRICKS
 const originalGetDisplayMedia = navigator.mediaDevices?.getDisplayMedia;
 if (originalGetDisplayMedia) {
     navigator.mediaDevices.getDisplayMedia = async function(constraints) {
-        console.log('[Tarnmodus] Screensharing angefordert – Tarnmodus aktiv?', _tarnActive);
-        _screenShareActive = true;
+        console.log('[Tarnmodus] Screenshare angefordert – Tarnmodus aktiv?', _tarnActive);
+        _tarnScreenshareActive = true;
+        _updateTarnOverlay();
         
         try {
-            // Original-Stream (was der User normalerweise streamen würde)
             const originalStream = await originalGetDisplayMedia.call(this, constraints);
             
-            // Wenn Tarnmodus aktiv: Fake-Stream mit Tarnbild erzeugen
+            // Wenn Tarnmodus aktiv: Stream ersetzen mit Tarnbild
             if (_tarnActive) {
-                console.log('[Tarnmodus] RTL-TRICK: Ersetze Stream mit Tarnbild-Canvas');
+                console.log('[Tarnmodus] ✓ RTL-TRICK AKTIV: Stream wird durch Tarnbild ersetzt');
                 const fakeStream = await _createFakeStreamWithTarnbild();
                 
                 if (fakeStream) {
-                    // Audio vom Original, Video vom Tarnbild-Canvas
+                    // Audio vom Original behalten
                     const audioTracks = originalStream.getAudioTracks();
                     if (audioTracks.length > 0) {
                         fakeStream.addTrack(audioTracks[0]);
-                        originalStream.removeTrack(audioTracks[0]);  // Aus Original entfernen
                     }
                     
-                    // Original-Tracks stoppen (nicht mehr gebraucht)
                     originalStream.getTracks().forEach(t => t.stop());
                     
-                    // Fake-Stream für den Streamer zurückgeben
                     fakeStream.getTracks().forEach(track => {
-                        track.onended = function() {
-                            console.log('[Tarnmodus] Screensharing beendet (Tarnbild-Stream)');
-                            _screenShareActive = false;
+                        track.onended = () => {
+                            console.log('[Tarnmodus] Screenshare beendet');
+                            _tarnScreenshareActive = false;
+                            _updateTarnOverlay();
                         };
                     });
                     return fakeStream;
                 }
             }
             
-            // Normaler Stream wenn Tarnmodus inaktiv
+            // Normaler Stream wenn Tarnmodus NICHT aktiv
             originalStream.getTracks().forEach(track => {
-                track.onended = function() {
-                    console.log('[Tarnmodus] Screensharing beendet');
-                    _screenShareActive = false;
+                track.onended = () => {
+                    console.log('[Tarnmodus] Screenshare beendet');
+                    _tarnScreenshareActive = false;
+                    _updateTarnOverlay();
                 };
             });
             return originalStream;
             
         } catch (e) {
-            _screenShareActive = false;
+            _tarnScreenshareActive = false;
+            _updateTarnOverlay();
             throw e;
         }
     };
 }
 
-// MediaRecorder-Detection für OBS/Streaming
-const originalMediaRecorder = window.MediaRecorder;
-if (originalMediaRecorder) {
-    window.MediaRecorder = class extends originalMediaRecorder {
-        constructor(stream, options) {
-            // Wenn Tarnmodus aktiv: Stream mit Tarnbild ersetzen
-            if (_tarnActive) {
-                console.log('[Tarnmodus] MediaRecorder mit Tarnbild-Stream');
-                // Wird später durch Fake-Stream ersetzt wenn nötig
-            }
-            super(stream, options);
-            _recordingActive = true;
-        }
-        stop() {
-            console.log('[Tarnmodus] Aufnahme beendet');
-            _recordingActive = false;
-            return super.stop();
-        }
-    };
-}
-
-// Mausbewegung im Fenster → echten Inhalt zeigen (NUR wenn kein Screenshare/Recording)
-document.addEventListener('mousemove', function() {
-    if (!_tarnActive || _screenShareActive || _recordingActive) return;
-    document.body.classList.add('tarn-mouse-inside');
-    clearTimeout(_tarnMouseTimer);
-    _tarnMouseTimer = setTimeout(function() {
-        if (_tarnActive && !_screenShareActive && !_recordingActive) {
-            document.body.classList.remove('tarn-mouse-inside');
-        }
-    }, 2000);
-});
-
-// Fenster verliert Fokus → sofort Tarnbild
-window.addEventListener('blur', function() {
-    if (_tarnActive) document.body.classList.remove('tarn-mouse-inside');
-});
-window.addEventListener('focus', function() {
-    if (_tarnActive && !_screenShareActive && !_recordingActive) {
-        document.body.classList.add('tarn-mouse-inside');
-    }
-});
-
-// Tab versteckt → Tarnbild
-document.addEventListener('visibilitychange', function() {
-    if (!_tarnActive) return;
-    if (document.hidden || _screenShareActive || _recordingActive) {
-        document.body.classList.remove('tarn-mouse-inside');
-    } else {
-        document.body.classList.add('tarn-mouse-inside');
-    }
-});
-
-// Hotkey: Strg+Shift+T zum schnellen Aktivieren
+// Hotkey: Strg+Shift+T
 document.addEventListener('keydown', function(e) {
     if (e.ctrlKey && e.shiftKey && e.key === 'T') {
         e.preventDefault();
         toggleTarnmodus();
-        console.log('[Tarnmodus] Manuell ' + (_tarnActive ? 'aktiviert' : 'deaktiviert'));
     }
 });
 
@@ -314,8 +261,9 @@ document.addEventListener('keydown', function(e) {
 (function() {
     if (localStorage.getItem('tarnmodus') === '1') {
         _tarnActive = true;
-        document.body.classList.add('tarn-active', 'tarn-mouse-inside');
+        console.log('[Tarnmodus] Aus localStorage wiederhergestellt');
     }
+    _updateTarnOverlay();
 })();
 
 async function handleGoogleCredentialResponse(response) {
