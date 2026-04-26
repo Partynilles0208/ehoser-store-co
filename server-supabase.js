@@ -2220,6 +2220,43 @@ app.post('/api/ki', async (req, res) => {
   }
 
   try {
+    // Safeguard: letzte Nutzer-Nachricht prüfen
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (lastUserMsg) {
+      const userText = typeof lastUserMsg.content === 'string'
+        ? lastUserMsg.content
+        : Array.isArray(lastUserMsg.content)
+          ? lastUserMsg.content.filter(c => c.type === 'text').map(c => c.text).join(' ')
+          : '';
+      if (userText.trim()) {
+        try {
+          const sgRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+            body: JSON.stringify({
+              model: 'openai/gpt-oss-safeguard-20b',
+              messages: [{ role: 'user', content: userText }],
+              max_tokens: 10
+            })
+          });
+          if (sgRes.ok) {
+            const sgData = await sgRes.json();
+            const verdict = sgData.choices?.[0]?.message?.content?.trim().toLowerCase() || '';
+            if (verdict.startsWith('unsafe')) {
+              return res.status(200).json({
+                choices: [{
+                  message: {
+                    role: 'assistant',
+                    content: 'Entschuldigung, ich kann darauf nicht antworten. Bitte stelle eine andere Frage.'
+                  }
+                }]
+              });
+            }
+          }
+        } catch {}
+      }
+    }
+
     // Bildnachrichten brauchen ein Vision-Modell
     const hasImage = messages.some(m =>
       Array.isArray(m.content) && m.content.some(c => c.type === 'image_url')
