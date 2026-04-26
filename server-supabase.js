@@ -483,24 +483,32 @@ app.get('/api/config', (req, res) => {
 const PROXY_BLOCKED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '10.', '192.168.', '172.16.'];
 const PROXY_MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 
+const proxyErrorHtml = (msg) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Proxy Fehler</title></head><body style="font-family:sans-serif;padding:40px;text-align:center;background:#07131d;color:#d9edf8"><h2 style="color:#e07070">Proxy Fehler</h2><p>${msg}</p><p><a href="javascript:history.back()" style="color:#0e8a9b">Zurück</a></p></body></html>`;
+
 app.get('/api/proxy', async (req, res) => {
   const rawUrl = String(req.query.url || '').trim();
-  if (!rawUrl) return res.status(400).json({ error: 'url Parameter fehlt' });
+  if (!rawUrl) {
+    res.set('Content-Type', 'text/html');
+    return res.status(400).send(proxyErrorHtml('Keine URL angegeben. Bitte eine URL in die Adressleiste eingeben.'));
+  }
 
   let targetUrl;
   try {
     targetUrl = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
   } catch {
-    return res.status(400).json({ error: 'Ungültige URL' });
+    res.set('Content-Type', 'text/html');
+    return res.status(400).send(proxyErrorHtml('Ungültige URL: ' + rawUrl));
   }
 
   if (!['http:', 'https:'].includes(targetUrl.protocol)) {
-    return res.status(400).json({ error: 'Nur HTTP/HTTPS erlaubt' });
+    res.set('Content-Type', 'text/html');
+    return res.status(400).send(proxyErrorHtml('Nur HTTP/HTTPS-Links erlaubt.'));
   }
 
   const hostname = targetUrl.hostname.toLowerCase();
   if (PROXY_BLOCKED_HOSTS.some(b => hostname === b || hostname.startsWith(b))) {
-    return res.status(403).json({ error: 'Diese Adresse ist nicht erlaubt' });
+    res.set('Content-Type', 'text/html');
+    return res.status(403).send(proxyErrorHtml('Diese Adresse ist nicht erlaubt.'));
   }
 
   try {
@@ -519,7 +527,8 @@ app.get('/api/proxy', async (req, res) => {
 
     const buf = await upstream.arrayBuffer();
     if (buf.byteLength > PROXY_MAX_SIZE) {
-      return res.status(413).json({ error: 'Seite zu groß (max. 5 MB)' });
+      res.set('Content-Type', 'text/html');
+      return res.status(413).send(proxyErrorHtml('Seite zu groß (max. 5 MB).'));
     }
 
     let body = Buffer.from(buf);
@@ -531,8 +540,9 @@ app.get('/api/proxy', async (req, res) => {
       if (!html.includes('<base')) {
         html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${base}/">`);
       }
-      // Links/Forms so umschreiben, dass Klicks durch den Proxy laufen
-      html = html.replace(/(href|src|action)="(?!#|javascript|data|mailto|tel)([^"]+)"/gi, (match, attr, url) => {
+      // Links/Forms so umschreiben – bereits proxied oder leere URLs überspringen
+      html = html.replace(/(href|src|action)="([^"]*)"/gi, (match, attr, url) => {
+        if (!url || url.startsWith('#') || url.startsWith('javascript') || url.startsWith('data:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('/api/proxy')) return match;
         try {
           const abs = new URL(url, base).toString();
           return `${attr}="/api/proxy?url=${encodeURIComponent(abs)}"`;
