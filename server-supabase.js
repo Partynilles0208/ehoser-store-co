@@ -2188,12 +2188,12 @@ WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklärender Text davor
           })
         });
         const fdata = await fallback.json();
-        if (!fallback.ok) return res.status(fallback.status).json(fdata);
+        if (!fallback.ok) return res.status(fallback.status).json({ error: typeof fdata?.error === 'object' ? (fdata.error?.message || JSON.stringify(fdata.error)) : (fdata?.error || 'KI-Fehler') });
         let code = fdata.choices?.[0]?.message?.content || '';
         code = code.replace(/^```html\s*/i, '').replace(/```\s*$/i, '').trim();
         return res.json({ code });
       }
-      return res.status(groqRes.status).json(data);
+      return res.status(groqRes.status).json({ error: typeof data?.error === 'object' ? (data.error?.message || JSON.stringify(data.error)) : (data?.error || 'KI-Fehler') });
     }
 
     let code = data.choices?.[0]?.message?.content || '';
