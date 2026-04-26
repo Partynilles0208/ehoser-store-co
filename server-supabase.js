@@ -141,6 +141,30 @@ const createLoginCode = () => {
 };
 
 const createSecureToken = () => crypto.randomBytes(24).toString('hex');
+const normalizeUnlockCodeInput = (value) => String(value || '').replace(/\s+/g, '');
+
+function slugifyUsernamePart(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[^a-zA-Z0-9_\-.]/g, '')
+    .replace(/[\-.]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase()
+    .slice(0, 20);
+}
+
+async function createAvailableGoogleUsername(email, name) {
+  const emailPart = slugifyUsernamePart(String(email || '').split('@')[0]);
+  const namePart = slugifyUsernamePart(name);
+  const base = namePart || emailPart || `user_${crypto.randomBytes(3).toString('hex')}`;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const suffix = attempt === 0 ? '' : `_${Math.floor(100 + Math.random() * 900)}`;
+    const username = `${base}${suffix}`.slice(0, 28);
+    const { data, error } = await supabase.from('users').select('id').eq('username', username).single();
+    if (error || !data) return username;
+  }
+  return `user_${crypto.randomBytes(4).toString('hex')}`;
+}
 
 // Fallback für Serverless/fehlende Tabellen
 const memoryProfiles = new Map();
@@ -449,8 +473,174 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Öffentliche Client-Konfiguration (kein Authentifizierungs-Token nötig)
 app.get('/api/config', (req, res) => {
   res.json({
-    ytApiKey: process.env.YT_API_KEY || ''
+    ytApiKey: process.env.YT_API_KEY || '',
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    githubRepo: process.env.GITHUB_REPO || 'Partynilles0208/ehoser-store-co'
   });
+});
+
+// ── Proxy-Browser ────────────────────────────────────────────────────────────
+const PROXY_BLOCKED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '10.', '192.168.', '172.16.'];
+const PROXY_MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+
+app.get('/api/proxy', async (req, res) => {
+  const rawUrl = String(req.query.url || '').trim();
+  if (!rawUrl) return res.status(400).json({ error: 'url Parameter fehlt' });
+
+  let targetUrl;
+  try {
+    targetUrl = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
+  } catch {
+    return res.status(400).json({ error: 'Ungültige URL' });
+  }
+
+  if (!['http:', 'https:'].includes(targetUrl.protocol)) {
+    return res.status(400).json({ error: 'Nur HTTP/HTTPS erlaubt' });
+  }
+
+  const hostname = targetUrl.hostname.toLowerCase();
+  if (PROXY_BLOCKED_HOSTS.some(b => hostname === b || hostname.startsWith(b))) {
+    return res.status(403).json({ error: 'Diese Adresse ist nicht erlaubt' });
+  }
+
+  try {
+    const upstream = await fetch(targetUrl.toString(), {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'de-DE,de;q=0.9,en;q=0.7',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000)
+    });
+
+    const contentType = upstream.headers.get('content-type') || 'text/html';
+    const isHtml = contentType.includes('text/html');
+
+    const buf = await upstream.arrayBuffer();
+    if (buf.byteLength > PROXY_MAX_SIZE) {
+      return res.status(413).json({ error: 'Seite zu groß (max. 5 MB)' });
+    }
+
+    let body = Buffer.from(buf);
+
+    if (isHtml) {
+      let html = body.toString('utf-8');
+      const base = `${targetUrl.protocol}//${targetUrl.host}`;
+      // Basis-Tag einfügen damit relative Links funktionieren
+      if (!html.includes('<base')) {
+        html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${base}/">`);
+      }
+      // Links/Forms so umschreiben, dass Klicks durch den Proxy laufen
+      html = html.replace(/(href|src|action)="(?!#|javascript|data|mailto|tel)([^"]+)"/gi, (match, attr, url) => {
+        try {
+          const abs = new URL(url, base).toString();
+          return `${attr}="/api/proxy?url=${encodeURIComponent(abs)}"`;
+        } catch { return match; }
+      });
+      body = Buffer.from(html, 'utf-8');
+    }
+
+    res.set('Content-Type', contentType);
+    res.set('X-Proxied-By', 'ehoser-proxy');
+    res.set('X-Frame-Options', 'SAMEORIGIN');
+    res.set('Content-Security-Policy', "frame-ancestors 'self'");
+    res.send(body);
+  } catch (err) {
+    res.status(502).json({ error: `Seite nicht erreichbar: ${err?.message || 'Netzwerkfehler'}` });
+  }
+});
+
+app.get('/api/repo/version', async (req, res) => {
+  const repo = process.env.GITHUB_REPO || 'Partynilles0208/ehoser-store-co';
+  const currentSha = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || null;
+  try {
+    const ghRes = await fetch(`https://api.github.com/repos/${repo}/commits?per_page=1`, {
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'ehoser-store/1.0'
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!ghRes.ok) return res.status(502).json({ error: 'GitHub nicht erreichbar' });
+    const commits = await ghRes.json();
+    const latestSha = commits?.[0]?.sha || null;
+    res.json({
+      repo,
+      currentSha,
+      latestSha,
+      hasUpdate: Boolean(currentSha && latestSha && currentSha !== latestSha)
+    });
+  } catch {
+    res.status(502).json({ error: 'Versionscheck fehlgeschlagen' });
+  }
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID;
+  if (!googleClientId) return res.status(503).json({ error: 'GOOGLE_CLIENT_ID nicht konfiguriert' });
+
+  const idToken = String(req.body?.idToken || '').trim();
+  const unlockCode = normalizeUnlockCodeInput(req.body?.unlockCode);
+  if (!idToken) return res.status(400).json({ error: 'idToken fehlt' });
+  if (unlockCode !== UNLOCK_CODE) return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
+
+  try {
+    const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, {
+      signal: AbortSignal.timeout(8000)
+    });
+    const payload = await verifyRes.json();
+    if (!verifyRes.ok || payload.aud !== googleClientId || !payload.email) {
+      return res.status(401).json({ error: 'Google-Token ungültig' });
+    }
+
+    const googleSub = String(payload.sub || '').trim();
+    const email = String(payload.email || '').trim().toLowerCase();
+    const name = String(payload.name || payload.given_name || '').trim();
+    let user = null;
+
+    try {
+      const { data } = await supabase.from('users').select('*').eq('email', email).single();
+      user = data || null;
+    } catch {}
+
+    if (!user) {
+      const username = await createAvailableGoogleUsername(email, name);
+      const loginCode = createLoginCode();
+      const { data, error } = await supabase
+        .from('users')
+        .insert([{ username, email, access_code: loginCode, verified: 1 }])
+        .select()
+        .single();
+      if (error || !data) throw error || new Error('Google-Nutzer konnte nicht erstellt werden');
+      user = data;
+    }
+
+    const profile = await getProfile(user.username);
+    const settings = normalizeSettings({
+      ...profile.settings,
+      googleSub,
+      googleEmail: email
+    });
+    const nextProfile = await upsertProfile(user.username, { settings });
+
+    const token = jwt.sign(
+      { id: user.id, username: user.username, isAdmin: false },
+      JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRES_IN }
+    );
+
+    res.json({
+      success: true,
+      token,
+      userId: user.id,
+      profile: nextProfile,
+      redirectToAdmin: false,
+      username: user.username
+    });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || 'Google-Anmeldung fehlgeschlagen' });
+  }
 });
 
 // API Routes
@@ -464,7 +654,7 @@ app.post('/api/register', async (req, res) => {
     return res.status(429).json({ error: 'Zu viele Versuche. Bitte spaeter erneut probieren.' });
   }
 
-  if (unlockCode !== UNLOCK_CODE) {
+  if (normalizeUnlockCodeInput(unlockCode) !== UNLOCK_CODE) {
     registerFailedAttempt(clientKey);
     return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
   }
@@ -550,7 +740,7 @@ app.post('/api/login', async (req, res) => {
     return res.status(429).json({ error: 'Zu viele Versuche. Bitte spaeter erneut probieren.' });
   }
 
-  if (unlockCode !== UNLOCK_CODE) {
+  if (normalizeUnlockCodeInput(unlockCode) !== UNLOCK_CODE) {
     registerFailedAttempt(clientKey);
     return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
   }
