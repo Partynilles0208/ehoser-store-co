@@ -183,6 +183,14 @@
                                 <span class="mode-badge mode-badge-youtube">YouTube API v3</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-news" onclick="selectMode('news')" data-update-feature>
+                            <div class="mode-card-icon">📰</div>
+                            <div class="mode-card-body">
+                                <h3>Nachrichten</h3>
+                                <p>Aktuelle Top-Headlines aus Deutschland und der Welt – nach Kategorie filtern &amp; suchen.</p>
+                                <span class="mode-badge mode-badge-news">NewsAPI Live</span>
+                            </div>
+                        </button>
                         <button class="mode-card mode-card-images" onclick="selectMode('images')" data-update-feature>
                             <div class="mode-card-icon">🖼️</div>
                             <div class="mode-card-body">
@@ -597,6 +605,37 @@
                     <div id="ytStatus" class="yt-status"></div>
                     <div id="ytResults" class="yt-results"></div>
                     <div id="ytPagination" class="yt-pagination"></div>
+                </div>
+            </section>
+
+            <!-- NACHRICHTEN -->
+            <section id="news" class="section">
+                <div class="news-wrapper">
+                    <div class="news-topbar">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <div class="news-search-wrap">
+                            <input
+                                type="text"
+                                id="newsSearchInput"
+                                class="news-search-input"
+                                placeholder="Nachrichten suchen..."
+                                onkeydown="if(event.key==='Enter'){newsSearch();}"
+                                autocomplete="off"
+                            >
+                            <button class="news-search-btn" onclick="newsSearch()">🔍</button>
+                        </div>
+                    </div>
+                    <div class="news-cat-tabs">
+                        <button class="news-tab active" id="newsTabTop" onclick="newsSetCat('top')">🏠 Top</button>
+                        <button class="news-tab" id="newsTabTech" onclick="newsSetCat('technology')">💻 Tech</button>
+                        <button class="news-tab" id="newsTabSci" onclick="newsSetCat('science')">🔬 Wissenschaft</button>
+                        <button class="news-tab" id="newsTabBiz" onclick="newsSetCat('business')">💼 Business</button>
+                        <button class="news-tab" id="newsTabSport" onclick="newsSetCat('sports')">⚽ Sport</button>
+                        <button class="news-tab" id="newsTabEnt" onclick="newsSetCat('entertainment')">🎬 Entertainment</button>
+                        <button class="news-tab" id="newsTabHealth" onclick="newsSetCat('health')">❤️ Gesundheit</button>
+                    </div>
+                    <div id="newsStatus" class="news-status"></div>
+                    <div id="newsGrid" class="news-grid"></div>
                 </div>
             </section>
 

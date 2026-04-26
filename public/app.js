@@ -1126,6 +1126,9 @@ function selectMode(mode) {
     } else if (mode === 'youtube') {
         showSection('youtube');
         setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
+    } else if (mode === 'news') {
+        showSection('news');
+        newsLoad('top');
     } else if (mode === 'ki') {
         // Registrierung nÃ¶tig
         const token = localStorage.getItem('token');
@@ -1459,6 +1462,72 @@ document.addEventListener('click', (e) => {
     const wrap = document.getElementById('mapSearchInput')?.closest('.map-search-wrap');
     if (wrap && !wrap.contains(e.target)) closeMapDropdown();
 });
+
+// --- Nachrichten (NewsAPI via Backend-Proxy) ---
+let _newsCat = 'top';
+
+async function newsLoad(cat) {
+    _newsCat = cat || _newsCat;
+    const tabMap = { top:'Top', technology:'Tech', science:'Sci', business:'Biz', sports:'Sport', entertainment:'Ent', health:'Health' };
+    Object.keys(tabMap).forEach(c => {
+        document.getElementById('newsTab' + tabMap[c])?.classList.toggle('active', c === _newsCat);
+    });
+    const status = document.getElementById('newsStatus');
+    const grid   = document.getElementById('newsGrid');
+    if (status) status.textContent = 'Nachrichten werden geladen...';
+    if (grid)   grid.innerHTML = '';
+    try {
+        const res  = await fetch(`/api/news?cat=${encodeURIComponent(_newsCat)}`);
+        if (!res.ok) { const err = await res.json().catch(()=>({})); if (status) status.textContent = 'Fehler: ' + (err.error || res.statusText); return; }
+        const data = await res.json();
+        if (!data.articles?.length) { if (status) status.textContent = 'Keine Artikel gefunden.'; return; }
+        if (status) status.textContent = '';
+        if (grid)   grid.innerHTML = data.articles.map(newsCard).join('');
+    } catch (e) { if (status) status.textContent = 'Verbindungsfehler. Bitte versuche es erneut.'; }
+}
+
+async function newsSearch() {
+    const q = document.getElementById('newsSearchInput')?.value.trim();
+    if (!q) return newsLoad(_newsCat);
+    const tabMap = { top:'Top', technology:'Tech', science:'Sci', business:'Biz', sports:'Sport', entertainment:'Ent', health:'Health' };
+    Object.keys(tabMap).forEach(c => document.getElementById('newsTab' + tabMap[c])?.classList.remove('active'));
+    const status = document.getElementById('newsStatus');
+    const grid   = document.getElementById('newsGrid');
+    if (status) status.textContent = 'Suche laeuft...';
+    if (grid)   grid.innerHTML = '';
+    try {
+        const res  = await fetch(`/api/news?q=${encodeURIComponent(q)}`);
+        if (!res.ok) { const err = await res.json().catch(()=>({})); if (status) status.textContent = 'Fehler: ' + (err.error || res.statusText); return; }
+        const data = await res.json();
+        if (!data.articles?.length) { if (status) status.textContent = 'Keine Artikel gefunden.'; return; }
+        if (status) status.textContent = '';
+        if (grid)   grid.innerHTML = data.articles.map(newsCard).join('');
+    } catch (e) { if (status) status.textContent = 'Verbindungsfehler.'; }
+}
+
+function newsSetCat(cat) {
+    const inp = document.getElementById('newsSearchInput');
+    if (inp) inp.value = '';
+    newsLoad(cat);
+}
+
+function newsCard(a) {
+    const title = escapeHtml(a.title || 'Kein Titel');
+    const desc  = escapeHtml((a.description || '').slice(0, 130)) + (a.description && a.description.length > 130 ? '...' : '');
+    const src   = escapeHtml(a.source?.name || '');
+    const img   = a.urlToImage || '';
+    const url   = a.url || '#';
+    const date  = a.publishedAt ? new Date(a.publishedAt).toLocaleDateString('de-DE', { day:'2-digit', month:'short', year:'numeric' }) : '';
+    return `
+        <a class="news-card" href="${url}" target="_blank" rel="noopener noreferrer">
+            ${img ? `<div class="news-thumb" style="background-image:url('${img}')"></div>` : '<div class="news-thumb news-thumb-empty">newspaper</div>'}
+            <div class="news-card-body">
+                <div class="news-card-meta"><span class="news-source">${src}</span>${date ? `<span class="news-date">${date}</span>` : ''}</div>
+                <div class="news-card-title">${title}</div>
+                <div class="news-card-desc">${desc}</div>
+            </div>
+        </a>`;
+}
 
 // â”€â”€â”€ YouTube (YouTube Data API v3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const YT_API_KEY = window.__ENV__?.YT_API_KEY || '';
