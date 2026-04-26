@@ -2653,39 +2653,55 @@ app.post('/api/ki', async (req, res) => {
   }
 });
 
-  // Hugging Face Video-KI: Wan2.2 Text-to-Video
+  // Video-KI: bevorzugt direkter Replicate-Key, sonst Hugging Face Provider-Router
 app.post('/api/ki/video/create', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
-    const apiKey = process.env.HUGGINGFACE_API_KEY;
-    if (!apiKey) return res.status(503).json({ error: 'HUGGINGFACE_API_KEY nicht konfiguriert' });
+    const hfKey = process.env.HUGGINGFACE_API_KEY;
+    const replicateKey = process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY;
+    if (!replicateKey && !hfKey) {
+      return res.status(503).json({
+        error: 'Kein Video-API-Key konfiguriert. Setze in Vercel entweder REPLICATE_API_TOKEN oder einen Hugging-Face-Token mit Inference-Providers-Recht.'
+      });
+    }
   try {
-      const r = await fetch('https://router.huggingface.co/replicate/v1/models/wan-video/wan-2.2-t2v-fast/predictions', {
-      method: 'POST',
-      headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'wait'
-      },
-        body: JSON.stringify({
-          input: {
-            prompt: prompt.slice(0, 500)
-          }
-        })
-    });
+      const useDirectReplicate = !!replicateKey;
+      const r = await fetch(
+        useDirectReplicate
+          ? 'https://api.replicate.com/v1/models/wan-video/wan-2.2-t2v-fast/predictions'
+          : 'https://router.huggingface.co/replicate/v1/models/wan-video/wan-2.2-t2v-fast/predictions',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${useDirectReplicate ? replicateKey : hfKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'wait'
+          },
+          body: JSON.stringify({
+            input: {
+              prompt: prompt.slice(0, 500)
+            }
+          })
+        }
+      );
 
       if (!r.ok) {
         const contentType = r.headers.get('content-type') || '';
-        let error = 'Hugging Face Video-Generierung fehlgeschlagen';
+        let error = useDirectReplicate
+          ? 'Replicate Video-Generierung fehlgeschlagen'
+          : 'Hugging Face Video-Generierung fehlgeschlagen';
         try {
           if (contentType.includes('application/json')) {
             const data = await r.json();
-            error = data.error || data.estimated_time || error;
+            error = data.error || data.detail || data.estimated_time || error;
           } else {
             const text = await r.text();
             if (text) error = text;
           }
         } catch {}
+        if (!useDirectReplicate && /sufficient permissions to call Inference Providers/i.test(error)) {
+          error = 'Dein Hugging-Face-Token hat keine Berechtigung fuer Inference Providers. Erstelle in Hugging Face einen Fine-Grained Token mit Inference Providers Permission oder hinterlege stattdessen REPLICATE_API_TOKEN in Vercel.';
+        }
         return res.status(502).json({ error });
     }
 
