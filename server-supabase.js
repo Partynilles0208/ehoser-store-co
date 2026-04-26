@@ -2653,81 +2653,44 @@ app.post('/api/ki', async (req, res) => {
   }
 });
 
-  // Video-KI: bevorzugt direkter Replicate-Key, sonst Hugging Face Provider-Router
+  // Video-KI: Pollinations AI (kostenlos, stündliche Pollen-Refills)
 app.post('/api/ki/video/create', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
-    const hfKey = process.env.HUGGINGFACE_API_KEY;
-    const replicateKey = process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY;
-    if (!replicateKey && !hfKey) {
-      return res.status(503).json({
-        error: 'Kein Video-API-Key konfiguriert. Setze in Vercel entweder REPLICATE_API_TOKEN oder einen Hugging-Face-Token mit Inference-Providers-Recht.'
-      });
-    }
+  const pollinationsKey = process.env.POLLINATIONS_API_KEY;
+  if (!pollinationsKey) {
+    return res.status(503).json({
+      error: 'Kein API-Key konfiguriert. Registriere dich kostenlos auf enter.pollinations.ai und setze POLLINATIONS_API_KEY in Vercel.'
+    });
+  }
   try {
-      const useDirectReplicate = !!replicateKey;
-      const r = await fetch(
-        useDirectReplicate
-          ? 'https://api.replicate.com/v1/models/wan-video/wan-2.2-t2v-fast/predictions'
-          : 'https://router.huggingface.co/replicate/v1/models/wan-video/wan-2.2-t2v-fast/predictions',
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${useDirectReplicate ? replicateKey : hfKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'wait'
-          },
-          body: JSON.stringify({
-            input: {
-              prompt: prompt.slice(0, 500)
-            }
-          })
-        }
-      );
+    const encodedPrompt = encodeURIComponent(prompt.slice(0, 500));
+    const videoUrl = `https://gen.pollinations.ai/video/${encodedPrompt}?model=wan-fast&key=${pollinationsKey}`;
+    const r = await fetch(videoUrl, {
+      headers: { 'Accept': 'video/mp4, */*' }
+    });
 
-      if (!r.ok) {
+    if (!r.ok) {
+      let error = 'Pollinations Video-Generierung fehlgeschlagen';
+      try {
         const contentType = r.headers.get('content-type') || '';
-        let error = useDirectReplicate
-          ? 'Replicate Video-Generierung fehlgeschlagen'
-          : 'Hugging Face Video-Generierung fehlgeschlagen';
-        try {
-          if (contentType.includes('application/json')) {
-            const data = await r.json();
-            error = data.error || data.detail || data.estimated_time || error;
-          } else {
-            const text = await r.text();
-            if (text) error = text;
-          }
-        } catch {}
-        if (!useDirectReplicate && /sufficient permissions to call Inference Providers/i.test(error)) {
-          error = 'Dein Hugging-Face-Token hat keine Berechtigung fuer Inference Providers. Erstelle in Hugging Face einen Fine-Grained Token mit Inference Providers Permission oder hinterlege stattdessen REPLICATE_API_TOKEN in Vercel.';
+        if (contentType.includes('application/json')) {
+          const data = await r.json();
+          error = data?.error?.message || data?.error || error;
+          if (r.status === 402) error = 'Nicht genug Pollen. Kaufe Pollen auf enter.pollinations.ai oder warte auf das stündliche Refill.';
+          if (r.status === 401) error = 'Ungültiger Pollinations API-Key. Prüfe POLLINATIONS_API_KEY in Vercel.';
         }
-        return res.status(502).json({ error });
+      } catch {}
+      return res.status(502).json({ error });
     }
 
-      const data = await r.json();
-      const videoUrl = Array.isArray(data?.output)
-        ? data.output.find((item) => typeof item === 'string' && /^https?:\/\//.test(item))
-        : typeof data?.output === 'string'
-          ? data.output
-          : null;
-
-      if (!videoUrl) {
-        return res.status(502).json({ error: 'Hugging Face hat keine Video-URL zurückgegeben' });
-      }
-
-      const videoRes = await fetch(videoUrl);
-      if (!videoRes.ok) {
-        return res.status(502).json({ error: 'Generiertes Video konnte nicht geladen werden' });
-      }
-
-      const contentType = videoRes.headers.get('content-type') || 'video/mp4';
-      const buffer = await videoRes.arrayBuffer();
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'no-store');
-      res.send(Buffer.from(buffer));
+    const contentType = r.headers.get('content-type') || 'video/mp4';
+    const buffer = await r.arrayBuffer();
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(Buffer.from(buffer));
   } catch (err) {
-      res.status(502).json({ error: 'Verbindungsfehler zu Hugging Face' });
+    res.status(502).json({ error: 'Verbindungsfehler zu Pollinations' });
   }
 });
 
