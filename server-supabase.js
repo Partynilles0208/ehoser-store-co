@@ -2314,18 +2314,25 @@ app.get('/api/ki/image', async (req, res) => {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${hfKey}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'x-wait-for-model': 'true'
           },
           body: JSON.stringify({ inputs: prompt.slice(0, 500), parameters: { seed: Number(seed) } })
         });
         if (hfRes.ok) {
           const contentType = hfRes.headers.get('content-type') || 'image/jpeg';
-          res.setHeader('Content-Type', contentType);
-          res.setHeader('Cache-Control', 'public, max-age=86400');
-          const buffer = await hfRes.arrayBuffer();
-          return res.send(Buffer.from(buffer));
+          if (contentType.startsWith('image/')) {
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            const buffer = await hfRes.arrayBuffer();
+            return res.send(Buffer.from(buffer));
+          }
         }
-      } catch {}
+        // HF Fehler loggen aber weiter zu Fallback
+        console.error('[HF] Status:', hfRes.status, await hfRes.text().catch(() => ''));
+      } catch (hfErr) {
+        console.error('[HF] Fehler:', hfErr.message);
+      }
     }
 
     // 2. Fallback: Pollinations
@@ -2338,8 +2345,13 @@ app.get('/api/ki/image', async (req, res) => {
 
     let imgRes;
     for (const url of urls) {
-      imgRes = await fetch(url, { headers: { 'User-Agent': 'ehoser-store/1.0' } });
-      if (imgRes.ok) break;
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        imgRes = await fetch(url, { headers: { 'User-Agent': 'ehoser-store/1.0' }, signal: ctrl.signal });
+        clearTimeout(timer);
+        if (imgRes.ok) break;
+      } catch {}
     }
     if (!imgRes || !imgRes.ok) {
       return res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen – kein Dienst verfügbar' });
