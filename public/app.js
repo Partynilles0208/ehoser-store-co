@@ -1,5 +1,4 @@
 ﻿const API_BASE = `${window.location.origin}/api`;
-const ENABLE_REPO_UPDATE_OVERLAY = false;
 let currentUser = null;
 let currentProfile = null;
 let allApps = [];
@@ -21,19 +20,7 @@ fetch('/api/config').then(r => r.json()).then(cfg => {
     window.__ENV__ = { __loaded: true };
 });
 
-let _repoUpdateInterval = null;
-let _lastSeenRepoSha = null;
-let _dismissedRepoSha = null;
-let _repoUpdateSnoozeUntil = 0;
-let _repoUpdateAvailable = false;
 let _googleAuthInitialized = false;
-
-try {
-    _dismissedRepoSha = localStorage.getItem('dismissedRepoSha') || null;
-} catch {}
-try {
-    _repoUpdateSnoozeUntil = Number(localStorage.getItem('repoUpdateSnoozeUntil') || 0);
-} catch {}
 let _pendingReloadSnapshot = null;
 
 try {
@@ -79,60 +66,24 @@ function restoreReloadSnapshot() {
 }
 
 function showRepoUpdateOverlay() {
-    if (!ENABLE_REPO_UPDATE_OVERLAY) return;
-    if (!_repoUpdateAvailable) return;
-    if (Date.now() < _repoUpdateSnoozeUntil) return;
-    if (_lastSeenRepoSha && _dismissedRepoSha === _lastSeenRepoSha) return;
-    const overlay = document.getElementById('repoUpdateOverlay');
-    if (overlay) overlay.style.display = 'flex';
+    return;
 }
 
 function dismissRepoUpdate() {
-    const overlay = document.getElementById('repoUpdateOverlay');
-    if (overlay) overlay.style.display = 'none';
-    _dismissedRepoSha = _lastSeenRepoSha;
-    try {
-        if (_dismissedRepoSha) localStorage.setItem('dismissedRepoSha', _dismissedRepoSha);
-    } catch {}
+    return;
 }
 
 function loadRepoUpdate() {
-    const overlay = document.getElementById('repoUpdateOverlay');
-    if (overlay) overlay.style.display = 'none';
-    _dismissedRepoSha = _lastSeenRepoSha;
-    _repoUpdateSnoozeUntil = Date.now() + 10 * 60 * 1000;
-    try {
-        if (_dismissedRepoSha) localStorage.setItem('dismissedRepoSha', _dismissedRepoSha);
-        localStorage.setItem('repoUpdateSnoozeUntil', String(_repoUpdateSnoozeUntil));
-    } catch {}
     captureReloadSnapshot();
     window.location.reload();
 }
 
 async function checkRepoVersion() {
-    try {
-        const res = await fetch(`${API_BASE}/repo/version?t=${Date.now()}`, { cache: 'no-store' });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!_lastSeenRepoSha && data?.latestSha) _lastSeenRepoSha = data.latestSha;
-        _repoUpdateAvailable = Boolean(data?.hasUpdate || (_lastSeenRepoSha && data?.latestSha && _lastSeenRepoSha !== data.latestSha));
-        if (_repoUpdateAvailable) {
-            if (data?.latestSha && data.latestSha !== _dismissedRepoSha) {
-                showRepoUpdateOverlay();
-            }
-        } else {
-            const overlay = document.getElementById('repoUpdateOverlay');
-            if (overlay) overlay.style.display = 'none';
-        }
-        if (data?.latestSha) _lastSeenRepoSha = data.latestSha;
-    } catch {}
+    return;
 }
 
 function startRepoUpdatePolling() {
-    if (!ENABLE_REPO_UPDATE_OVERLAY) return;
-    if (_repoUpdateInterval) return;
-    checkRepoVersion();
-    _repoUpdateInterval = setInterval(checkRepoVersion, 90000);
+    return;
 }
 
 async function handleGoogleCredentialResponse(response) {
