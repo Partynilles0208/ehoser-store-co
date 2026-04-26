@@ -2181,43 +2181,42 @@ textarea:focus {
 
  
  
-/* â”€â”€ Intro Splash â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-   0s  â€“ 3s  : E rollt von rechts in Bildschirmmitte
-   3s         : E stoppt, Name erscheint darÃ¼ber
-   5s  â€“ 8s  : E rollt nach links weg
-   8s  â€“ 12s : Name leuchtet (4s)
-   12s â€“ 16s : Name verschwindet (4s)
-   16s â€“ 21s : Schwarz â†’ hell, Website taucht auf (5s)
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* -- Intro Splash --
+   0.3s   Blauer E rollt rein
+   2.7s   ehoser Text
+   4.4s   Pinker E rollt rein
+   6.7s   by Nils Becker
+   8.6s   Glow
+  10.9s   Beide rollen raus
+  12.0s   Badge Blau (KI & Kreativitaet)
+  12.7s   Badge Gruen (Kostenlos & Datenschutz)
+  13.5s   Blitz 1 - alles weg
+  13.8s   Grosses Logo (JS)
+  14.1s   Shine
+  14.5s   Tagline von rechts
+  15.3s   Finaler Blitz
+  15.6s   Splash weg (JS)
+-------------------------------------------------------------- */
 
 /* INTRO SPLASH */
 .intro-splash {
-    position: fixed;
-    inset: 0;
-    z-index: 99999;
-    background: #000;
-    overflow: hidden;
-    pointer-events: none;
+    position: fixed; inset: 0; z-index: 99999;
+    background: #000; overflow: hidden; pointer-events: none;
 }
 
 .intro-logo-blue,
 .intro-logo-pink,
 .intro-big-logo {
     position: absolute;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 28px;
-    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 28px; color: #fff;
     font-family: "Space Grotesk", sans-serif;
-    font-weight: 700;
-    opacity: 0;
+    font-weight: 700; opacity: 0;
 }
 
 .intro-logo-blue {
     width: 110px; height: 110px;
-    top: calc(50% - 120px);
-    left: calc(50% - 120px);
+    top: calc(50% - 120px); left: calc(50% - 120px);
     font-size: 4.5rem;
     background: linear-gradient(135deg, #0e8a9b, #4d9fff);
     box-shadow: 0 0 40px rgba(77,159,255,0.4);
@@ -2228,18 +2227,12 @@ textarea:focus {
 
 .intro-ehoser-text {
     position: absolute;
-    top: calc(50% - 120px);
-    left: calc(50% + 2px);
-    width: 200px;
+    top: calc(50% - 120px); left: calc(50% + 2px);
+    width: 200px; height: 110px;
     font-family: "Space Grotesk", sans-serif;
-    font-size: 2.8rem;
-    font-weight: 900;
-    color: #e0f4ff;
-    letter-spacing: 0.04em;
-    display: flex;
-    align-items: center;
-    height: 110px;
-    opacity: 0;
+    font-size: 2.8rem; font-weight: 900;
+    color: #e0f4ff; letter-spacing: 0.04em;
+    display: flex; align-items: center; opacity: 0;
     animation: spit-right 0.5s cubic-bezier(.2,1.4,.4,1) 2.7s forwards,
                text-glow-blue 1.2s ease-in-out 8.6s forwards,
                text-fade-out 0.6s ease-in 10.9s forwards;
@@ -2247,8 +2240,7 @@ textarea:focus {
 
 .intro-logo-pink {
     width: 110px; height: 110px;
-    top: calc(50% + 10px);
-    left: calc(50% - 120px);
+    top: calc(50% + 10px); left: calc(50% - 120px);
     font-size: 4.5rem;
     background: linear-gradient(135deg, #c0186a, #ff6eb4);
     box-shadow: 0 0 40px rgba(255,110,180,0.4);
@@ -2259,52 +2251,111 @@ textarea:focus {
 
 .intro-nils-text {
     position: absolute;
-    top: calc(50% + 10px);
-    left: calc(50% + 2px);
-    width: 260px;
-    height: 110px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
+    top: calc(50% + 10px); left: calc(50% + 2px);
+    width: 260px; height: 110px;
+    display: flex; flex-direction: column; justify-content: center;
     opacity: 0;
     animation: spit-right 0.5s cubic-bezier(.2,1.4,.4,1) 6.7s forwards,
                text-glow-pink 1.2s ease-in-out 8.6s forwards,
                text-fade-out 0.6s ease-in 10.9s forwards;
 }
 .intro-by {
-    font-size: 0.78rem;
-    font-weight: 500;
-    color: #ff9fd4;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
+    font-size: 0.78rem; font-weight: 500; color: #ff9fd4;
+    letter-spacing: 0.18em; text-transform: uppercase;
 }
 .intro-nils {
     font-family: "Space Grotesk", sans-serif;
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: #ffe0f4;
-    letter-spacing: 0.02em;
+    font-size: 1.8rem; font-weight: 700;
+    color: #ffe0f4; letter-spacing: 0.02em;
 }
 
-.intro-flash {
-    position: absolute;
-    inset: 0;
-    background: #fff;
+/* Badge-Zeilen (Phase 3+4) */
+.intro-badge-row {
+    position: absolute; left: 50%;
+    transform: translateX(-50%) scale(0.8);
+    display: flex; align-items: center; gap: 18px;
     opacity: 0;
-    animation: flash-bang 1.4s ease-out 12.5s forwards;
 }
 
+#introBadgeBlue {
+    top: calc(50% - 68px);
+    animation: badge-pop 0.4s cubic-bezier(.2,1.3,.4,1) 12.0s forwards,
+               badge-fade 0.3s ease-in 13.35s forwards;
+}
+
+#introBadgeGreen {
+    top: calc(50% + 20px);
+    animation: badge-pop 0.4s cubic-bezier(.2,1.3,.4,1) 12.7s forwards,
+               badge-fade 0.3s ease-in 13.35s forwards;
+}
+
+.intro-badge-icon {
+    width: 68px; height: 68px; border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Space Grotesk", sans-serif;
+    font-weight: 900; font-size: 2.6rem; color: #fff; flex-shrink: 0;
+}
+.intro-badge-icon-blue {
+    background: linear-gradient(135deg, #0e8a9b, #4d9fff);
+    box-shadow: 0 0 30px rgba(14,138,155,0.7), 0 0 60px rgba(77,159,255,0.3);
+}
+.intro-badge-icon-green {
+    background: linear-gradient(135deg, #16a34a, #22c55e);
+    box-shadow: 0 0 30px rgba(34,197,94,0.7), 0 0 60px rgba(22,197,94,0.3);
+}
+.intro-badge-label {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 1.55rem; font-weight: 800; color: #fff;
+    letter-spacing: 0.02em;
+    text-shadow: 0 0 20px rgba(255,255,255,0.3);
+    white-space: nowrap;
+}
+
+/* Blitz 1 */
+.intro-flash {
+    position: absolute; inset: 0; background: #fff;
+    opacity: 0; z-index: 5;
+    animation: flash-bang 0.7s ease-out 13.5s forwards;
+}
+
+/* Grosses Logo */
 .intro-big-logo {
     width: 180px; height: 180px;
-    top: calc(50% - 90px);
-    left: calc(50% - 90px);
+    top: calc(50% - 110px); left: calc(50% - 90px);
     font-size: 7rem;
     background: linear-gradient(135deg, #0e8a9b, #f47c2a);
     box-shadow: 0 0 80px rgba(14,138,155,0.6), 0 0 160px rgba(244,124,42,0.3);
-    border-radius: 40px;
-    /* Animation via JS gesteuert */
+    border-radius: 40px; overflow: hidden; z-index: 6;
+}
+.intro-shine {
+    position: absolute; inset: 0;
+    background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
+    transform: translateX(-200%);
+    animation: shine-sweep 0.55s ease 14.1s forwards;
+    pointer-events: none;
 }
 
+/* Tagline */
+.intro-tagline {
+    position: absolute;
+    top: calc(50% + 112px); left: 50%;
+    transform: translateX(110vw);
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 1.7rem; font-weight: 900; color: #fff;
+    letter-spacing: 0.04em; white-space: nowrap; opacity: 0;
+    z-index: 6;
+    text-shadow: 0 2px 20px rgba(14,138,155,0.9), 0 0 40px rgba(244,124,42,0.5);
+    animation: tagline-slide 0.4s cubic-bezier(.15,.8,.25,1) 14.5s forwards;
+}
+
+/* Finaler Blitz */
+.intro-flash-final {
+    position: absolute; inset: 0; background: #fff;
+    opacity: 0; z-index: 10;
+    animation: final-flash 0.35s ease-out 15.3s forwards;
+}
+
+/* Keyframes */
 @keyframes blue-roll-in {
     0%   { opacity: 1; transform: translateX(130vw) rotate(0deg); }
     100% { opacity: 1; transform: translateX(0) rotate(1080deg); }
@@ -2328,12 +2379,12 @@ textarea:focus {
 }
 @keyframes logo-glow-blue {
     0%   { box-shadow: 0 0 40px rgba(77,159,255,0.4); }
-    50%  { box-shadow: 0 0 100px #4d9fff, 0 0 200px #0e8a9b, 0 0 300px rgba(77,159,255,0.5); filter: brightness(1.5); }
+    50%  { box-shadow: 0 0 100px #4d9fff, 0 0 200px #0e8a9b; filter: brightness(1.5); }
     100% { box-shadow: 0 0 20px rgba(77,159,255,0.1); }
 }
 @keyframes logo-glow-pink {
     0%   { box-shadow: 0 0 40px rgba(255,110,180,0.4); }
-    50%  { box-shadow: 0 0 100px #ff6eb4, 0 0 200px #c0186a, 0 0 300px rgba(255,110,180,0.5); filter: brightness(1.5); }
+    50%  { box-shadow: 0 0 100px #ff6eb4, 0 0 200px #c0186a; filter: brightness(1.5); }
     100% { box-shadow: 0 0 20px rgba(255,110,180,0.1); }
 }
 @keyframes text-glow-blue {
@@ -2352,11 +2403,31 @@ textarea:focus {
 }
 @keyframes flash-bang {
     0%   { opacity: 0; }
-    20%  { opacity: 0.9; }
-    45%  { opacity: 1; }
+    25%  { opacity: 1; }
     100% { opacity: 0; }
 }
-
+@keyframes badge-pop {
+    0%   { opacity: 0; transform: translateX(-50%) scale(0.7); }
+    60%  { opacity: 1; transform: translateX(-50%) scale(1.06); }
+    100% { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+@keyframes badge-fade {
+    from { opacity: 1; transform: translateX(-50%) scale(1); }
+    to   { opacity: 0; transform: translateX(-50%) scale(0.9); }
+}
+@keyframes shine-sweep {
+    0%   { transform: translateX(-200%); }
+    100% { transform: translateX(400%); }
+}
+@keyframes tagline-slide {
+    0%   { opacity: 1; transform: translateX(110vw); }
+    100% { opacity: 1; transform: translateX(-50%); }
+}
+@keyframes final-flash {
+    0%   { opacity: 0; }
+    40%  { opacity: 1; }
+    100% { opacity: 1; }
+}
 
 .mode-card-youtube:hover {
     border-color: #ff4444;

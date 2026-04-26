@@ -628,49 +628,36 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.style.overflow = '';
             showCaptcha();
         } else {
-            // Big-Logo via JS animieren (zuverlässiger als CSS-Keyframes)
+            // 13.8s: Big Logo erscheint mit Bounce
             const bigLogo = document.getElementById('introBigLogo');
             if (bigLogo) {
-                // 15s: Big Logo erscheint mit Spin
                 setTimeout(() => {
                     bigLogo.style.opacity = '1';
-                    bigLogo.style.transition = 'opacity 0.15s ease, transform 0.8s cubic-bezier(.2,1.4,.3,1)';
-                    bigLogo.style.transform = 'scale(1.15) rotate(20deg)';
+                    bigLogo.style.transition = 'opacity 0.12s ease, transform 0.5s cubic-bezier(.2,1.4,.3,1)';
+                    bigLogo.style.transform = 'scale(1.1)';
                     setTimeout(() => {
-                        bigLogo.style.transition = 'transform 0.3s ease-out';
-                        bigLogo.style.transform = 'scale(1) rotate(0deg)';
-                    }, 800);
-                }, 15000);
-
-                // 17s: Logo rollt zur Navbar-Logo-Position
-                setTimeout(() => {
-                    // Navbar ist während Splash versteckt → Position aus bekannten CSS-Werten berechnen
-                    const contLeft = Math.max(0, (window.innerWidth - 1220) / 2);
-                    const navCX = contLeft + 22 + 18 + 18; // container-pad + navbar-pad + logo-hälfte
-                    const navCY = 22 + 14 + 18;            // container-pad-top + navbar-pad-top + logo-hälfte
-                    const bigRect = bigLogo.getBoundingClientRect();
-                    const dx = navCX - (bigRect.left + bigRect.width / 2);
-                    const dy = navCY - (bigRect.top + bigRect.height / 2);
-                    const scale = 36 / 180; // Zielgröße / aktuelle Größe
-                    bigLogo.style.transition = 'transform 2s cubic-bezier(.5,0,.4,1), border-radius 2s ease, box-shadow 1s ease';
-                    bigLogo.style.transform = `translate(${dx}px, ${dy}px) scale(${scale}) rotate(720deg)`;
-                    bigLogo.style.borderRadius = '10px';
-                    bigLogo.style.boxShadow = 'none';
-                }, 17000);
+                        bigLogo.style.transition = 'transform 0.25s ease-out';
+                        bigLogo.style.transform = 'scale(1)';
+                    }, 500);
+                }, 13800);
             }
 
-            // Intro läuft 20s, dann 0.5s fade-out
+            // 15.6s: Finaler Blitz ist am Peak → Splash weg, Seite erscheint sofort
             setTimeout(() => {
-                splash.style.transition = 'opacity 0.5s ease';
-                splash.style.opacity = '0';
-                setTimeout(() => {
-                    splash.remove();
-                    document.body.classList.remove('splash-active');
-                    document.body.style.overflow = '';
-                    sessionStorage.setItem('intro_shown', '1');
-                    showCaptcha();
-                }, 500);
-            }, 20000);
+                splash.remove();
+                document.body.classList.remove('splash-active');
+                document.body.style.overflow = '';
+                sessionStorage.setItem('intro_shown', '1');
+                // Weißes Body-Overlay für den Blitz-Übergang
+                const bodyFlash = document.createElement('div');
+                bodyFlash.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99998;pointer-events:none;transition:opacity 0.3s ease;';
+                document.body.appendChild(bodyFlash);
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    bodyFlash.style.opacity = '0';
+                    setTimeout(() => bodyFlash.remove(), 350);
+                }));
+                showCaptcha();
+            }, 15600);
         }
     } else {
         showCaptcha();
