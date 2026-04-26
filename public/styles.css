@@ -3476,3 +3476,63 @@ body[data-personalization-tone="focused"] .personalization-banner {
     .calc-btn { padding: 12px 0; font-size: 0.95rem; }
     .calc-result { font-size: 1.8rem; }
 }
+
+/* ── Tarnmodus ────────────────────────────────────────────────────────────── */
+.tarn-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: url('/tarnbild.png') center/cover no-repeat;
+    background-color: #000;
+    pointer-events: none;    /* user kann weiterhin klicken – Overlay fängt nichts ab */
+    opacity: 0;
+    transition: opacity 0s;  /* kein Fade – sofortiger Wechsel */
+    display: none;
+}
+
+/* Aktiver Tarnmodus: Overlay sichtbar wenn Fenster keinen Fokus hat */
+body.tarn-active .tarn-overlay {
+    display: block;
+    opacity: 1;
+}
+
+/* Maus bewegt sich über das Fenster → Overlay verstecken */
+body.tarn-active.tarn-mouse-inside .tarn-overlay {
+    opacity: 0;
+}
+
+.tarn-hint {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.5);
+    color: rgba(255,255,255,0.55);
+    font-size: 0.78rem;
+    padding: 6px 14px;
+    border-radius: 20px;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* Navbar-Button */
+.tarn-nav-btn {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    color: #8ab4c9;
+    font-size: 1rem;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    line-height: 1;
+}
+.tarn-nav-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: #f0f8ff;
+}
+body.tarn-active .tarn-nav-btn {
+    background: rgba(230,50,50,0.18);
+    border-color: rgba(230,50,50,0.4);
+    color: #f87171;
+}
