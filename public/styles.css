@@ -88,35 +88,41 @@ body.energy-saver * {
 .bg-shape {
     position: fixed;
     border-radius: 50%;
-    filter: blur(80px);
+    filter: blur(90px);
     z-index: 0;
     pointer-events: none;
-    animation: driftGlow 18s ease-in-out infinite alternate;
 }
 
 .bg-shape-1 {
-    width: 340px;
-    height: 340px;
-    background: rgba(14, 138, 155, 0.32);
-    top: -80px;
-    left: -110px;
+    width: 480px;
+    height: 480px;
+    background: rgba(14, 138, 155, 0.28);
+    top: -120px;
+    left: -150px;
+    animation: drift1 22s ease-in-out infinite alternate;
 }
 
 .bg-shape-2 {
-    width: 300px;
-    height: 300px;
-    background: rgba(244, 124, 42, 0.22);
-    right: -90px;
-    bottom: 10%;
+    width: 420px;
+    height: 420px;
+    background: rgba(244, 124, 42, 0.18);
+    right: -120px;
+    bottom: 5%;
+    animation: drift2 28s ease-in-out infinite alternate;
 }
 
-@keyframes driftGlow {
-    from {
-        transform: translate3d(0, 0, 0) scale(1);
-    }
-    to {
-        transform: translate3d(24px, -18px, 0) scale(1.12);
-    }
+@keyframes drift1 {
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    33%  { transform: translate3d(30px, 20px, 0) scale(1.08); }
+    66%  { transform: translate3d(-10px, 40px, 0) scale(0.96); }
+    100% { transform: translate3d(20px, -15px, 0) scale(1.14); }
+}
+
+@keyframes drift2 {
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    40%  { transform: translate3d(-25px, -30px, 0) scale(1.1); }
+    70%  { transform: translate3d(15px, 20px, 0) scale(0.92); }
+    100% { transform: translate3d(-18px, 12px, 0) scale(1.06); }
 }
 
 .repo-update-overlay {
@@ -180,10 +186,17 @@ body.energy-saver * {
 }
 
 .navbar {
-    backdrop-filter: blur(14px);
-    background: rgba(10, 25, 33, 0.62);
-    border: 1px solid rgba(189, 221, 239, 0.2);
+    backdrop-filter: blur(20px);
+    background: rgba(8, 20, 28, 0.72);
+    border: 1px solid rgba(189,221,239,0.15);
     border-radius: 14px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06);
+    animation: slideDown 0.5s ease both;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-16px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .navbar-content {
@@ -210,6 +223,13 @@ body.energy-saver * {
     font-weight: 700;
     color: white;
     background: linear-gradient(135deg, var(--brand), var(--brand-2));
+    box-shadow: 0 0 16px rgba(14,138,155,0.45);
+    transition: box-shadow 0.3s, transform 0.3s;
+}
+
+.logo:hover .logo-icon {
+    box-shadow: 0 0 28px rgba(14,138,155,0.7);
+    transform: scale(1.08) rotate(-3deg);
 }
 
 .logo h1 {
@@ -912,6 +932,12 @@ textarea:focus {
     font-size: 2.4rem;
     color: var(--card);
     margin: 0 0 10px;
+    animation: heroFadeIn 0.7s ease both;
+}
+
+@keyframes heroFadeIn {
+    from { opacity: 0; transform: translateY(12px); letter-spacing: 0.08em; }
+    to   { opacity: 1; transform: translateY(0);    letter-spacing: normal; }
 }
 
 .mode-title span {
@@ -933,8 +959,8 @@ textarea:focus {
 }
 
 .mode-card {
-    background: var(--bg-soft);
-    border: 2px solid var(--line);
+    background: linear-gradient(145deg, rgba(16,35,45,0.95), rgba(10,28,38,0.98));
+    border: 1px solid rgba(196,216,230,0.12);
     border-radius: var(--radius);
     padding: 32px 28px;
     cursor: pointer;
@@ -942,30 +968,59 @@ textarea:focus {
     display: flex;
     flex-direction: column;
     gap: 14px;
-    transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+    transition: border-color 0.25s, transform 0.22s cubic-bezier(.23,1.2,.46,1), box-shadow 0.25s, background 0.25s;
     position: relative;
     overflow: hidden;
+    animation: cardFadeUp 0.45s ease both;
+}
+
+.mode-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(14,138,155,0.06), transparent 60%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+}
+
+.mode-card:hover::before {
+    opacity: 1;
 }
 
 .mode-card:hover {
-    border-color: var(--brand);
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px rgba(14,138,155,0.25);
+    border-color: rgba(14,138,155,0.55);
+    transform: translateY(-6px) scale(1.015);
+    box-shadow: 0 24px 48px rgba(14,138,155,0.22), 0 0 0 1px rgba(14,138,155,0.18);
+    background: linear-gradient(145deg, rgba(18,42,55,0.98), rgba(12,32,44,0.99));
+}
+
+@keyframes cardFadeUp {
+    from { opacity: 0; transform: translateY(22px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .mode-card-games:hover {
-    border-color: var(--brand-2);
-    box-shadow: 0 20px 40px rgba(244,124,42,0.25);
+    border-color: rgba(244,124,42,0.6);
+    box-shadow: 0 24px 48px rgba(244,124,42,0.2), 0 0 0 1px rgba(244,124,42,0.18);
 }
+.mode-card-games::before { background: linear-gradient(135deg, rgba(244,124,42,0.07), transparent 60%); }
 
 .mode-card-facewarp:hover {
-    border-color: #a855f7;
-    box-shadow: 0 20px 40px rgba(168,85,247,0.25);
+    border-color: rgba(168,85,247,0.6);
+    box-shadow: 0 24px 48px rgba(168,85,247,0.2), 0 0 0 1px rgba(168,85,247,0.18);
 }
+.mode-card-facewarp::before { background: linear-gradient(135deg, rgba(168,85,247,0.07), transparent 60%); }
 
 .mode-card-icon {
     font-size: 2.8rem;
     line-height: 1;
+    transition: transform 0.3s cubic-bezier(.23,1.2,.46,1);
+    display: inline-block;
+}
+
+.mode-card:hover .mode-card-icon {
+    transform: scale(1.18) rotate(-4deg);
 }
 
 .mode-card-body h3 {
@@ -3477,45 +3532,83 @@ body[data-personalization-tone="focused"] .personalization-banner {
     .calc-result { font-size: 1.8rem; }
 }
 
-/* ── Tarnmodus: RTL-Trick (JavaScript-gesteuert) ────────────────────────── */
-.tarn-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 999999;
-    background: url('/tarnbild.png') center/cover no-repeat;
-    background-color: #000;
-    pointer-events: none;
-    display: none;    /* IMMER versteckt – wird nur über JavaScript sichtbar */
-    opacity: 0;
-}
+/* ── Gestaffelte Karten-Eingangsanimation ─────────────────────────────────── */
+.mode-card:nth-child(1)  { animation-delay: 0.04s; }
+.mode-card:nth-child(2)  { animation-delay: 0.08s; }
+.mode-card:nth-child(3)  { animation-delay: 0.12s; }
+.mode-card:nth-child(4)  { animation-delay: 0.16s; }
+.mode-card:nth-child(5)  { animation-delay: 0.20s; }
+.mode-card:nth-child(6)  { animation-delay: 0.24s; }
+.mode-card:nth-child(7)  { animation-delay: 0.28s; }
+.mode-card:nth-child(8)  { animation-delay: 0.32s; }
+.mode-card:nth-child(9)  { animation-delay: 0.36s; }
+.mode-card:nth-child(10) { animation-delay: 0.40s; }
+.mode-card:nth-child(11) { animation-delay: 0.44s; }
+.mode-card:nth-child(12) { animation-delay: 0.48s; }
 
-.tarn-hint {
+/* ── Schimmernder Shimmer-Effekt beim Hover ───────────────────────────────── */
+.mode-card::after {
+    content: '';
     position: absolute;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.5);
-    color: rgba(255,255,255,0.55);
-    font-size: 0.78rem;
-    padding: 6px 14px;
-    border-radius: 20px;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+    transform: skewX(-20deg);
+    transition: left 0.6s ease;
     pointer-events: none;
-    white-space: nowrap;
+}
+.mode-card:hover::after {
+    left: 160%;
 }
 
-.tarn-nav-btn {
-    background: none;
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 8px;
-    color: #8ab4c9;
-    font-size: 1rem;
-    padding: 6px 10px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-    line-height: 1;
-    title: "Strg+Shift+T";
+/* ── Badge pulsiert leicht ─────────────────────────────────────────────────── */
+.mode-badge {
+    animation: badgePulse 3s ease-in-out infinite;
 }
-.tarn-nav-btn:hover {
-    background: rgba(255,255,255,0.08);
-    color: #f0f8ff;
+@keyframes badgePulse {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 8px rgba(14,138,155,0.35); }
 }
+
+/* ── Mode Hero floating logo ───────────────────────────────────────────────── */
+.mode-logo {
+    width: 60px;
+    height: 60px;
+    font-size: 1.8rem;
+    border-radius: 18px;
+    animation: floatLogo 5s ease-in-out infinite;
+}
+@keyframes floatLogo {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50%       { transform: translateY(-8px) rotate(3deg); }
+}
+
+/* ── Cursor-Trail Glow auf Navbar-Links ────────────────────────────────────── */
+.nav-link {
+    position: relative;
+    transition: color 0.2s;
+}
+.nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--brand), var(--brand-2));
+    transition: width 0.3s ease;
+    border-radius: 2px;
+}
+.nav-link:hover::after { width: 100%; }
+
+/* ── Smooth Section Transition ─────────────────────────────────────────────── */
+.section.active {
+    animation: sectionIn 0.38s ease both;
+}
+@keyframes sectionIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
