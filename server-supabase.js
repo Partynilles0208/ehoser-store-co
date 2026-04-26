@@ -2660,27 +2660,16 @@ app.post('/api/ki/video/create', async (req, res) => {
     const apiKey = process.env.HUGGINGFACE_API_KEY;
     if (!apiKey) return res.status(503).json({ error: 'HUGGINGFACE_API_KEY nicht konfiguriert' });
   try {
-      const r = await fetch('https://api-inference.huggingface.co/models/Wan-AI/Wan2.2-T2V-A14B', {
+      const r = await fetch('https://router.huggingface.co/replicate/v1/models/wan-video/wan-2.2-t2v-fast/predictions', {
       method: 'POST',
       headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'Accept': 'video/mp4',
-          'x-wait-for-model': 'true'
+          'Prefer': 'wait'
       },
         body: JSON.stringify({
-          inputs: prompt.slice(0, 500),
-          parameters: {
-            num_frames: 81,
-            num_inference_steps: 30,
-            guidance_scale: 5,
-            negative_prompt: [
-              'blurry',
-              'low quality',
-              'distorted',
-              'glitch',
-              'text watermark'
-            ]
+          input: {
+            prompt: prompt.slice(0, 500)
           }
         })
     });
@@ -2700,13 +2689,24 @@ app.post('/api/ki/video/create', async (req, res) => {
         return res.status(502).json({ error });
     }
 
-      const contentType = r.headers.get('content-type') || 'video/mp4';
-      if (!contentType.startsWith('video/')) {
-        const text = await r.text().catch(() => '');
-        return res.status(502).json({ error: text || 'Antwort war kein Video' });
+      const data = await r.json();
+      const videoUrl = Array.isArray(data?.output)
+        ? data.output.find((item) => typeof item === 'string' && /^https?:\/\//.test(item))
+        : typeof data?.output === 'string'
+          ? data.output
+          : null;
+
+      if (!videoUrl) {
+        return res.status(502).json({ error: 'Hugging Face hat keine Video-URL zurückgegeben' });
       }
 
-      const buffer = await r.arrayBuffer();
+      const videoRes = await fetch(videoUrl);
+      if (!videoRes.ok) {
+        return res.status(502).json({ error: 'Generiertes Video konnte nicht geladen werden' });
+      }
+
+      const contentType = videoRes.headers.get('content-type') || 'video/mp4';
+      const buffer = await videoRes.arrayBuffer();
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'no-store');
       res.send(Buffer.from(buffer));
