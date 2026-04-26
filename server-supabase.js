@@ -2295,25 +2295,47 @@ app.get('/api/ki/video/:id/status', async (req, res) => {
   }
 });
 
-// Pollinations.ai Bild-Proxy
+// Bild-Generierung (HuggingFace SDXL primär, Pollinations als Fallback)
 app.get('/api/ki/image', async (req, res) => {
   const prompt = req.query.prompt;
   if (!prompt || prompt.trim().length === 0) {
     return res.status(400).json({ error: 'Kein Prompt angegeben' });
   }
   const seed = req.query.seed || Math.floor(Math.random() * 999999);
-  const apiKey = process.env.POLLINATIONS_API_KEY;
+  const hfKey = process.env.HUGGINGFACE_API_KEY;
+  const pollinationsKey = process.env.POLLINATIONS_API_KEY;
   const encodedPrompt = encodeURIComponent(prompt.slice(0, 500));
 
-  // Wenn ein Key vorhanden: neue API nutzen, sonst Legacy-Endpoint (kein Key nötig)
-  const urls = apiKey
-    ? [`https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&key=${encodeURIComponent(apiKey)}`]
-    : [
-        `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`,
-        `https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`
-      ];
-
   try {
+    // 1. Versuch: HuggingFace Stable Diffusion XL
+    if (hfKey) {
+      try {
+        const hfRes = await fetch('https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${hfKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ inputs: prompt.slice(0, 500), parameters: { seed: Number(seed) } })
+        });
+        if (hfRes.ok) {
+          const contentType = hfRes.headers.get('content-type') || 'image/jpeg';
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          const buffer = await hfRes.arrayBuffer();
+          return res.send(Buffer.from(buffer));
+        }
+      } catch {}
+    }
+
+    // 2. Fallback: Pollinations
+    const urls = pollinationsKey
+      ? [`https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&key=${encodeURIComponent(pollinationsKey)}`]
+      : [
+          `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`,
+          `https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`
+        ];
+
     let imgRes;
     for (const url of urls) {
       imgRes = await fetch(url, { headers: { 'User-Agent': 'ehoser-store/1.0' } });
