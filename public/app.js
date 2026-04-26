@@ -24,6 +24,7 @@ let _repoUpdateInterval = null;
 let _lastSeenRepoSha = null;
 let _dismissedRepoSha = null;
 let _repoUpdateSnoozeUntil = 0;
+let _repoUpdateAvailable = false;
 let _googleAuthInitialized = false;
 
 try {
@@ -77,6 +78,7 @@ function restoreReloadSnapshot() {
 }
 
 function showRepoUpdateOverlay() {
+    if (!_repoUpdateAvailable) return;
     if (Date.now() < _repoUpdateSnoozeUntil) return;
     if (_lastSeenRepoSha && _dismissedRepoSha === _lastSeenRepoSha) return;
     const overlay = document.getElementById('repoUpdateOverlay');
@@ -111,10 +113,14 @@ async function checkRepoVersion() {
         if (!res.ok) return;
         const data = await res.json();
         if (!_lastSeenRepoSha && data?.latestSha) _lastSeenRepoSha = data.latestSha;
-        if (data?.hasUpdate || (_lastSeenRepoSha && data?.latestSha && _lastSeenRepoSha !== data.latestSha)) {
+        _repoUpdateAvailable = Boolean(data?.hasUpdate || (_lastSeenRepoSha && data?.latestSha && _lastSeenRepoSha !== data.latestSha));
+        if (_repoUpdateAvailable) {
             if (data?.latestSha && data.latestSha !== _dismissedRepoSha) {
                 showRepoUpdateOverlay();
             }
+        } else {
+            const overlay = document.getElementById('repoUpdateOverlay');
+            if (overlay) overlay.style.display = 'none';
         }
         if (data?.latestSha) _lastSeenRepoSha = data.latestSha;
     } catch {}
