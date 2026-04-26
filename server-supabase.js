@@ -2122,6 +2122,98 @@ app.post('/api/ps/chat', async (req, res) => {
   }
 });
 
+// ─── Spiele-KI: Spiel generieren ─────────────────────────────────────────────
+app.post('/api/game/create', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  // Pro-Check
+  const { data: profile } = await supabaseAdmin
+    .from('user_profiles')
+    .select('is_pro, pro_until')
+    .eq('user_id', auth.userId)
+    .single();
+  const isPro = profile?.is_pro || (profile?.pro_until && new Date(profile.pro_until) > new Date());
+  if (!isPro) return res.status(403).json({ error: 'Diese Funktion erfordert PRO.' });
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfügbar' });
+
+  const { prompt, currentCode } = req.body;
+  if (!prompt?.trim()) return res.status(400).json({ error: 'Kein Prompt' });
+
+  const systemPrompt = `Du bist ein Experte für HTML5-Spieleentwicklung.
+Erstelle ein vollständiges, spielbares Browserspiel als EINE einzige HTML-Datei.
+Das Spiel muss alle CSS-Styles und JavaScript INLINE enthalten (kein externes Laden).
+Anforderungen:
+- Vollständig spielbar im Browser, kein Laden externer Ressourcen
+- Canvas oder DOM-basiert, je nach Spieltyp
+- Sauberer, moderner Code
+- Spiel-Loop mit requestAnimationFrame wenn nötig
+- Steuerung klar beschriftet (Tastatur/Maus)
+- Responsives Layout (passt in iframe)
+- Deutscher Text für UI-Elemente erlaubt
+- Kein alert(), confirm() oder prompt() verwenden
+WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklärender Text davor oder danach. Beginne mit <!DOCTYPE html>.`;
+
+  const userMsg = currentCode
+    ? `Hier ist das aktuelle Spiel:\n\`\`\`html\n${currentCode.slice(0, 80000)}\n\`\`\`\n\nVerbesserungsanfrage: ${prompt}`
+    : `Erstelle dieses Spiel: ${prompt}`;
+
+  try {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+      body: JSON.stringify({
+        model: 'moonshotai/kimi-k2-instruct',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMsg }
+        ],
+        temperature: 0.7,
+        max_tokens: 16000
+      })
+    });
+
+    const data = await groqRes.json();
+    if (!groqRes.ok) {
+      // Fallback auf llama wenn Modell nicht verfügbar
+      if (groqRes.status === 400 || groqRes.status === 404) {
+        const fallback = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userMsg }
+            ],
+            temperature: 0.7,
+            max_tokens: 16000
+          })
+        });
+        const fdata = await fallback.json();
+        if (!fallback.ok) return res.status(fallback.status).json(fdata);
+        let code = fdata.choices?.[0]?.message?.content || '';
+        code = code.replace(/^```html\s*/i, '').replace(/```\s*$/i, '').trim();
+        return res.json({ code });
+      }
+      return res.status(groqRes.status).json(data);
+    }
+
+    let code = data.choices?.[0]?.message?.content || '';
+    // Strip markdown code fences if present
+    code = code.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    if (!code.toLowerCase().startsWith('<!doctype') && !code.toLowerCase().startsWith('<html')) {
+      const match = code.match(/<!DOCTYPE[\s\S]*/i) || code.match(/<html[\s\S]*/i);
+      if (match) code = match[0];
+    }
+    res.json({ code });
+  } catch (err) {
+    res.status(502).json({ error: 'KI-Verbindungsfehler' });
+  }
+});
+
 // ─── KI Proxy (Groq) ──────────────────────────────────────────────────────────
 app.post('/api/ki', async (req, res) => {
   const groqKey = process.env.GROQ_API_KEY;
