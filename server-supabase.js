@@ -200,6 +200,7 @@ function normalizeSettings(raw) {
     language: typeof src.language === 'string' ? src.language : 'de',
     design: typeof src.design === 'string' ? src.design : 'standard',
     energySaver: Boolean(src.energySaver),
+    personalizationEnabled: src.personalizationEnabled !== false,
     personalization: normalizePersonalization(src.personalization)
   };
 }
@@ -223,6 +224,7 @@ function mergePersonalization(currentRaw, patchRaw) {
 async function patchProfilePersonalization(username, patch) {
   if (!username || !patch || typeof patch !== 'object') return null;
   const profile = await getProfile(username);
+  if (profile.settings?.personalizationEnabled === false) return profile;
   const settings = normalizeSettings({
     ...profile.settings,
     personalization: mergePersonalization(profile.settings?.personalization, patch)
@@ -266,6 +268,7 @@ async function inferPersonalizationPatch(groqKey, currentPersonalization, source
 async function personalizeFromInteraction(groqKey, username, source, content, fallbackPatch = null) {
   if (!username) return null;
   const profile = await getProfile(username);
+  if (profile.settings?.personalizationEnabled === false) return profile;
   const inferred = await inferPersonalizationPatch(groqKey, profile.settings?.personalization, source, content);
   return patchProfilePersonalization(username, inferred || fallbackPatch || {});
 }
@@ -848,6 +851,11 @@ app.put('/api/me/settings', async (req, res) => {
 app.post('/api/me/personalization/event', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
+
+  const currentProfile = await getProfile(auth.username);
+  if (currentProfile.settings?.personalizationEnabled === false) {
+    return res.json({ ok: true, profile: currentProfile });
+  }
 
   const type = String(req.body?.type || '').trim();
   const query = String(req.body?.query || '').trim();
