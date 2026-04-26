@@ -1147,6 +1147,17 @@ function selectMode(mode) {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
         window.location.href = '/chat/';
+    } else if (mode === 'qr') {
+        showSection('qr');
+        setTimeout(() => document.getElementById('qrInput')?.focus(), 50);
+    } else if (mode === 'calc') {
+        showSection('calc');
+        _calcExpr = '';
+        _calcRender();
+    } else if (mode === 'notes') {
+        showSection('notes');
+        _notesLoad();
+        _notesRender();
     } else {
         showSection('mode-select');
     }
@@ -3062,4 +3073,223 @@ function downloadGame() {
     a.download = 'ehoser-spiel.html';
     a.click();
     URL.revokeObjectURL(url);
+}
+
+// ── Mode-Suchleiste ───────────────────────────────────────────────────────────
+function filterModeCards(query) {
+    const q = (query || '').toLowerCase().trim();
+    const cards = document.querySelectorAll('#modeCardsGrid .mode-card');
+    cards.forEach(card => {
+        const text = card.textContent.toLowerCase();
+        card.classList.toggle('hidden', q.length > 0 && !text.includes(q));
+    });
+}
+
+// ── QR-Code Generator ─────────────────────────────────────────────────────────
+let _qrDebounce = null;
+
+function generateQR() {
+    clearTimeout(_qrDebounce);
+    _qrDebounce = setTimeout(_doGenerateQR, 150);
+}
+
+function _doGenerateQR() {
+    const input = document.getElementById('qrInput');
+    const canvas = document.getElementById('qrCanvas');
+    const output = document.getElementById('qrOutput');
+    const actions = document.getElementById('qrActions');
+    const empty = document.getElementById('qrEmpty');
+    const text = input ? input.value.trim() : '';
+
+    if (!text) {
+        if (output) output.classList.remove('visible');
+        if (actions) actions.style.display = 'none';
+        if (empty) empty.style.display = '';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    if (typeof QRCode === 'undefined') {
+        if (empty) { empty.textContent = 'QR-Bibliothek wird geladen…'; empty.style.display = ''; }
+        return;
+    }
+
+    QRCode.toCanvas(canvas, text, { width: 260, margin: 2, color: { dark: '#000', light: '#fff' } }, function(err) {
+        if (err) {
+            if (empty) { empty.textContent = 'Fehler: ' + err.message; empty.style.display = ''; }
+            return;
+        }
+        if (output) output.classList.add('visible');
+        if (actions) actions.style.display = 'flex';
+    });
+}
+
+function downloadQR() {
+    const canvas = document.getElementById('qrCanvas');
+    if (!canvas) return;
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'qr-code.png';
+    a.click();
+}
+
+async function copyQRToClipboard() {
+    const canvas = document.getElementById('qrCanvas');
+    if (!canvas) return;
+    try {
+        canvas.toBlob(async blob => {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            showAlert('QR-Code in die Zwischenablage kopiert!', 'success');
+        });
+    } catch {
+        showAlert('Kopieren nicht unterstützt – bitte herunterladen.', 'error');
+    }
+}
+
+// ── Taschenrechner ────────────────────────────────────────────────────────────
+let _calcExpr = '';
+let _calcHistory = [];
+
+function calcInput(val) {
+    _calcExpr += val;
+    _calcRender();
+}
+
+function calcClear() {
+    _calcExpr = '';
+    _calcRender();
+}
+
+function calcDel() {
+    _calcExpr = _calcExpr.slice(0, -1);
+    _calcRender();
+}
+
+function calcEquals() {
+    if (!_calcExpr) return;
+    try {
+        // Sichere Auswertung: nur Zahlen, Operatoren, Math-Funktionen erlaubt
+        const sanitized = _calcExpr
+            .replace(/sqrt\(/g, 'Math.sqrt(')
+            .replace(/sin\(/g, 'Math.sin(')
+            .replace(/cos\(/g, 'Math.cos(')
+            .replace(/tan\(/g, 'Math.tan(')
+            .replace(/log\(/g, 'Math.log10(')
+            .replace(/\*\*/g, '**');
+        // Nur sichere Zeichen erlauben
+        if (/[^0-9+\-*/().^eMath.PIE\s]/.test(sanitized.replace(/Math\.(sqrt|sin|cos|tan|log10|PI|E)/g, ''))) {
+            throw new Error('Ungültige Zeichen');
+        }
+        // eslint-disable-next-line no-new-func
+        const result = Function('"use strict"; return (' + sanitized + ')')();
+        const displayResult = Number.isFinite(result) ? +result.toPrecision(12) : 'Fehler';
+        _calcHistory.unshift(_calcExpr + ' = ' + displayResult);
+        if (_calcHistory.length > 20) _calcHistory.pop();
+        _calcExpr = String(displayResult);
+        _calcRender(displayResult);
+        _calcRenderHistory();
+    } catch {
+        const resultEl = document.getElementById('calcResult');
+        if (resultEl) resultEl.textContent = 'Fehler';
+    }
+}
+
+function _calcRender(result) {
+    const exprEl = document.getElementById('calcExpression');
+    const resultEl = document.getElementById('calcResult');
+    if (exprEl) exprEl.textContent = _calcExpr || '';
+    if (resultEl) {
+        if (result !== undefined) {
+            resultEl.textContent = result;
+        } else {
+            // Live-Vorschau
+            try {
+                const sanitized = _calcExpr
+                    .replace(/sqrt\(/g, 'Math.sqrt(')
+                    .replace(/sin\(/g, 'Math.sin(')
+                    .replace(/cos\(/g, 'Math.cos(')
+                    .replace(/tan\(/g, 'Math.tan(')
+                    .replace(/log\(/g, 'Math.log10(');
+                // eslint-disable-next-line no-new-func
+                const r = Function('"use strict"; return (' + sanitized + ')')();
+                resultEl.textContent = Number.isFinite(r) ? +r.toPrecision(12) : (_calcExpr || '0');
+            } catch {
+                resultEl.textContent = _calcExpr || '0';
+            }
+        }
+    }
+}
+
+function _calcRenderHistory() {
+    const histEl = document.getElementById('calcHistory');
+    if (!histEl) return;
+    if (_calcHistory.length === 0) { histEl.classList.remove('visible'); return; }
+    histEl.classList.add('visible');
+    histEl.innerHTML = _calcHistory.map(h => `<div class="calc-history-item">${h}</div>`).join('');
+}
+
+// ── Notizen ───────────────────────────────────────────────────────────────────
+let _notesData = [];
+
+function _notesLoad() {
+    try {
+        _notesData = JSON.parse(localStorage.getItem('ehoser_notes') || '[]');
+    } catch { _notesData = []; }
+}
+
+function _notesSave() {
+    localStorage.setItem('ehoser_notes', JSON.stringify(_notesData));
+}
+
+function _notesRender() {
+    const grid = document.getElementById('notesGrid');
+    const empty = document.getElementById('notesEmpty');
+    if (!grid) return;
+    grid.innerHTML = '';
+    if (_notesData.length === 0) {
+        if (empty) empty.style.display = '';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+    _notesData.forEach((note, idx) => {
+        const card = document.createElement('div');
+        card.className = 'note-card';
+        card.innerHTML = `
+            <input class="note-title-input" placeholder="Titel…" value="${_escapeAttr(note.title)}" oninput="notesUpdateField(${idx},'title',this.value)">
+            <textarea class="note-body-input" placeholder="Notiz hier eingeben…" oninput="notesUpdateField(${idx},'content',this.value)">${_escapeHtmlText(note.content)}</textarea>
+            <div class="note-footer">
+                <span class="note-date">${new Date(note.created).toLocaleDateString('de-DE')}</span>
+                <button class="note-delete" onclick="notesDelete(${idx})">🗑 Löschen</button>
+            </div>`;
+        grid.appendChild(card);
+    });
+}
+
+function _escapeAttr(str) {
+    return String(str || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function _escapeHtmlText(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function notesAddNew() {
+    _notesLoad();
+    _notesData.unshift({ id: Date.now(), title: '', content: '', created: Date.now() });
+    _notesSave();
+    _notesRender();
+    // Fokus auf den Titel der neuen Notiz
+    setTimeout(() => document.querySelector('.note-title-input')?.focus(), 50);
+}
+
+function notesUpdateField(idx, field, value) {
+    if (_notesData[idx]) {
+        _notesData[idx][field] = value;
+        _notesSave();
+    }
+}
+
+function notesDelete(idx) {
+    _notesData.splice(idx, 1);
+    _notesSave();
+    _notesRender();
 }
