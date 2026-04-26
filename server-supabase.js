@@ -540,12 +540,21 @@ app.get('/api/proxy', async (req, res) => {
       if (!html.includes('<base')) {
         html = html.replace(/<head([^>]*)>/i, `<head$1><base href="${base}/">`);
       }
-      // Links/Forms so umschreiben – bereits proxied oder leere URLs überspringen
-      html = html.replace(/(href|src|action)="([^"]*)"/gi, (match, attr, url) => {
+      // Nur href/src umschreiben – action (Formular-Submit) NICHT umschreiben
+      // damit Formular-POSTs direkt zur Original-Seite gehen (im neuen Tab)
+      html = html.replace(/(href|src)="([^"]*)"/gi, (match, attr, url) => {
         if (!url || url.startsWith('#') || url.startsWith('javascript') || url.startsWith('data:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('/api/proxy')) return match;
         try {
           const abs = new URL(url, base).toString();
           return `${attr}="/api/proxy?url=${encodeURIComponent(abs)}"`;
+        } catch { return match; }
+      });
+      // Forms: action auf absolute URL zeigen lassen (öffnet in neuem Tab)
+      html = html.replace(/(<form[^>]*)\baction="([^"]*)"/gi, (match, formStart, action) => {
+        if (!action || action.startsWith('javascript') || action.startsWith('/api/proxy')) return match;
+        try {
+          const abs = new URL(action, base).toString();
+          return `${formStart}action="${abs}" target="_blank"`;
         } catch { return match; }
       });
       body = Buffer.from(html, 'utf-8');
