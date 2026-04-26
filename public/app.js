@@ -2682,7 +2682,7 @@ async function sendGamePrompt() {
     _gameShowLoading(true);
 
     try {
-        const token = localStorage.getItem('authToken');
+        const token = localStorage.getItem('token');
         const res = await fetch('/api/game/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
