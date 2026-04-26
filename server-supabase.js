@@ -2209,6 +2209,9 @@ WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklärender Text davor
   }
 });
 
+// In-Memory Safeguard Violations: username -> { count, blockedUntil }
+const kiSafeguardViolations = new Map();
+
 // ─── KI Proxy (Groq) ──────────────────────────────────────────────────────────
 app.post('/api/ki', async (req, res) => {
   const groqKey = process.env.GROQ_API_KEY;
@@ -2217,6 +2220,24 @@ app.post('/api/ki', async (req, res) => {
   const { messages } = req.body;
   if (!Array.isArray(messages) || !messages.length) {
     return res.status(400).json({ error: 'messages fehlt' });
+  }
+
+  // Nutzer optional identifizieren
+  let username = null;
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) username = jwt.verify(token, JWT_SECRET)?.username || null;
+  } catch {}
+
+  // Gesperrt?
+  if (username) {
+    const v = kiSafeguardViolations.get(username);
+    if (v?.blockedUntil && v.blockedUntil > Date.now()) {
+      const days = Math.ceil((v.blockedUntil - Date.now()) / 86400000);
+      return res.status(200).json({ choices: [{ message: { role: 'assistant',
+        content: `🚫 Dein Zugang zur KI ist wegen mehrfacher Verstöße für noch ${days} Tag(e) gesperrt.`
+      }}]});
+    }
   }
 
   try {
@@ -2243,14 +2264,41 @@ app.post('/api/ki', async (req, res) => {
             const sgData = await sgRes.json();
             const verdict = sgData.choices?.[0]?.message?.content?.trim().toLowerCase() || '';
             if (verdict.startsWith('unsafe')) {
-              return res.status(200).json({
-                choices: [{
-                  message: {
-                    role: 'assistant',
-                    content: 'Entschuldigung, ich kann darauf nicht antworten. Bitte stelle eine andere Frage.'
-                  }
-                }]
-              });
+              // Verstoß zählen
+              let count = 1;
+              if (username) {
+                const prev = kiSafeguardViolations.get(username) || { count: 0 };
+                count = prev.count + 1;
+                if (count >= 3) {
+                  kiSafeguardViolations.set(username, { count, blockedUntil: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+                  return res.status(200).json({ choices: [{ message: { role: 'assistant',
+                    content: '🚫 Du wurdest wegen 3 Verstößen gegen die Nutzungsrichtlinien für 7 Tage von der KI gesperrt.'
+                  }}]});
+                }
+                kiSafeguardViolations.set(username, { count, blockedUntil: null });
+                if (count === 2) {
+                  return res.status(200).json({ choices: [{ message: { role: 'assistant',
+                    content: '⚠️ **Letzte Warnung:** Deine Anfrage verstößt gegen die Nutzungsrichtlinien. Bei einem weiteren Verstoß wird dein KI-Zugang für 7 Tage gesperrt.'
+                  }}]});
+                }
+              }
+              // 1. Verstoß: KI antwortet über das Hauptmodell mit Ablehnung
+              const refusalMessages = [
+                ...messages.slice(0, -1),
+                { role: 'system', content: 'Die Anfrage des Nutzers wurde von unserem Sicherheitssystem als problematisch eingestuft. Erkläre dem Nutzer freundlich aber bestimmt, dass du bei diesem Thema nicht helfen kannst. Gib keine Informationen zu dem angeforderten Thema.' },
+                lastUserMsg
+              ];
+              try {
+                const refRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+                  body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: refusalMessages, stream: false, max_tokens: 300 })
+                });
+                if (refRes.ok) return res.json(await refRes.json());
+              } catch {}
+              return res.status(200).json({ choices: [{ message: { role: 'assistant',
+                content: 'Entschuldigung, bei diesem Thema kann ich leider nicht helfen. Bitte stelle eine andere Frage.'
+              }}]});
             }
           }
         } catch {}
