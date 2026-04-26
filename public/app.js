@@ -503,6 +503,10 @@ function showLoggedInUI() {
     // PS-Hilfe-Karte zeigen/verstecken
     const psCard = document.getElementById('psModeCard');
     if (psCard) psCard.style.display = currentProfile?.ps_account ? '' : 'none';
+
+    // Spiel-erstellen-Karte zeigen/verstecken (nur Pro)
+    const gameCard = document.getElementById('gameCreatorCard');
+    if (gameCard) gameCard.style.display = currentProfile?.isPro ? '' : 'none';
 }
 
 async function loadApps() {
@@ -2603,3 +2607,115 @@ async function endShareSession() {
     startScreenSharePolling();
 }
 
+
+// ─── Game Creator ─────────────────────────────────────────────────────────────
+let _gameCurrentCode = '';
+
+function openGameCreator() {
+    if (!currentProfile?.isPro) {
+        showAlert('Spiele erstellen ist nur für PRO-Nutzer verfügbar.', 'error');
+        return;
+    }
+    const overlay = document.getElementById('gameCreatorOverlay');
+    if (overlay) { overlay.style.display = 'flex'; }
+}
+
+function closeGameCreator() {
+    const overlay = document.getElementById('gameCreatorOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+function _gameSetStatus(msg) {
+    const el = document.getElementById('gameStatus');
+    if (el) el.textContent = msg;
+}
+
+function _gameShowLoading(show) {
+    const empty = document.getElementById('gamePreviewEmpty');
+    const loading = document.getElementById('gamePreviewLoading');
+    const frame = document.getElementById('gamePreviewFrame');
+    if (show) {
+        if (empty) empty.style.display = 'none';
+        if (loading) { loading.style.display = 'flex'; }
+        if (frame) frame.style.display = 'none';
+    } else {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function _gameShowFrame(code) {
+    const frame = document.getElementById('gamePreviewFrame');
+    const empty = document.getElementById('gamePreviewEmpty');
+    const dlBtn = document.getElementById('gameDownloadBtn');
+    if (!frame) return;
+    const blob = new Blob([code], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    frame.src = url;
+    frame.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+    if (dlBtn) dlBtn.style.display = '';
+}
+
+function _gameAddHistoryBubble(role, text) {
+    const history = document.getElementById('gamePromptHistory');
+    if (!history) return;
+    const div = document.createElement('div');
+    div.className = 'game-history-bubble ' + role;
+    div.textContent = (role === 'user' ? '👤 ' : '🤖 ') + text;
+    history.appendChild(div);
+    history.scrollTop = history.scrollHeight;
+}
+
+async function sendGamePrompt() {
+    const input = document.getElementById('gamePromptInput');
+    const sendBtn = document.getElementById('gameSendBtn');
+    const prompt = input?.value?.trim();
+    if (!prompt) return;
+
+    input.value = '';
+    sendBtn.disabled = true;
+    sendBtn.textContent = '⏳ Generiere...';
+
+    const isImprovement = !!_gameCurrentCode;
+    _gameAddHistoryBubble('user', isImprovement ? '🔧 Verbessern: ' + prompt : prompt);
+    _gameSetStatus(isImprovement ? 'KI verbessert dein Spiel...' : 'KI programmiert dein Spiel...');
+    _gameShowLoading(true);
+
+    try {
+        const token = localStorage.getItem('authToken');
+        const res = await fetch('/api/game/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ prompt, currentCode: _gameCurrentCode || undefined })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.code) {
+            _gameShowLoading(false);
+            _gameSetStatus('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            _gameAddHistoryBubble('ai', 'Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            return;
+        }
+        _gameCurrentCode = data.code;
+        _gameShowLoading(false);
+        _gameShowFrame(data.code);
+        _gameSetStatus('Spiel bereit! ' + (isImprovement ? 'Verbesserung angewendet.' : ''));
+        _gameAddHistoryBubble('ai', isImprovement ? 'Spiel wurde verbessert!' : 'Spiel erfolgreich generiert!');
+    } catch (err) {
+        _gameShowLoading(false);
+        _gameSetStatus('Verbindungsfehler. Bitte versuche es erneut.');
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = _gameCurrentCode ? '🔧 Verbessern' : '✨ Spiel generieren';
+    }
+}
+
+function downloadGame() {
+    if (!_gameCurrentCode) return;
+    const blob = new Blob([_gameCurrentCode], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ehoser-spiel.html';
+    a.click();
+    URL.revokeObjectURL(url);
+}
