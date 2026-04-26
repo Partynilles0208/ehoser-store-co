@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="styles.css?v=8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <!-- Sofort schwarzer Hintergrund + alles außer Splash verstecken -->
     <style>
         html { background: #000; }
@@ -130,8 +131,11 @@
                         <h1 id="modeTitle" class="mode-title">Ehoser – Offizielle Website</h1>
                         <p id="modeSubtitle" class="mode-subtitle">Willkommen auf der offiziellen Website von Ehoser. Hier findest du exklusive Apps im APK Store, kostenlose Online-Spiele, KI-Tools, den Face-Warp-Editor und vieles mehr – alles an einem Ort, entwickelt von Nils Becker.</p>
                         <div id="personalizationBanner" class="personalization-banner" style="display:none;"></div>
+                        <div class="mode-search-bar">
+                            <input type="text" id="modeSearchInput" class="mode-search-input" placeholder="Feature suchen…" oninput="filterModeCards(this.value)" autocomplete="off">
+                        </div>
                     </div>
-                    <div class="mode-cards">
+                    <div class="mode-cards" id="modeCardsGrid">
                         <button class="mode-card" onclick="selectMode('store')">
                             <div class="mode-card-icon">📦</div>
                             <div class="mode-card-body">
@@ -202,6 +206,30 @@
                                 <h3>KI</h3>
                                 <p>Stell der künstlichen Intelligenz Fragen – Konversation mit Verlauf, powered by Gemini.</p>
                                 <span class="mode-badge mode-badge-ki">Llama 3.3 70B</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-qr" onclick="selectMode('qr')">
+                            <div class="mode-card-icon">🔗</div>
+                            <div class="mode-card-body">
+                                <h3>QR-Code Generator</h3>
+                                <p>Erstelle sofort QR-Codes aus jedem Text oder Link – als Bild herunterladen.</p>
+                                <span class="mode-badge mode-badge-qr">Kostenlos & Offline</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-calc" onclick="selectMode('calc')">
+                            <div class="mode-card-icon">🧮</div>
+                            <div class="mode-card-body">
+                                <h3>Taschenrechner</h3>
+                                <p>Wissenschaftlicher Taschenrechner mit sin, cos, tan, Wurzel, Potenzen und Verlauf.</p>
+                                <span class="mode-badge mode-badge-calc">Wissenschaftlich</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-notes" onclick="selectMode('notes')">
+                            <div class="mode-card-icon">📝</div>
+                            <div class="mode-card-body">
+                                <h3>Notizen</h3>
+                                <p>Erstelle Notizen die direkt im Browser gespeichert werden – keine Anmeldung nötig.</p>
+                                <span class="mode-badge mode-badge-notes">Lokal gespeichert</span>
                             </div>
                         </button>
 
@@ -656,6 +684,91 @@
                     <button id="gamesPrevBtn" class="btn-secondary" onclick="changeGamesPage(-1)" disabled>← Zurück</button>
                     <span id="gamesPageInfo">Seite 1</span>
                     <button id="gamesNextBtn" class="btn-secondary" onclick="changeGamesPage(1)">Weiter →</button>
+                </div>
+            </section>
+
+            <!-- ── QR-Code Generator ───────────────────────────────── -->
+            <section id="qr" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>QR-Code Generator</h2>
+                </div>
+                <div class="qr-container">
+                    <div class="qr-input-row">
+                        <input type="text" id="qrInput" class="qr-input" placeholder="Text oder URL eingeben…" oninput="generateQR()" autocomplete="off">
+                    </div>
+                    <div id="qrOutput" class="qr-output">
+                        <canvas id="qrCanvas"></canvas>
+                    </div>
+                    <div id="qrActions" class="qr-actions" style="display:none;">
+                        <button class="btn-primary" onclick="downloadQR()">⬇ Herunterladen (PNG)</button>
+                        <button class="btn-secondary" onclick="copyQRToClipboard()">📋 Als Bild kopieren</button>
+                    </div>
+                    <p id="qrEmpty" class="qr-empty">Gib oben Text oder eine URL ein – der QR-Code erscheint sofort.</p>
+                </div>
+            </section>
+
+            <!-- ── Taschenrechner ──────────────────────────────────── -->
+            <section id="calc" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>Taschenrechner</h2>
+                </div>
+                <div class="calc-wrapper">
+                    <div class="calc-display">
+                        <div id="calcExpression" class="calc-expression"></div>
+                        <div id="calcResult" class="calc-result">0</div>
+                    </div>
+                    <div class="calc-grid">
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('sin(')">sin</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('cos(')">cos</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('tan(')">tan</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('sqrt(')">√</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('Math.PI')">π</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('Math.E')">e</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('log(')">log</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('**')">xⁿ</button>
+
+                        <button class="calc-btn calc-btn-clear" onclick="calcClear()">AC</button>
+                        <button class="calc-btn calc-btn-del" onclick="calcDel()">⌫</button>
+                        <button class="calc-btn" onclick="calcInput('(')">(</button>
+                        <button class="calc-btn" onclick="calcInput(')')">)</button>
+
+                        <button class="calc-btn" onclick="calcInput('7')">7</button>
+                        <button class="calc-btn" onclick="calcInput('8')">8</button>
+                        <button class="calc-btn" onclick="calcInput('9')">9</button>
+                        <button class="calc-btn calc-btn-op" onclick="calcInput('/')">÷</button>
+
+                        <button class="calc-btn" onclick="calcInput('4')">4</button>
+                        <button class="calc-btn" onclick="calcInput('5')">5</button>
+                        <button class="calc-btn" onclick="calcInput('6')">6</button>
+                        <button class="calc-btn calc-btn-op" onclick="calcInput('*')">×</button>
+
+                        <button class="calc-btn" onclick="calcInput('1')">1</button>
+                        <button class="calc-btn" onclick="calcInput('2')">2</button>
+                        <button class="calc-btn" onclick="calcInput('3')">3</button>
+                        <button class="calc-btn calc-btn-op" onclick="calcInput('-')">−</button>
+
+                        <button class="calc-btn calc-btn-zero" onclick="calcInput('0')">0</button>
+                        <button class="calc-btn" onclick="calcInput('.')">.</button>
+                        <button class="calc-btn calc-btn-op" onclick="calcInput('+')">+</button>
+                        <button class="calc-btn calc-btn-eq" onclick="calcEquals()">=</button>
+                    </div>
+                    <div id="calcHistory" class="calc-history"></div>
+                </div>
+            </section>
+
+            <!-- ── Notizen ─────────────────────────────────────────── -->
+            <section id="notes" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>Notizen</h2>
+                    <button class="btn-primary" onclick="notesAddNew()" style="margin-left:auto;">+ Neue Notiz</button>
+                </div>
+                <div id="notesGrid" class="notes-grid"></div>
+                <div id="notesEmpty" class="notes-empty" style="display:none;">
+                    <div style="font-size:3rem;">📝</div>
+                    <p>Noch keine Notizen. Klicke oben auf <strong>+ Neue Notiz</strong>.</p>
                 </div>
             </section>
 
