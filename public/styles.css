@@ -2182,20 +2182,20 @@ textarea:focus {
  
  
 /* -- Intro Splash --
-   0.3s   Blauer E rollt rein
-   2.7s   ehoser Text
-   4.4s   Pinker E rollt rein
-   6.7s   by Nils Becker
-   8.6s   Glow
-  10.9s   Beide rollen raus
-  12.0s   Badge Blau (KI & Kreativitaet)
-  12.7s   Badge Gruen (Kostenlos & Datenschutz)
-  13.5s   Blitz 1 - alles weg
-  13.8s   Grosses Logo (JS)
-  14.1s   Shine
-  14.5s   Tagline von rechts
-  15.3s   Finaler Blitz
-  15.6s   Splash weg (JS)
+   0.4s   Blauer E rollt rein
+   3.8s   ehoser Text
+   6.2s   Pinker E rollt rein
+   9.4s   by Nils Becker
+  12.0s   Glow
+  15.3s   Beide rollen raus
+  16.8s   Badge Blau (KI & Kreativitaet)
+  17.8s   Badge Gruen (Kostenlos & Datenschutz)
+  18.9s   Blitz 1 - alles weg
+  19.2s   Grosses Logo (JS)
+  19.7s   Shine
+  20.3s   Tagline von rechts
+  21.4s   Finaler Blitz
+  21.8s   Splash weg (JS)
 -------------------------------------------------------------- */
 
 /* INTRO SPLASH */
@@ -2220,9 +2220,9 @@ textarea:focus {
     font-size: 4.5rem;
     background: linear-gradient(135deg, #0e8a9b, #4d9fff);
     box-shadow: 0 0 40px rgba(77,159,255,0.4);
-    animation: blue-roll-in 1.4s cubic-bezier(.2,.8,.3,1) 0.3s forwards,
-               logo-glow-blue 1.2s ease-in-out 8.6s forwards,
-               blue-roll-out 1s ease-in 10.9s forwards;
+    animation: blue-roll-in 2.0s cubic-bezier(.2,.8,.3,1) 0.4s forwards,
+               logo-glow-blue 1.7s ease-in-out 12.0s forwards,
+               blue-roll-out 1.4s ease-in 15.3s forwards;
 }
 
 .intro-ehoser-text {
@@ -2233,9 +2233,9 @@ textarea:focus {
     font-size: 2.8rem; font-weight: 900;
     color: #e0f4ff; letter-spacing: 0.04em;
     display: flex; align-items: center; opacity: 0;
-    animation: spit-right 0.5s cubic-bezier(.2,1.4,.4,1) 2.7s forwards,
-               text-glow-blue 1.2s ease-in-out 8.6s forwards,
-               text-fade-out 0.6s ease-in 10.9s forwards;
+    animation: spit-right 0.7s cubic-bezier(.2,1.4,.4,1) 3.8s forwards,
+               text-glow-blue 1.7s ease-in-out 12.0s forwards,
+               text-fade-out 0.8s ease-in 15.3s forwards;
 }
 
 .intro-logo-pink {
@@ -2244,9 +2244,9 @@ textarea:focus {
     font-size: 4.5rem;
     background: linear-gradient(135deg, #c0186a, #ff6eb4);
     box-shadow: 0 0 40px rgba(255,110,180,0.4);
-    animation: pink-roll-in 1.4s cubic-bezier(.2,.8,.3,1) 4.4s forwards,
-               logo-glow-pink 1.2s ease-in-out 8.6s forwards,
-               pink-roll-out 1s ease-in 10.9s forwards;
+    animation: pink-roll-in 2.0s cubic-bezier(.2,.8,.3,1) 6.2s forwards,
+               logo-glow-pink 1.7s ease-in-out 12.0s forwards,
+               pink-roll-out 1.4s ease-in 15.3s forwards;
 }
 
 .intro-nils-text {
@@ -2255,9 +2255,9 @@ textarea:focus {
     width: 260px; height: 110px;
     display: flex; flex-direction: column; justify-content: center;
     opacity: 0;
-    animation: spit-right 0.5s cubic-bezier(.2,1.4,.4,1) 6.7s forwards,
-               text-glow-pink 1.2s ease-in-out 8.6s forwards,
-               text-fade-out 0.6s ease-in 10.9s forwards;
+    animation: spit-right 0.7s cubic-bezier(.2,1.4,.4,1) 9.4s forwards,
+               text-glow-pink 1.7s ease-in-out 12.0s forwards,
+               text-fade-out 0.8s ease-in 15.3s forwards;
 }
 .intro-by {
     font-size: 0.78rem; font-weight: 500; color: #ff9fd4;
@@ -2279,14 +2279,14 @@ textarea:focus {
 
 #introBadgeBlue {
     top: calc(50% - 68px);
-    animation: badge-pop 0.4s cubic-bezier(.2,1.3,.4,1) 12.0s forwards,
-               badge-fade 0.3s ease-in 13.35s forwards;
+    animation: badge-pop 0.6s cubic-bezier(.2,1.3,.4,1) 16.8s forwards,
+               badge-fade 0.4s ease-in 18.7s forwards;
 }
 
 #introBadgeGreen {
     top: calc(50% + 20px);
-    animation: badge-pop 0.4s cubic-bezier(.2,1.3,.4,1) 12.7s forwards,
-               badge-fade 0.3s ease-in 13.35s forwards;
+    animation: badge-pop 0.6s cubic-bezier(.2,1.3,.4,1) 17.8s forwards,
+               badge-fade 0.4s ease-in 18.7s forwards;
 }
 
 .intro-badge-icon {
@@ -2315,7 +2315,7 @@ textarea:focus {
 .intro-flash {
     position: absolute; inset: 0; background: #fff;
     opacity: 0; z-index: 5;
-    animation: flash-bang 0.7s ease-out 13.5s forwards;
+    animation: flash-bang 1.0s ease-out 18.9s forwards;
 }
 
 /* Grosses Logo */
@@ -2331,7 +2331,7 @@ textarea:focus {
     position: absolute; inset: 0;
     background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
     transform: translateX(-200%);
-    animation: shine-sweep 0.55s ease 14.1s forwards;
+    animation: shine-sweep 0.8s ease 19.7s forwards;
     pointer-events: none;
 }
 
@@ -2345,14 +2345,14 @@ textarea:focus {
     letter-spacing: 0.04em; white-space: nowrap; opacity: 0;
     z-index: 6;
     text-shadow: 0 2px 20px rgba(14,138,155,0.9), 0 0 40px rgba(244,124,42,0.5);
-    animation: tagline-slide 0.4s cubic-bezier(.15,.8,.25,1) 14.5s forwards;
+    animation: tagline-slide 0.6s cubic-bezier(.15,.8,.25,1) 20.3s forwards;
 }
 
 /* Finaler Blitz */
 .intro-flash-final {
     position: absolute; inset: 0; background: #fff;
     opacity: 0; z-index: 10;
-    animation: final-flash 0.35s ease-out 15.3s forwards;
+    animation: final-flash 0.5s ease-out 21.4s forwards;
 }
 
 /* Keyframes */

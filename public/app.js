@@ -633,13 +633,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (bigLogo) {
                 setTimeout(() => {
                     bigLogo.style.opacity = '1';
-                    bigLogo.style.transition = 'opacity 0.12s ease, transform 0.5s cubic-bezier(.2,1.4,.3,1)';
+                    bigLogo.style.transition = 'opacity 0.15s ease, transform 0.7s cubic-bezier(.2,1.4,.3,1)';
                     bigLogo.style.transform = 'scale(1.1)';
                     setTimeout(() => {
-                        bigLogo.style.transition = 'transform 0.25s ease-out';
+                        bigLogo.style.transition = 'transform 0.35s ease-out';
                         bigLogo.style.transform = 'scale(1)';
-                    }, 500);
-                }, 13800);
+                    }, 700);
+                }, 19200);
             }
 
             // 15.6s: Finaler Blitz ist am Peak → Splash weg, Seite erscheint sofort
@@ -657,7 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => bodyFlash.remove(), 350);
                 }));
                 showCaptcha();
-            }, 15600);
+            }, 21800);
         }
     } else {
         showCaptcha();
