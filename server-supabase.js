@@ -2653,50 +2653,101 @@ app.post('/api/ki', async (req, res) => {
   }
 });
 
-  // Video-KI: Pollinations AI (kostenlos, stündliche Pollen-Refills)
+  // Video-KI: Komplett kostenlose HF ZeroGPU Space (hysts/zeroscope-v2) — kein API-Key nötig
 app.post('/api/ki/video/create', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
-  const pollinationsKey = process.env.POLLINATIONS_API_KEY;
-  if (!pollinationsKey) {
-    return res.status(503).json({
-      error: 'Kein API-Key konfiguriert. Registriere dich kostenlos auf enter.pollinations.ai und setze POLLINATIONS_API_KEY in Vercel.'
-    });
-  }
-  try {
-    const encodedPrompt = encodeURIComponent(prompt.slice(0, 500));
-    const videoUrl = `https://gen.pollinations.ai/video/${encodedPrompt}?model=wan-fast&key=${pollinationsKey}`;
-    const r = await fetch(videoUrl, {
-      headers: { 'Accept': 'video/mp4, */*' }
-    });
 
-    if (!r.ok) {
-      let error = 'Pollinations Video-Generierung fehlgeschlagen';
-      try {
-        const contentType = r.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const data = await r.json();
-          error = data?.error?.message || data?.error || error;
-          if (r.status === 402) error = 'Nicht genug Pollen. Kaufe Pollen auf enter.pollinations.ai oder warte auf das stündliche Refill.';
-          if (r.status === 401) error = 'Ungültiger Pollinations API-Key. Prüfe POLLINATIONS_API_KEY in Vercel.';
-        }
-      } catch {}
-      return res.status(502).json({ error });
+  const SPACE_BASE = 'https://hysts-zeroscope-v2.hf.space';
+  const hfKey = process.env.HUGGINGFACE_API_KEY;
+  const authHeaders = hfKey ? { 'Authorization': `Bearer ${hfKey}` } : {};
+
+  // Zufällige session_hash für Gradio-Queue
+  const sessionHash = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+  try {
+    // 1. Job in Gradio-Queue einreihen
+    const joinRes = await fetch(`${SPACE_BASE}/gradio_api/queue/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({
+        data: [prompt.slice(0, 400), 0, 24, 25],
+        fn_index: 0,
+        session_hash: sessionHash
+      })
+    });
+    if (!joinRes.ok) {
+      const txt = await joinRes.text().catch(() => '');
+      return res.status(502).json({ error: `Gradio Queue-Beitritt fehlgeschlagen (${joinRes.status}): ${txt.slice(0, 200)}` });
     }
 
-    const contentType = r.headers.get('content-type') || 'video/mp4';
-    const buffer = await r.arrayBuffer();
+    // 2. SSE-Stream lesen bis das Video fertig ist (max. 240 Sekunden)
+    const sseRes = await fetch(`${SPACE_BASE}/gradio_api/queue/data?session_hash=${sessionHash}`, {
+      headers: { Accept: 'text/event-stream', ...authHeaders }
+    });
+    if (!sseRes.ok || !sseRes.body) {
+      return res.status(502).json({ error: 'SSE-Stream konnte nicht geöffnet werden' });
+    }
+
+    const reader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let videoFileUrl = null;
+    const deadline = Date.now() + 240_000;
+
+    outer: while (Date.now() < deadline) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const blocks = buf.split('\n\n');
+      buf = blocks.pop() ?? '';
+      for (const block of blocks) {
+        let payload = null;
+        for (const line of block.split('\n')) {
+          if (line.startsWith('data: ')) {
+            try { payload = JSON.parse(line.slice(6)); } catch {}
+          }
+        }
+        if (!payload) continue;
+        if (payload.msg === 'process_completed') {
+          // Ausgabe: {video: {url, path, ...}}
+          const out = payload.output?.data?.[0];
+          const rawUrl = out?.video?.url || out?.url || out?.path;
+          if (rawUrl) {
+            videoFileUrl = rawUrl.startsWith('http') ? rawUrl : `${SPACE_BASE}${rawUrl}`;
+          }
+          reader.cancel();
+          break outer;
+        }
+        if (payload.msg === 'process_errored') {
+          reader.cancel();
+          return res.status(502).json({ error: payload.output?.error || 'Video-Generierung in Space fehlgeschlagen' });
+        }
+      }
+    }
+    reader.cancel();
+
+    if (!videoFileUrl) {
+      return res.status(504).json({ error: 'Timeout: Video-Generierung hat zu lange gedauert (>240s)' });
+    }
+
+    // 3. Videodatei herunterladen und an Frontend weiterleiten
+    const videoRes = await fetch(videoFileUrl, { headers: authHeaders });
+    if (!videoRes.ok) {
+      return res.status(502).json({ error: 'Generiertes Video konnte nicht geladen werden' });
+    }
+    const contentType = videoRes.headers.get('content-type') || 'video/mp4';
+    const buffer = await videoRes.arrayBuffer();
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'no-store');
     res.send(Buffer.from(buffer));
   } catch (err) {
-    res.status(502).json({ error: 'Verbindungsfehler zu Pollinations' });
+    res.status(502).json({ error: `Fehler bei Video-Generierung: ${err.message || err}` });
   }
 });
 
-  // Alter Polling-Endpunkt wird nicht mehr verwendet, da HF das Video direkt liefert.
 app.get('/api/ki/video/:id/status', async (req, res) => {
-    res.status(410).json({ error: 'Status-Polling wird nicht mehr verwendet. Video wird direkt erzeugt.' });
+  res.status(410).json({ error: 'Status-Polling wird nicht verwendet.' });
 });
 
 // Bild-Generierung (HuggingFace SDXL primär, Pollinations als Fallback)

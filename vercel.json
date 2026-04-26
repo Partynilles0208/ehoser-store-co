@@ -11,5 +11,10 @@
       "src": "/(.*)",
       "dest": "server-supabase.js"
     }
-  ]
+  ],
+  "functions": {
+    "server-supabase.js": {
+      "maxDuration": 300
+    }
+  }
 }
