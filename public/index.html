@@ -386,6 +386,29 @@
                             </div>
                         </button>
 
+                        <!-- ══ 15 NEUE TOOLS ══════════════════════════════════ -->
+                        <!-- Spiele -->
+                        <button class="mode-card mode-card-snake" onclick="selectMode('snake')"><div class="mode-card-icon">🐍</div><div class="mode-card-body"><h3>Snake</h3><p>Klassisches Snake – wachse durch Fressen, weiche den Wänden aus.</p><span class="mode-badge mode-badge-game">Canvas Game</span></div></button>
+                        <button class="mode-card mode-card-tictactoe" onclick="selectMode('tictactoe')"><div class="mode-card-icon">⭕</div><div class="mode-card-body"><h3>Tic Tac Toe</h3><p>Drei in einer Reihe gegen den Computer oder einen Freund.</p><span class="mode-badge mode-badge-game">2 Spieler</span></div></button>
+                        <button class="mode-card mode-card-memory2" onclick="selectMode('memory2')"><div class="mode-card-icon">🃏</div><div class="mode-card-body"><h3>Memory</h3><p>Emoji-Kartenpaare finden – wer die meisten Paare findet gewinnt.</p><span class="mode-badge mode-badge-game">Gedächtnis</span></div></button>
+                        <!-- Rechner -->
+                        <button class="mode-card mode-card-bmi" onclick="selectMode('bmi')"><div class="mode-card-icon">⚖️</div><div class="mode-card-body"><h3>BMI-Rechner</h3><p>Body Mass Index berechnen mit Gesundheitsbewertung und Grafik.</p><span class="mode-badge mode-badge-calc2">Gesundheit</span></div></button>
+                        <button class="mode-card mode-card-tip" onclick="selectMode('tip')"><div class="mode-card-icon">💶</div><div class="mode-card-body"><h3>Trinkgeld-Rechner</h3><p>Rechnung aufteilen, Trinkgeld berechnen – pro Person.</p><span class="mode-badge mode-badge-calc2">Finanzen</span></div></button>
+                        <!-- Text Tools -->
+                        <button class="mode-card mode-card-morse" onclick="selectMode('morse')"><div class="mode-card-icon">📡</div><div class="mode-card-body"><h3>Morse Code</h3><p>Text zu Morsecode und zurück – mit Audio-Wiedergabe.</p><span class="mode-badge mode-badge-text2">Audio</span></div></button>
+                        <button class="mode-card mode-card-caesar" onclick="selectMode('caesar')"><div class="mode-card-icon">🔐</div><div class="mode-card-body"><h3>Caesar-Chiffre</h3><p>Texte mit beliebiger Verschiebung ver- und entschlüsseln.</p><span class="mode-badge mode-badge-text2">Kryptographie</span></div></button>
+                        <!-- Dev Tools -->
+                        <button class="mode-card mode-card-uuid" onclick="selectMode('uuid')"><div class="mode-card-icon">🆔</div><div class="mode-card-body"><h3>UUID Generator</h3><p>RFC 4122 v4 UUIDs erzeugen, einzeln oder als Batch.</p><span class="mode-badge mode-badge-dev">RFC 4122</span></div></button>
+                        <button class="mode-card mode-card-boxshadow" onclick="selectMode('boxshadow')"><div class="mode-card-icon">🟫</div><div class="mode-card-body"><h3>Box-Shadow Generator</h3><p>CSS box-shadow visuell mit Schiebereglern erstellen und kopieren.</p><span class="mode-badge mode-badge-dev">CSS Tool</span></div></button>
+                        <button class="mode-card mode-card-httpstatus" onclick="selectMode('httpstatus')"><div class="mode-card-icon">🌐</div><div class="mode-card-body"><h3>HTTP Status Codes</h3><p>Alle HTTP-Statuscodes mit Erklärung auf einen Blick.</p><span class="mode-badge mode-badge-dev">Referenz</span></div></button>
+                        <!-- Produktivität -->
+                        <button class="mode-card mode-card-pomodoro" onclick="selectMode('pomodoro')"><div class="mode-card-icon">🍅</div><div class="mode-card-body"><h3>Pomodoro Timer</h3><p>25 Min Fokus, 5 Min Pause – die bewährteste Produktivitätstechnik.</p><span class="mode-badge mode-badge-prod">Fokus</span></div></button>
+                        <button class="mode-card mode-card-kanban" onclick="selectMode('kanban')"><div class="mode-card-icon">📋</div><div class="mode-card-body"><h3>Kanban Board</h3><p>Aufgaben in To-Do, In Progress und Done organisieren.</p><span class="mode-badge mode-badge-prod">Agile</span></div></button>
+                        <!-- Fun & Wellness -->
+                        <button class="mode-card mode-card-eightball" onclick="selectMode('eightball')"><div class="mode-card-icon">🎱</div><div class="mode-card-body"><h3>Magic 8-Ball</h3><p>Stelle eine Ja/Nein-Frage und erhalte eine mystische Antwort.</p><span class="mode-badge mode-badge-fun">Mystisch</span></div></button>
+                        <button class="mode-card mode-card-jokegen" onclick="selectMode('jokegen')"><div class="mode-card-icon">😂</div><div class="mode-card-body"><h3>Witz-Generator</h3><p>Deutsche Witze und Flachwitze per Zufallsgenerator.</p><span class="mode-badge mode-badge-fun">Comedy</span></div></button>
+                        <button class="mode-card mode-card-breathe" onclick="selectMode('breathe')"><div class="mode-card-icon">🫁</div><div class="mode-card-body"><h3>Atemübungen</h3><p>Box Breathing und 4-7-8 Methode – animierte Atemführung.</p><span class="mode-badge mode-badge-science">Wellness</span></div></button>
+
                         <!-- PS-Hilfe-Karte: nur sichtbar für PS-Nutzer (via JS gesteuert) -->
                         <button id="psModeCard" class="mode-card mode-card-ps" onclick="openPsHelp()" style="display:none;">
                             <div class="mode-card-icon">💙</div>
@@ -1580,10 +1603,261 @@ Ramen</textarea>
         </div>
     </div>
 
+    <!-- ══ 15 NEUE TOOL-SEKTIONEN ══════════════════════════════════════ -->
+
+    <!-- SNAKE -->
+    <section id="snake" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🐍 Snake</h2></div>
+      <div class="tool-card" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;">
+          <span id="snakeScore" style="font-size:1.1rem;font-weight:700;color:var(--brand);">Punkte: 0</span>
+          <span id="snakeHi" style="font-size:0.9rem;color:var(--text-soft);">Highscore: 0</span>
+          <button class="btn-primary btn-sm" onclick="snakeStart()">Neu starten</button>
+        </div>
+        <canvas id="snakeCanvas" width="400" height="400" style="border:2px solid var(--brand);border-radius:12px;background:#0d1b2a;touch-action:none;"></canvas>
+        <p style="font-size:0.82rem;color:var(--text-soft);">Pfeiltasten oder WASD zum Steuern – auf Mobilgeräten wischen.</p>
+      </div>
+    </section>
+
+    <!-- TIC TAC TOE -->
+    <section id="tictactoe" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>⭕ Tic Tac Toe</h2></div>
+      <div class="tool-card" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <p id="tttStatus" style="font-size:1.05rem;font-weight:600;color:var(--brand);">Du bist X – fang an!</p>
+        <div id="tttBoard" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:240px;"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-primary btn-sm" onclick="tttReset()">Neues Spiel</button>
+          <button class="btn-secondary btn-sm" onclick="tttToggleMode()">Gegen: <span id="tttModeLabel">KI</span></button>
+        </div>
+        <div id="tttScores" style="font-size:0.88rem;color:var(--text-soft);">X: 0 | O: 0 | Unentschieden: 0</div>
+      </div>
+    </section>
+
+    <!-- MEMORY -->
+    <section id="memory2" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🃏 Memory</h2></div>
+      <div class="tool-card" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center;">
+          <span id="memMoves" style="font-weight:700;color:var(--brand);">Züge: 0</span>
+          <span id="memPairs" style="color:var(--text-soft);">Paare: 0/8</span>
+          <button class="btn-primary btn-sm" onclick="memoryStart()">Neu mischen</button>
+        </div>
+        <div id="memoryBoard" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:380px;"></div>
+      </div>
+    </section>
+
+    <!-- BMI RECHNER -->
+    <section id="bmi" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>⚖️ BMI-Rechner</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Größe (cm)<input id="bmiHeight" type="number" class="input-field" placeholder="175" min="50" max="250"></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Gewicht (kg)<input id="bmiWeight" type="number" class="input-field" placeholder="70" min="20" max="300"></label>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Alter<input id="bmiAge" type="number" class="input-field" placeholder="25" min="2" max="120"></label>
+        <button class="btn-primary" onclick="bmiCalc()">Berechnen</button>
+        <div id="bmiResult" style="display:none;border-radius:14px;padding:20px;background:var(--bg-soft);text-align:center;">
+          <div id="bmiValue" style="font-size:3rem;font-weight:800;color:var(--brand);"></div>
+          <div id="bmiLabel" style="font-size:1.1rem;font-weight:600;margin:4px 0;"></div>
+          <div id="bmiBar" style="height:12px;border-radius:6px;background:linear-gradient(90deg,#3b82f6,#22c55e,#f59e0b,#ef4444);margin:12px 0;position:relative;"><div id="bmiMarker" style="position:absolute;top:-4px;width:4px;height:20px;background:#fff;border-radius:2px;transform:translateX(-50%);transition:left 0.5s;"></div></div>
+          <div id="bmiInfo" style="font-size:0.85rem;color:var(--text-soft);"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRINKGELD RECHNER -->
+    <section id="tip" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>💶 Trinkgeld-Rechner</h2></div>
+      <div class="tool-card" style="max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Rechnungsbetrag (€)<input id="tipBill" type="number" class="input-field" placeholder="45.50" min="0"></label>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Trinkgeld % <span id="tipPctLabel" style="color:var(--brand);font-weight:700;">10%</span><input id="tipPct" type="range" min="0" max="30" value="10" oninput="document.getElementById('tipPctLabel').textContent=this.value+'%';tipCalc()"></label>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Anzahl Personen<input id="tipPersons" type="number" class="input-field" placeholder="2" min="1" max="50" value="1"></label>
+        <button class="btn-primary" onclick="tipCalc()">Berechnen</button>
+        <div id="tipResult" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-box"><div class="stat-val" id="tipTotal"></div><div class="stat-lbl">Gesamt</div></div>
+          <div class="stat-box"><div class="stat-val" id="tipPP"></div><div class="stat-lbl">Pro Person</div></div>
+          <div class="stat-box"><div class="stat-val" id="tipTipOnly"></div><div class="stat-lbl">Trinkgeld</div></div>
+          <div class="stat-box"><div class="stat-val" id="tipTipPP"></div><div class="stat-lbl">TG / Person</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MORSE CODE -->
+    <section id="morse" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>📡 Morse Code</h2></div>
+      <div class="tool-card" style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;gap:8px;"><button class="btn-secondary btn-sm" id="morseDir1" onclick="morseSetDir(1)" style="flex:1;">Text → Morse</button><button class="btn-secondary btn-sm" id="morseDir2" onclick="morseSetDir(2)" style="flex:1;">Morse → Text</button></div>
+        <textarea id="morseInput" class="input-field" rows="4" placeholder="Text eingeben…" oninput="morseConvert()" style="resize:vertical;font-family:monospace;"></textarea>
+        <div id="morseOutput" style="background:var(--bg-soft);border-radius:10px;padding:14px;font-family:monospace;min-height:60px;word-break:break-all;font-size:0.95rem;letter-spacing:0.04em;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-primary btn-sm" onclick="morsePlay()">▶ Abspielen</button>
+          <button class="btn-secondary btn-sm" onclick="morseCopy()">Kopieren</button>
+          <button class="btn-secondary btn-sm" onclick="morseStop()">⏹ Stop</button>
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-soft);">Format: . = kurz, - = lang, Leerzeichen zwischen Buchstaben, / zwischen Wörtern.</p>
+      </div>
+    </section>
+
+    <!-- CAESAR CHIFFRE -->
+    <section id="caesar" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🔐 Caesar-Chiffre</h2></div>
+      <div class="tool-card" style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Text<textarea id="caesarInput" class="input-field" rows="4" placeholder="Text eingeben…" oninput="caesarConvert()" style="resize:vertical;"></textarea></label>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Verschiebung: <span id="caesarShiftLabel" style="color:var(--brand);font-weight:700;">3</span><input id="caesarShift" type="range" min="1" max="25" value="3" oninput="document.getElementById('caesarShiftLabel').textContent=this.value;caesarConvert()"></label>
+        <div style="display:flex;gap:8px;"><button class="btn-secondary btn-sm" id="caesarMode1" onclick="caesarSetMode('enc')" style="flex:1;">Verschlüsseln</button><button class="btn-secondary btn-sm" id="caesarMode2" onclick="caesarSetMode('dec')" style="flex:1;">Entschlüsseln</button></div>
+        <div id="caesarOutput" style="background:var(--bg-soft);border-radius:10px;padding:14px;font-family:monospace;min-height:60px;font-size:0.95rem;"></div>
+        <button class="btn-secondary btn-sm" onclick="caesarCopy()">Ergebnis kopieren</button>
+        <div id="caesarBrute" style="display:none;">
+          <p style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">Alle 25 Verschiebungen (Brute Force):</p>
+          <div id="caesarBruteList" style="font-family:monospace;font-size:0.8rem;background:var(--bg-soft);border-radius:10px;padding:12px;max-height:200px;overflow-y:auto;"></div>
+        </div>
+        <button class="btn-secondary btn-sm" onclick="caesarToggleBrute()">Brute Force anzeigen</button>
+      </div>
+    </section>
+
+    <!-- UUID GENERATOR -->
+    <section id="uuid" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🆔 UUID Generator</h2></div>
+      <div class="tool-card" style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <label style="font-size:0.9rem;">Anzahl: <input id="uuidCount" type="number" class="input-field" min="1" max="100" value="1" style="width:80px;display:inline-block;"></label>
+          <button class="btn-primary" onclick="uuidGenerate()">Generieren</button>
+          <button class="btn-secondary btn-sm" onclick="uuidCopyAll()">Alle kopieren</button>
+        </div>
+        <div id="uuidList" style="background:var(--bg-soft);border-radius:12px;padding:14px;font-family:monospace;font-size:0.9rem;display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;"></div>
+        <p style="font-size:0.8rem;color:var(--text-soft);">RFC 4122 Version 4 – kryptographisch zufällig, clientseitig generiert.</p>
+      </div>
+    </section>
+
+    <!-- BOX-SHADOW GENERATOR -->
+    <section id="boxshadow" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🟫 Box-Shadow Generator</h2></div>
+      <div class="tool-card" style="max-width:700px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <label class="slider-label">Offset X: <span id="bsXLabel">0</span>px<input type="range" id="bsX" min="-50" max="50" value="0" oninput="bsUpdate()"></label>
+          <label class="slider-label">Offset Y: <span id="bsYLabel">10</span>px<input type="range" id="bsY" min="-50" max="50" value="10" oninput="bsUpdate()"></label>
+          <label class="slider-label">Blur: <span id="bsBlurLabel">20</span>px<input type="range" id="bsBlur" min="0" max="100" value="20" oninput="bsUpdate()"></label>
+          <label class="slider-label">Spread: <span id="bsSpreadLabel">0</span>px<input type="range" id="bsSpread" min="-30" max="50" value="0" oninput="bsUpdate()"></label>
+          <label class="slider-label">Farbe<input type="color" id="bsColor" value="#000000" oninput="bsUpdate()" style="width:100%;height:36px;border-radius:8px;border:none;cursor:pointer;"></label>
+          <label class="slider-label">Deckkraft: <span id="bsOpacLabel">0.3</span><input type="range" id="bsOpac" min="0" max="100" value="30" oninput="bsUpdate()"></label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;"><input type="checkbox" id="bsInset" onchange="bsUpdate()"> Inset</label>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div id="bsPreview" style="flex:1;min-height:180px;background:var(--card);border-radius:16px;display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--text-soft);">Vorschau</div>
+          <div id="bsCode" style="background:var(--bg-soft);border-radius:10px;padding:12px;font-family:monospace;font-size:0.82rem;word-break:break-all;"></div>
+          <button class="btn-primary btn-sm" onclick="bsCopy()">CSS kopieren</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- HTTP STATUS CODES -->
+    <section id="httpstatus" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🌐 HTTP Status Codes</h2></div>
+      <div class="tool-card" style="max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
+        <input id="httpSearch" type="text" class="input-field" placeholder="Code oder Beschreibung suchen…" oninput="httpFilter()">
+        <div id="httpList" style="display:flex;flex-direction:column;gap:8px;max-height:520px;overflow-y:auto;"></div>
+      </div>
+    </section>
+
+    <!-- POMODORO TIMER -->
+    <section id="pomodoro" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🍅 Pomodoro Timer</h2></div>
+      <div class="tool-card" style="max-width:440px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" id="pomoBtnFocus" onclick="pomoSet('focus')" style="min-width:110px;">🍅 Fokus 25 Min</button>
+          <button class="btn-secondary btn-sm" id="pomoBtnShort" onclick="pomoSet('short')" style="min-width:110px;">☕ Kurze Pause</button>
+          <button class="btn-secondary btn-sm" id="pomoBtnLong" onclick="pomoSet('long')" style="min-width:110px;">🌴 Lange Pause</button>
+        </div>
+        <svg viewBox="0 0 200 200" width="200" height="200" style="transform:rotate(-90deg);">
+          <circle cx="100" cy="100" r="88" fill="none" stroke="var(--bg-soft)" stroke-width="12"/>
+          <circle id="pomoRing" cx="100" cy="100" r="88" fill="none" stroke="var(--brand)" stroke-width="12" stroke-linecap="round" stroke-dasharray="553" stroke-dashoffset="0" style="transition:stroke-dashoffset 1s linear;"/>
+        </svg>
+        <div id="pomoTime" style="font-size:3.5rem;font-weight:800;color:var(--brand);margin-top:-170px;margin-bottom:130px;letter-spacing:0.04em;">25:00</div>
+        <div id="pomoLabel" style="font-size:1rem;font-weight:600;color:var(--text-soft);">Fokus-Session</div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn-primary" id="pomoPlayBtn" onclick="pomoToggle()">▶ Start</button>
+          <button class="btn-secondary" onclick="pomoReset()">↺ Reset</button>
+        </div>
+        <div style="font-size:0.88rem;color:var(--text-soft);">Abgeschlossene Pomodoros heute: <span id="pomoDoneCount" style="font-weight:700;color:var(--brand);">0</span></div>
+      </div>
+    </section>
+
+    <!-- KANBAN BOARD -->
+    <section id="kanban" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>📋 Kanban Board</h2></div>
+      <div class="tool-card" style="padding:16px;">
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+          <input id="kanbanInput" class="input-field" placeholder="Neue Aufgabe…" style="flex:1;min-width:200px;" onkeydown="if(event.key==='Enter')kanbanAdd()">
+          <button class="btn-primary btn-sm" onclick="kanbanAdd()">Hinzufügen</button>
+          <button class="btn-secondary btn-sm" onclick="kanbanClear()">Alles löschen</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;min-height:300px;">
+          <div class="kanban-col" id="kanbanTodo" ondragover="event.preventDefault()" ondrop="kanbanDrop(event,'todo')"><h4 style="color:#f59e0b;margin:0 0 10px;">📌 To-Do</h4><div class="kanban-items" id="kanbanTodoList"></div></div>
+          <div class="kanban-col" id="kanbanProgress" ondragover="event.preventDefault()" ondrop="kanbanDrop(event,'progress')"><h4 style="color:var(--brand);margin:0 0 10px;">⚡ In Progress</h4><div class="kanban-items" id="kanbanProgressList"></div></div>
+          <div class="kanban-col" id="kanbanDone" ondragover="event.preventDefault()" ondrop="kanbanDrop(event,'done')"><h4 style="color:#22c55e;margin:0 0 10px;">✅ Done</h4><div class="kanban-items" id="kanbanDoneList"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAGIC 8-BALL -->
+    <section id="eightball" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🎱 Magic 8-Ball</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <input id="eightballQ" class="input-field" placeholder="Stelle eine Ja/Nein-Frage…" style="width:100%;" onkeydown="if(event.key==='Enter')eightballShake()">
+        <div id="eightballBall" onclick="eightballShake()" style="width:200px;height:200px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#2a2a4a,#000);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(14,138,155,0.3);transition:transform 0.1s;user-select:none;">
+          <div style="width:100px;height:100px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1a3a5c,#0a0a2a);display:flex;align-items:center;justify-content:center;padding:10px;">
+            <div id="eightballAnswer" style="color:#4af;font-size:0.7rem;text-align:center;font-weight:600;line-height:1.3;">Frage stellen und hier klicken</div>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="eightballShake()">Schütteln!</button>
+      </div>
+    </section>
+
+    <!-- WITZ GENERATOR -->
+    <section id="jokegen" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>😂 Witz-Generator</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" id="jokeBtn1" onclick="jokeSetCat('all')" style="flex:1;">Alle</button>
+          <button class="btn-secondary btn-sm" id="jokeBtn2" onclick="jokeSetCat('flach')" style="flex:1;">Flachwitze</button>
+          <button class="btn-secondary btn-sm" id="jokeBtn3" onclick="jokeSetCat('dark')" style="flex:1;">Schwarzer Humor</button>
+        </div>
+        <div id="jokeSetup" style="font-size:1.1rem;font-weight:600;text-align:center;min-height:48px;"></div>
+        <div id="jokePunchline" style="font-size:1rem;color:var(--brand);font-weight:700;text-align:center;min-height:32px;display:none;"></div>
+        <button class="btn-primary" id="jokePunchBtn" onclick="jokeReveal()" style="display:none;">Antwort zeigen</button>
+        <button class="btn-primary" onclick="jokeNext()">Nächster Witz ▶</button>
+        <button class="btn-secondary btn-sm" onclick="jokeCopy()">Kopieren</button>
+      </div>
+    </section>
+
+    <!-- ATEMUBUNGEN -->
+    <section id="breathe" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🫁 Atemübungen</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" onclick="breatheSet('box')" style="flex:1;">Box Breathing</button>
+          <button class="btn-secondary btn-sm" onclick="breatheSet('478')" style="flex:1;">4-7-8</button>
+          <button class="btn-secondary btn-sm" onclick="breatheSet('calm')" style="flex:1;">Beruhigung</button>
+        </div>
+        <div id="breatheCircle" style="width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,var(--brand) 0%,rgba(14,138,155,0.1) 100%);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;transition:transform 4s ease,opacity 4s ease;">
+          Bereit
+        </div>
+        <div id="breathePhase" style="font-size:1.3rem;font-weight:700;color:var(--brand);"></div>
+        <div id="breatheCount" style="font-size:2.5rem;font-weight:800;font-family:monospace;color:var(--text-main);"></div>
+        <div id="breatheDesc" style="font-size:0.88rem;color:var(--text-soft);text-align:center;max-width:320px;"></div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn-primary" id="breatheBtn" onclick="breatheToggle()">▶ Start</button>
+          <button class="btn-secondary" onclick="breatheStop()">⏹ Stop</button>
+        </div>
+        <div id="breatheCycles" style="font-size:0.85rem;color:var(--text-soft);">Zyklen: <span id="breatheCycleCount" style="font-weight:700;color:var(--brand);">0</span></div>
+      </div>
+    </section>
+
         </main>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
     <script src="app.js?v=2"></script>
+    <script src="tools.js?v=1"></script>
 </body>
 </html>

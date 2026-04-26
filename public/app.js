@@ -1208,6 +1208,36 @@ function selectMode(mode) {
     } else if (mode === 'metronome') {
         showSection('metronome');
         metroInit();
+    } else if (mode === 'snake') {
+        showSection('snake'); initSnake();
+    } else if (mode === 'tictactoe') {
+        showSection('tictactoe'); initTictactoe();
+    } else if (mode === 'memory2') {
+        showSection('memory2'); initMemory2();
+    } else if (mode === 'bmi') {
+        showSection('bmi'); initBmi();
+    } else if (mode === 'tip') {
+        showSection('tip'); initTip();
+    } else if (mode === 'morse') {
+        showSection('morse'); initMorse();
+    } else if (mode === 'caesar') {
+        showSection('caesar'); initCaesar();
+    } else if (mode === 'uuid') {
+        showSection('uuid'); initUuid();
+    } else if (mode === 'boxshadow') {
+        showSection('boxshadow'); initBoxshadow();
+    } else if (mode === 'httpstatus') {
+        showSection('httpstatus'); initHttpstatus();
+    } else if (mode === 'pomodoro') {
+        showSection('pomodoro'); initPomodoro();
+    } else if (mode === 'kanban') {
+        showSection('kanban'); initKanban();
+    } else if (mode === 'eightball') {
+        showSection('eightball'); initEightball();
+    } else if (mode === 'jokegen') {
+        showSection('jokegen'); initJokegen();
+    } else if (mode === 'breathe') {
+        showSection('breathe'); initBreathe();
     } else {
         showSection('mode-select');
     }
