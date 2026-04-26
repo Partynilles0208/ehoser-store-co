@@ -2166,7 +2166,7 @@ WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklärender Text davor
           { role: 'user', content: userMsg }
         ],
         temperature: 0.7,
-        max_tokens: 16000
+        max_tokens: 6000
       })
     });
 
