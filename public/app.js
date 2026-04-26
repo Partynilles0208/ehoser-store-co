@@ -101,15 +101,16 @@ function startRepoUpdatePolling() {
     _repoUpdateInterval = setInterval(checkRepoVersion, 90000);
 }
 
-// ── Tarnmodus ──────────────────────────────────────────────────────────────
+// ── Tarnmodus (Screenshare/Recording-Detektion) ─────────────────────────────
 let _tarnActive = false;
 let _tarnMouseTimer = null;
+let _screenShareActive = false;
+let _recordingActive = false;
 
 function toggleTarnmodus() {
     _tarnActive = !_tarnActive;
     if (_tarnActive) {
         document.body.classList.add('tarn-active');
-        // Beim Aktivieren: Maus ist wahrscheinlich gerade auf der Seite → kurz sichtbar lassen
         document.body.classList.add('tarn-mouse-inside');
         localStorage.setItem('tarnmodus', '1');
     } else {
@@ -118,32 +119,101 @@ function toggleTarnmodus() {
     }
 }
 
-// Mausbewegung im Fenster → echten Inhalt zeigen
+// Screenshare-Detection: Hook getDisplayMedia
+const originalGetDisplayMedia = navigator.mediaDevices?.getDisplayMedia;
+if (originalGetDisplayMedia) {
+    navigator.mediaDevices.getDisplayMedia = async function(constraints) {
+        console.log('[Tarnmodus] Screensharing gestartet');
+        _screenShareActive = true;
+        if (!_tarnActive) {
+            _tarnActive = true;
+            document.body.classList.add('tarn-active');
+            document.body.classList.remove('tarn-mouse-inside');
+        }
+        try {
+            const stream = await originalGetDisplayMedia.call(this, constraints);
+            stream.getTracks().forEach(track => {
+                track.onended = function() {
+                    console.log('[Tarnmodus] Screensharing beendet');
+                    _screenShareActive = false;
+                    if (localStorage.getItem('tarnmodus') !== '1') {
+                        _tarnActive = false;
+                        document.body.classList.remove('tarn-active', 'tarn-mouse-inside');
+                    }
+                };
+            });
+            return stream;
+        } catch (e) {
+            _screenShareActive = false;
+            throw e;
+        }
+    };
+}
+
+// MediaRecorder-Detection für OBS/Streaming
+const originalMediaRecorder = window.MediaRecorder;
+if (originalMediaRecorder) {
+    window.MediaRecorder = class extends originalMediaRecorder {
+        constructor(stream, options) {
+            super(stream, options);
+            console.log('[Tarnmodus] Aufnahme gestartet');
+            _recordingActive = true;
+            if (!_tarnActive) {
+                _tarnActive = true;
+                document.body.classList.add('tarn-active');
+                document.body.classList.remove('tarn-mouse-inside');
+            }
+        }
+        stop() {
+            console.log('[Tarnmodus] Aufnahme beendet');
+            _recordingActive = false;
+            if (localStorage.getItem('tarnmodus') !== '1') {
+                _tarnActive = false;
+                document.body.classList.remove('tarn-active', 'tarn-mouse-inside');
+            }
+            return super.stop();
+        }
+    };
+}
+
+// Mausbewegung im Fenster → echten Inhalt zeigen (NUR wenn kein Screenshare/Recording)
 document.addEventListener('mousemove', function() {
-    if (!_tarnActive) return;
+    if (!_tarnActive || _screenShareActive || _recordingActive) return;
     document.body.classList.add('tarn-mouse-inside');
     clearTimeout(_tarnMouseTimer);
-    // Nach 2 Sekunden ohne Mausbewegung → Tarnbild wieder
     _tarnMouseTimer = setTimeout(function() {
-        if (_tarnActive) document.body.classList.remove('tarn-mouse-inside');
+        if (_tarnActive && !_screenShareActive && !_recordingActive) {
+            document.body.classList.remove('tarn-mouse-inside');
+        }
     }, 2000);
 });
 
-// Fenster verliert Fokus (Screenshot-Shortcut, Alt+Tab, OBS, Streaming) → sofort Tarnbild
+// Fenster verliert Fokus → sofort Tarnbild
 window.addEventListener('blur', function() {
     if (_tarnActive) document.body.classList.remove('tarn-mouse-inside');
 });
 window.addEventListener('focus', function() {
-    if (_tarnActive) document.body.classList.add('tarn-mouse-inside');
+    if (_tarnActive && !_screenShareActive && !_recordingActive) {
+        document.body.classList.add('tarn-mouse-inside');
+    }
 });
 
-// Tab versteckt (z.B. Alt+Tab, Screensharing) → Tarnbild
+// Tab versteckt → Tarnbild
 document.addEventListener('visibilitychange', function() {
     if (!_tarnActive) return;
-    if (document.hidden) {
+    if (document.hidden || _screenShareActive || _recordingActive) {
         document.body.classList.remove('tarn-mouse-inside');
     } else {
         document.body.classList.add('tarn-mouse-inside');
+    }
+});
+
+// Hotkey: Strg+Shift+T zum schnellen Aktivieren
+document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault();
+        toggleTarnmodus();
+        console.log('[Tarnmodus] Manuell ' + (_tarnActive ? 'aktiviert' : 'deaktiviert'));
     }
 });
 
