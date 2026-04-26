@@ -3477,26 +3477,26 @@ body[data-personalization-tone="focused"] .personalization-banner {
     .calc-result { font-size: 1.8rem; }
 }
 
-/* ── Tarnmodus ────────────────────────────────────────────────────────────── */
+/* ── Tarnmodus: Echte Screenshare/Recording-Detektion ────────────────────── */
 .tarn-overlay {
     position: fixed;
     inset: 0;
     z-index: 999999;
     background: url('/tarnbild.png') center/cover no-repeat;
     background-color: #000;
-    pointer-events: none;    /* user kann weiterhin klicken – Overlay fängt nichts ab */
+    pointer-events: none;      /* user kann weiterhin klicken – Overlay fängt nichts ab */
     opacity: 0;
-    transition: opacity 0s;  /* kein Fade – sofortiger Wechsel */
+    transition: opacity 0s;    /* sofortiger Wechsel – kein Fade */
     display: none;
 }
 
-/* Aktiver Tarnmodus: Overlay sichtbar wenn Fenster keinen Fokus hat */
+/* Tarnmodus AKTIV: Overlay wird nur sichtbar bei Screenshare/Recording/Blur */
 body.tarn-active .tarn-overlay {
     display: block;
     opacity: 1;
 }
 
-/* Maus bewegt sich über das Fenster → Overlay verstecken */
+/* Maus bewegt sich über das Fenster → echte Seite zeigen (Nutzer sieht normal) */
 body.tarn-active.tarn-mouse-inside .tarn-overlay {
     opacity: 0;
 }
@@ -3515,7 +3515,7 @@ body.tarn-active.tarn-mouse-inside .tarn-overlay {
     white-space: nowrap;
 }
 
-/* Navbar-Button */
+/* Navbar-Button (🛡 Icon) */
 .tarn-nav-btn {
     background: none;
     border: 1px solid rgba(255,255,255,0.15);
@@ -3526,13 +3526,15 @@ body.tarn-active.tarn-mouse-inside .tarn-overlay {
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
     line-height: 1;
+    position: relative;
+    title: "Strg+Shift+T zum schnellen Aktivieren";
 }
 .tarn-nav-btn:hover {
     background: rgba(255,255,255,0.08);
     color: #f0f8ff;
 }
 body.tarn-active .tarn-nav-btn {
-    background: rgba(230,50,50,0.18);
-    border-color: rgba(230,50,50,0.4);
-    color: #f87171;
+    background: rgba(50,150,100,0.25);
+    border-color: rgba(74,222,128,0.5);
+    color: #4ade80;
 }
