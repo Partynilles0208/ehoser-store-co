@@ -244,7 +244,7 @@ function applyPersonalizationUI() {
     document.body.classList.toggle('personalized-ui', Boolean(personalization));
 
     if (titleEl) {
-        titleEl.textContent = currentUser ? `Ehoser fuer ${currentUser.username}` : defaultTitle;
+        titleEl.textContent = currentUser ? `Ehoser für ${currentUser.username}` : defaultTitle;
     }
     if (subtitleEl) {
         subtitleEl.textContent = personalization?.summary || defaultSubtitle;
