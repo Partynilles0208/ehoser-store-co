@@ -257,6 +257,8 @@ function normalizeSettings(raw) {
     language: typeof src.language === 'string' ? src.language : 'de',
     design: typeof src.design === 'string' ? src.design : 'standard',
     energySaver: Boolean(src.energySaver),
+    displayName: typeof src.displayName === 'string' ? src.displayName.trim().slice(0, 40) : '',
+    avatarUrl: typeof src.avatarUrl === 'string' ? src.avatarUrl.trim().slice(0, 2048) : '',
     personalizationEnabled: src.personalizationEnabled !== false,
     personalization: normalizePersonalization(src.personalization)
   };
@@ -1752,7 +1754,14 @@ const CHAT_ALLOWED_MIME = new Set([
   'image/jpeg','image/png','image/gif','image/webp',
   'video/mp4','video/webm','video/quicktime',
   'audio/webm','audio/ogg','audio/mpeg','audio/wav',
-  'application/pdf'
+  'application/pdf','text/plain','text/csv',
+  'application/zip','application/x-zip-compressed',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-powerpoint'
 ]);
 const chatUpload = multer({
   storage: multer.memoryStorage(),
