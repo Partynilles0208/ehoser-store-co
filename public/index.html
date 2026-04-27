@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="styles.css?v=9">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
@@ -511,6 +511,46 @@
                 </div>
 
             </div>
+
+            <!-- ── Chat Sektion ─────────────────────────────────────── -->
+            <section id="chat" class="section">
+                <div class="chat-wrapper">
+                    <!-- Sidebar: Gespräche -->
+                    <div class="chat-sidebar" id="chatSidebar">
+                        <div class="chat-sidebar-header">
+                            <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                            <h2 class="chat-sidebar-title">💬 Chat</h2>
+                        </div>
+                        <div class="chat-new-dm">
+                            <input type="text" id="chatDmInput" class="chat-dm-input" placeholder="Nutzer suchen…" oninput="chatSearchUsers(this.value)" autocomplete="off">
+                            <div id="chatUserDropdown" class="chat-user-dropdown" style="display:none;"></div>
+                        </div>
+                        <div id="chatGroupList" class="chat-group-list">
+                            <div class="chat-loading">Gespräche werden geladen…</div>
+                        </div>
+                    </div>
+                    <!-- Hauptbereich: Nachrichten -->
+                    <div class="chat-main" id="chatMain">
+                        <div class="chat-empty-state" id="chatEmptyState">
+                            <div class="chat-empty-icon">💬</div>
+                            <h3>Wähle ein Gespräch</h3>
+                            <p>Suche nach einem Nutzernamen links, um ein neues Gespräch zu starten.</p>
+                        </div>
+                        <div class="chat-conv" id="chatConv" style="display:none;">
+                            <div class="chat-conv-header" id="chatConvHeader">
+                                <button class="chat-back-btn" onclick="closeChatConv()">←</button>
+                                <div class="chat-conv-name" id="chatConvName"></div>
+                                <div class="chat-conv-status" id="chatConvStatus"></div>
+                            </div>
+                            <div class="chat-messages" id="chatMessages"></div>
+                            <div class="chat-input-row">
+                                <textarea id="chatMsgInput" class="chat-msg-input" placeholder="Nachricht…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg();}"></textarea>
+                                <button class="chat-send-btn" onclick="sendChatMsg()">➤</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <section id="ki" class="section">
                 <!-- Name-Eingabe Modal -->
@@ -1905,7 +1945,7 @@ Ramen</textarea>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
     <script src="tools.js?v=1"></script>
 </body>
 </html>

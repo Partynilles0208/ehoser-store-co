@@ -1119,7 +1119,14 @@ function selectMode(mode) {
     } else if (mode === 'facewarp') {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
-        window.location.href = '/chat/';
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showAlert('Bitte zuerst anmelden, um den Chat zu nutzen.', 'error');
+            showSection('auth');
+            return;
+        }
+        showSection('chat');
+        initChatSection();
     } else if (mode === 'qr') {
         showSection('qr');
         setTimeout(() => document.getElementById('qrInput')?.focus(), 50);
@@ -2276,6 +2283,206 @@ function copyChatToken() {
         if (msg) msg.textContent = 'Token kopiert!';
     });
 }
+
+// ─── Inline Chat ──────────────────────────────────────────────────────────────
+let _chatCurrentGroupId = null;
+let _chatCurrentGroupName = null;
+let _chatPollInterval = null;
+let _chatLastMsgId = 0;
+let _chatGroups = [];
+let _chatUserSearchTimer = null;
+
+async function initChatSection() {
+    _chatCurrentGroupId = null;
+    clearInterval(_chatPollInterval);
+    document.getElementById('chatEmptyState').style.display = 'flex';
+    document.getElementById('chatConv').style.display = 'none';
+    await chatLoadGroups();
+}
+
+async function chatLoadGroups() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const list = document.getElementById('chatGroupList');
+    try {
+        const res = await fetch(`${API_BASE}/chat/groups`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        _chatGroups = data.groups || [];
+        if (!_chatGroups.length) {
+            list.innerHTML = '<div class="chat-loading" style="color:#6a9bb8;font-size:0.9rem;padding:16px;">Noch keine Gespräche.<br>Suche einen Nutzer oben.</div>';
+            return;
+        }
+        list.innerHTML = _chatGroups.map(g => `
+            <button class="chat-group-item" onclick="openChatGroup('${escapeAttribute(g.id)}','${escapeAttribute(g.name)}')">
+                <div class="chat-group-avatar">${escapeHtml(g.name.charAt(0).toUpperCase())}</div>
+                <div class="chat-group-info">
+                    <div class="chat-group-name">${escapeHtml(g.name)}</div>
+                    <div class="chat-group-sub">Tippen zum öffnen</div>
+                </div>
+            </button>
+        `).join('');
+    } catch {
+        list.innerHTML = '<div class="chat-loading" style="color:#e57373;">Fehler beim Laden.</div>';
+    }
+}
+
+function chatSearchUsers(query) {
+    const dropdown = document.getElementById('chatUserDropdown');
+    clearTimeout(_chatUserSearchTimer);
+    if (!query || query.length < 2) {
+        dropdown.style.display = 'none';
+        return;
+    }
+    _chatUserSearchTimer = setTimeout(async () => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        try {
+            const res = await fetch(`${API_BASE}/chat/users/search?q=${encodeURIComponent(query)}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            const users = data.users || [];
+            if (!users.length) {
+                dropdown.innerHTML = '<div class="chat-dd-item chat-dd-empty">Kein Nutzer gefunden</div>';
+                dropdown.style.display = 'block';
+                return;
+            }
+            dropdown.innerHTML = users.map(u =>
+                `<div class="chat-dd-item" onclick="chatStartDM('${escapeAttribute(u)}')">${escapeHtml(u)}</div>`
+            ).join('');
+            dropdown.style.display = 'block';
+        } catch {
+            dropdown.style.display = 'none';
+        }
+    }, 300);
+}
+
+async function chatStartDM(targetUsername) {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    document.getElementById('chatUserDropdown').style.display = 'none';
+    document.getElementById('chatDmInput').value = '';
+
+    // Schauen ob bereits Gespräch existiert
+    const existing = _chatGroups.find(g => g.name === targetUsername || g.name === currentUser?.username + ' & ' + targetUsername || g.name === targetUsername + ' & ' + currentUser?.username);
+    if (existing) {
+        openChatGroup(existing.id, existing.name);
+        return;
+    }
+
+    // Neues Gespräch erstellen
+    const groupName = targetUsername;
+    const myUsername = currentUser?.username;
+    if (!myUsername) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/chat/groups`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+                name: groupName,
+                memberKeys: { [myUsername]: 'plain', [targetUsername]: 'plain' }
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showAlert(data.error || 'Gespräch konnte nicht erstellt werden.', 'error');
+            return;
+        }
+        await chatLoadGroups();
+        openChatGroup(data.id, data.name);
+    } catch {
+        showAlert('Netzwerkfehler beim Erstellen des Gesprächs.', 'error');
+    }
+}
+
+function openChatGroup(groupId, groupName) {
+    _chatCurrentGroupId = groupId;
+    _chatCurrentGroupName = groupName;
+    _chatLastMsgId = 0;
+    document.getElementById('chatEmptyState').style.display = 'none';
+    document.getElementById('chatConv').style.display = 'flex';
+    document.getElementById('chatConvName').textContent = groupName;
+    document.getElementById('chatConvStatus').textContent = '● Online';
+    document.getElementById('chatMessages').innerHTML = '';
+    clearInterval(_chatPollInterval);
+    chatFetchMessages();
+    _chatPollInterval = setInterval(chatFetchMessages, 3000);
+    setTimeout(() => document.getElementById('chatMsgInput')?.focus(), 50);
+    // Highlight aktive Gruppe
+    document.querySelectorAll('.chat-group-item').forEach(el => el.classList.remove('active'));
+    const btn = document.querySelector(`.chat-group-item[onclick*="${groupId}"]`);
+    if (btn) btn.classList.add('active');
+}
+
+function closeChatConv() {
+    clearInterval(_chatPollInterval);
+    _chatCurrentGroupId = null;
+    document.getElementById('chatConv').style.display = 'none';
+    document.getElementById('chatEmptyState').style.display = 'flex';
+}
+
+async function chatFetchMessages() {
+    if (!_chatCurrentGroupId) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+        let url = `${API_BASE}/chat/messages/${_chatCurrentGroupId}`;
+        if (_chatLastMsgId) url += `?after=${_chatLastMsgId}`;
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+        const msgs = data.messages || [];
+        if (!msgs.length) return;
+        const container = document.getElementById('chatMessages');
+        const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 40;
+        msgs.forEach(m => {
+            _chatLastMsgId = Math.max(_chatLastMsgId, m.id);
+            const isMe = m.sender === currentUser?.username;
+            const div = document.createElement('div');
+            div.className = `chat-msg ${isMe ? 'chat-msg-me' : 'chat-msg-other'}`;
+            const time = new Date(m.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+            div.innerHTML = `
+                ${!isMe ? `<div class="chat-msg-sender">${escapeHtml(m.sender)}</div>` : ''}
+                <div class="chat-msg-bubble">${escapeHtml(m.encrypted_content)}</div>
+                <div class="chat-msg-time">${time}</div>
+            `;
+            container.appendChild(div);
+        });
+        if (wasAtBottom) container.scrollTop = container.scrollHeight;
+    } catch {}
+}
+
+async function sendChatMsg() {
+    if (!_chatCurrentGroupId) return;
+    const input = document.getElementById('chatMsgInput');
+    const text = input?.value.trim();
+    if (!text) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    input.value = '';
+    input.style.height = 'auto';
+    try {
+        await fetch(`${API_BASE}/chat/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ groupId: _chatCurrentGroupId, encryptedContent: text })
+        });
+        await chatFetchMessages();
+    } catch {
+        showAlert('Nachricht konnte nicht gesendet werden.', 'error');
+    }
+}
+
+document.addEventListener('click', e => {
+    const dropdown = document.getElementById('chatUserDropdown');
+    const input = document.getElementById('chatDmInput');
+    if (dropdown && input && !input.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.style.display = 'none';
+    }
+});
 
 // ─── Psychologischer Support (PS) ────────────────────────────────────────────
 
