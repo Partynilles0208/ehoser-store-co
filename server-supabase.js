@@ -1840,7 +1840,7 @@ app.post('/api/chat/groups', async (req, res) => {
   }
   const id = crypto.randomUUID();
   const { error: gErr } = await supabase.from('chat_groups').insert({ id, name: name.trim(), created_by: user.username });
-  if (gErr) return res.status(500).json({ error: 'Fehler beim Erstellen der Gruppe' });
+  if (gErr) return res.status(500).json({ error: 'Fehler beim Erstellen der Gruppe: ' + gErr.message });
 
   const rows = Object.entries(memberKeys).map(([username, encKey]) => ({
     group_id: id, username, encrypted_group_key: String(encKey).substring(0, 8192)
@@ -1848,7 +1848,7 @@ app.post('/api/chat/groups', async (req, res) => {
   const { error: mErr } = await supabase.from('chat_group_members').insert(rows);
   if (mErr) {
     await supabase.from('chat_groups').delete().eq('id', id);
-    return res.status(500).json({ error: 'Fehler beim Hinzufügen der Mitglieder' });
+    return res.status(500).json({ error: 'Fehler beim Hinzufügen der Mitglieder: ' + mErr.message });
   }
   res.json({ id, name: name.trim() });
 });
