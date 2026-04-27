@@ -35,6 +35,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // Admin-Client mit service_role key â€“ umgeht RLS fÃ¼r Server-seitige Operationen
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const CHAT_MEDIA_BUCKET = process.env.CHAT_MEDIA_BUCKET || 'chat-media';
 
 // Auto-Migration: Tabellen anlegen wenn nicht vorhanden
 async function initDatabase() {
@@ -1779,16 +1780,47 @@ function chatAuth(req, res) {
   catch { res.status(401).json({ error: 'UngÃ¼ltiger Token' }); return null; }
 }
 
+async function ensureChatUploadBucket() {
+  const fallbackBuckets = ['app-icons', 'app-apks'];
+
+  const { data: mainBucket, error: mainErr } = await supabaseAdmin.storage.getBucket(CHAT_MEDIA_BUCKET);
+  if (!mainErr && mainBucket) {
+    return { bucket: CHAT_MEDIA_BUCKET };
+  }
+
+  const { error: createErr } = await supabaseAdmin.storage.createBucket(CHAT_MEDIA_BUCKET, { public: true });
+  if (!createErr) {
+    return { bucket: CHAT_MEDIA_BUCKET };
+  }
+
+  for (const fallback of fallbackBuckets) {
+    const { data, error } = await supabaseAdmin.storage.getBucket(fallback);
+    if (!error && data) {
+      return { bucket: fallback, warning: `Fallback-Bucket verwendet: ${fallback}` };
+    }
+  }
+
+  return {
+    error: createErr?.message || mainErr?.message || 'Kein Upload-Bucket verfÃ¼gbar'
+  };
+}
+
 // POST /api/chat/upload â€” Mediendatei hochladen (Bild / Video / Audio)
 app.post('/api/chat/upload', chatUpload.single('file'), async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   if (!req.file) return res.status(400).json({ error: 'Keine Datei oder Typ nicht erlaubt (max 50 MB)' });
 
+  const bucketCheck = await ensureChatUploadBucket();
+  if (bucketCheck.error) {
+    return res.status(500).json({ error: 'Upload fehlgeschlagen: ' + bucketCheck.error });
+  }
+  const targetBucket = bucketCheck.bucket;
+
   const ext = req.file.originalname.split('.').pop().replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
   const filename = `${crypto.randomUUID()}.${ext}`;
 
-  const { error } = await supabase.storage
-    .from('chat-media')
+  const { error } = await supabaseAdmin.storage
+    .from(targetBucket)
     .upload(filename, req.file.buffer, {
       contentType: req.file.mimetype,
       upsert: false
@@ -1796,7 +1828,7 @@ app.post('/api/chat/upload', chatUpload.single('file'), async (req, res) => {
 
   if (error) return res.status(500).json({ error: 'Upload fehlgeschlagen: ' + error.message });
 
-  const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(filename);
+  const { data: { publicUrl } } = supabaseAdmin.storage.from(targetBucket).getPublicUrl(filename);
   res.json({ url: publicUrl, mime: req.file.mimetype, size: req.file.size, name: req.file.originalname });
 });
 
