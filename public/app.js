@@ -577,11 +577,20 @@ function skipVote() {
 }
 
 function startApp() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('proStatus');
+    const token = localStorage.getItem('token');
+    stopOnlinePolling();
+    stopResetStatusPolling();
+
+    if (token) {
+        verifyToken(token);
+        return;
+    }
+
     currentUser = null;
     currentProfile = null;
-    stopOnlinePolling();
+    allApps = [];
+    localStorage.removeItem('proStatus');
+    showLoggedOutUI();
     showSection('auth');
 }
 
@@ -604,11 +613,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Splash: standardmäßig nur einmal (persistiert auch über Neustarts)
     const splash = document.getElementById('introSplash');
     if (splash) {
-        const INTRO_STORAGE_KEY = 'intro_shown_v1';
         const forceIntro = new URLSearchParams(window.location.search).get('intro') === '1';
         const alreadyShown = !forceIntro && (
-            sessionStorage.getItem('intro_shown') === '1' ||
-            localStorage.getItem(INTRO_STORAGE_KEY) === '1'
+            sessionStorage.getItem('intro_shown') === '1'
         );
         if (alreadyShown) {
             splash.remove();
@@ -636,7 +643,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.classList.remove('splash-active');
                 document.body.style.overflow = '';
                 sessionStorage.setItem('intro_shown', '1');
-                localStorage.setItem(INTRO_STORAGE_KEY, '1');
                 // Weißes Body-Overlay für den Blitz-Übergang (mit Fallback, damit es nie hängen bleibt)
                 const bodyFlash = document.createElement('div');
                 bodyFlash.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99998;pointer-events:none;opacity:1;transition:opacity 0.3s ease;';
@@ -794,10 +800,30 @@ function showLoggedInUI() {
     applyPersonalizationUI();
 }
 
+function showLoggedOutUI() {
+    const navLinks = document.getElementById('navLinks');
+    if (!navLinks) return;
+    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a>';
+}
+
 async function loadApps() {
     try {
-        const response = await fetch(`${API_BASE}/apps`);
+        const token = localStorage.getItem('token');
+        if (!token) {
+            showLoggedOutUI();
+            showSection('auth');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/apps`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
         const apps = await response.json();
+        if (!response.ok) {
+            showLoggedOutUI();
+            showSection('auth');
+            return;
+        }
         allApps = Array.isArray(apps) ? apps : [];
         displayApps(allApps, { searchText: '', category: 'all' });
     } catch (err) {
@@ -2068,18 +2094,27 @@ async function runImageSearch() {
 function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('proStatus');
+    sessionStorage.removeItem('intro_shown');
     currentUser = null;
     currentProfile = null;
     allApps = [];
     stopOnlinePolling();
     stopResetStatusPolling();
-    localStorage.removeItem('token');
-    localStorage.removeItem('proStatus');
-    currentUser = null;
-    currentProfile = null;
-    stopOnlinePolling();
+    showLoggedOutUI();
     showSection('auth');
+}
+
+let onlineInterval = null;
+let heartbeatInterval = null;
+const guestId = localStorage.getItem('guestId') || `guest-${cryptoRandom()}`;
 localStorage.setItem('guestId', guestId);
+
+function cryptoRandom() {
+    if (window.crypto?.randomUUID) {
+        return window.crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
 
 function startOnlinePolling() {
     clearInterval(onlineInterval);
@@ -4737,6 +4772,4 @@ async function chatOpenGroupManage() {
     } catch (err) {
         showAlert(err?.message || 'Aktion fehlgeschlagen.', 'error');
     }
-}
-
 }
