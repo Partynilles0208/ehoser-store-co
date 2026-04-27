@@ -1589,7 +1589,6 @@ function newsCard(a) {
 }
 
 // â”€â”€â”€ YouTube (YouTube Data API v3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const YT_API_KEY = window.__ENV__?.YT_API_KEY || '';
 let _ytType = 'video';
 let _ytNextPageToken = null;
 let _ytPrevPageToken = null;
@@ -1618,7 +1617,7 @@ async function runYTSearch(pageToken) {
     closeYTPlayer();
 
     try {
-        let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=${_ytType}&maxResults=12&key=${YT_API_KEY}&safeSearch=moderate`;
+        let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=${_ytType}&maxResults=12&key=${window.__ENV__?.ytApiKey || ''}&safeSearch=moderate`;
         if (pageToken) url += `&pageToken=${pageToken}`;
 
         const res = await fetch(url);
