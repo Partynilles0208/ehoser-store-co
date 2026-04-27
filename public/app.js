@@ -10,6 +10,7 @@ let resetPollInterval = null;
 let pendingReferral = null;
 let imageSearchLastQuery = '';
 let _lastPersonalizationSearchMiss = '';
+let _chatNotifyInitialized = false;
 
 // Client-Konfiguration (API Keys sicher vom Backend laden)
 window.__ENV__ = { __loaded: false };
@@ -767,15 +768,21 @@ function showLoggedInUI() {
     const plan = currentProfile?.isPro ? 'PRO' : 'Gratis';
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     const personalization = getPersonalization();
+    const displayName = currentProfile?.settings?.displayName || currentUser.username;
+    const avatarUrl = currentProfile?.settings?.avatarUrl || '';
+    const avatarNode = avatarUrl
+        ? `<img src="${escapeAttribute(avatarUrl)}" alt="Profilbild" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1px solid rgba(14,240,208,0.35);">`
+        : `<span style="width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:rgba(14,240,208,0.15);color:#0ef0d0;font-weight:700;">${escapeHtml((displayName || '?').charAt(0).toUpperCase())}</span>`;
     const helloText = personalization?.heroLine
-        ? `Hallo, ${escapeHtml(currentUser.username)}. ${escapeHtml(personalization.heroLine.slice(0, 72))}`
-        : `Hallo, ${escapeHtml(currentUser.username)}.`;
+        ? `Hallo, ${escapeHtml(displayName)}. ${escapeHtml(personalization.heroLine.slice(0, 72))}`
+        : `Hallo, ${escapeHtml(displayName)}.`;
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('store')" class="nav-link">Store</a>
         <a href="#" onclick="showSection('my-apps')" class="nav-link">Meine Apps</a>
         <a href="admin.html" class="nav-link">${adminLabel}</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
         <span class="plan-badge ${currentProfile?.isPro ? 'pro' : ''}">${plan}</span>
+        <span style="display:flex;align-items:center;gap:8px;">${avatarNode}</span>
         <span class="hello-user">${psBadge} ${helloText}</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
     `;
@@ -2157,6 +2164,11 @@ function openSettingsModal() {
     document.getElementById('settingDesign').value = p.settings?.design || 'standard';
     document.getElementById('settingEnergySaver').checked = Boolean(p.settings?.energySaver);
     document.getElementById('settingPersonalizationEnabled').checked = p.settings?.personalizationEnabled !== false;
+    const displayNameInput = document.getElementById('accountDisplayName');
+    if (displayNameInput) displayNameInput.value = p.settings?.displayName || currentUser?.username || '';
+    const avatarInput = document.getElementById('accountAvatarUrl');
+    if (avatarInput) avatarInput.value = p.settings?.avatarUrl || '';
+    refreshAccountAvatarPreview();
     document.getElementById('inviteLinkWrap').style.display = 'none';
     // Login-Code laden und anzeigen
     const codeDisplay = document.getElementById('myLoginCodeDisplay');
@@ -2251,6 +2263,49 @@ function closeSettingsModal() {
     if (emailCodeRow) emailCodeRow.style.display = 'none';
 }
 
+function refreshAccountAvatarPreview() {
+    const preview = document.getElementById('accountAvatarPreview');
+    if (!preview) return;
+    const avatarUrl = document.getElementById('accountAvatarUrl')?.value?.trim() || '';
+    if (avatarUrl) {
+        preview.src = avatarUrl;
+        preview.style.display = 'block';
+    } else {
+        preview.removeAttribute('src');
+        preview.style.display = 'none';
+    }
+}
+
+async function uploadAccountAvatar() {
+    const token = localStorage.getItem('token');
+    if (!token) { showAlert('Bitte zuerst anmelden.', 'error'); return; }
+    const input = document.getElementById('accountAvatarFile');
+    const file = input?.files?.[0];
+    if (!file) { showAlert('Bitte zuerst ein Bild auswaehlen.', 'error'); return; }
+    if (!file.type.startsWith('image/')) { showAlert('Nur Bilder sind erlaubt.', 'error'); return; }
+
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const res = await fetch(`${API_BASE}/chat/upload`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showAlert(data.error || 'Upload fehlgeschlagen.', 'error');
+            return;
+        }
+        const avatarInput = document.getElementById('accountAvatarUrl');
+        if (avatarInput) avatarInput.value = data.url || '';
+        refreshAccountAvatarPreview();
+        showAlert('Profilbild hochgeladen. Bitte noch speichern.', 'success');
+    } catch {
+        showAlert('Netzwerkfehler beim Upload.', 'error');
+    }
+}
+
 async function loadChatToken() {
     const token = localStorage.getItem('token');
     if (!token) return;
@@ -2302,11 +2357,128 @@ let _chatLastMsgId = 0;
 let _chatGroups = [];
 let _chatUserSearchTimer = null;
 
+function chatCanNotify() {
+    return 'Notification' in window && Notification.permission === 'granted';
+}
+
+function chatAskNotificationPermission() {
+    if (!('Notification' in window)) return;
+    if (_chatNotifyInitialized) return;
+    _chatNotifyInitialized = true;
+    if (Notification.permission !== 'default') return;
+    const accepted = window.confirm('Moechtest du Chat-Benachrichtigungen aktivieren?');
+    if (!accepted) return;
+    Notification.requestPermission().catch(() => {});
+}
+
+function requestChatNotificationsManually() {
+    if (!('Notification' in window)) {
+        showAlert('Dieser Browser unterstuetzt keine Benachrichtigungen.', 'error');
+        return;
+    }
+    Notification.requestPermission().then((permission) => {
+        if (permission === 'granted') showAlert('Benachrichtigungen aktiviert.', 'success');
+        else showAlert('Benachrichtigungen wurden nicht erlaubt.', 'error');
+    }).catch(() => {
+        showAlert('Benachrichtigungen konnten nicht aktiviert werden.', 'error');
+    });
+}
+
+function chatParsePayload(rawContent) {
+    try {
+        const parsed = JSON.parse(rawContent);
+        if (parsed && typeof parsed === 'object' && parsed.t) return parsed;
+    } catch {}
+    return { t: 'txt', v: String(rawContent || '') };
+}
+
+function chatPayloadPreview(payload) {
+    if (!payload || typeof payload !== 'object') return 'Neue Nachricht';
+    if (payload.t === 'txt') return String(payload.v || '').slice(0, 140) || 'Textnachricht';
+    if (payload.t === 'img') return 'Bild gesendet';
+    if (payload.t === 'file') return `Datei gesendet: ${payload.name || 'Datei'}`;
+    if (payload.t === 'vid') return 'Video gesendet';
+    if (payload.t === 'aud') return 'Audio gesendet';
+    return 'Neue Nachricht';
+}
+
+function chatRenderPayload(payload) {
+    const p = payload || { t: 'txt', v: '' };
+    if (p.t === 'img') {
+        return `
+            <div class="chat-media-wrap">
+                <a href="${escapeAttribute(p.url || '')}" target="_blank" rel="noopener">
+                    <img class="chat-inline-image" src="${escapeAttribute(p.url || '')}" alt="${escapeAttribute(p.name || 'Bild')}" loading="lazy">
+                </a>
+                <div><a class="chat-file-link" href="${escapeAttribute(p.url || '')}" target="_blank" rel="noopener" download="${escapeAttribute(p.name || 'bild')}">Herunterladen</a></div>
+            </div>
+        `;
+    }
+    if (p.t === 'file' || p.t === 'vid' || p.t === 'aud') {
+        const label = p.name || (p.t === 'vid' ? 'Video' : p.t === 'aud' ? 'Audio' : 'Datei');
+        return `<a class="chat-file-link" href="${escapeAttribute(p.url || '')}" target="_blank" rel="noopener" download="${escapeAttribute(label)}">${escapeHtml(label)}</a>`;
+    }
+    return escapeHtml(String(p.v || '')).replace(/\n/g, '<br>');
+}
+
+async function chatUploadAndSendFile(inputEl) {
+    if (!_chatCurrentGroupId) { showAlert('Bitte erst ein Gespraech waehlen.', 'error'); return; }
+    const file = inputEl?.files?.[0];
+    if (!file) return;
+    inputEl.value = '';
+
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+        const uploadRes = await fetch(`${API_BASE}/chat/upload`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) {
+            showAlert(uploadData.error || 'Upload fehlgeschlagen.', 'error');
+            return;
+        }
+
+        const mime = String(uploadData.mime || file.type || '');
+        let payload;
+        if (mime.startsWith('image/')) payload = { t: 'img', url: uploadData.url, name: uploadData.name, size: uploadData.size };
+        else if (mime.startsWith('video/')) payload = { t: 'vid', url: uploadData.url, name: uploadData.name, size: uploadData.size };
+        else if (mime.startsWith('audio/')) payload = { t: 'aud', url: uploadData.url, name: uploadData.name, size: uploadData.size };
+        else payload = { t: 'file', url: uploadData.url, name: uploadData.name, size: uploadData.size };
+
+        const sendRes = await fetch(`${API_BASE}/chat/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ groupId: _chatCurrentGroupId, encryptedContent: JSON.stringify(payload) })
+        });
+        const sendData = await sendRes.json().catch(() => ({}));
+        if (!sendRes.ok) {
+            showAlert(sendData.error || 'Datei konnte nicht gesendet werden.', 'error');
+            return;
+        }
+        await chatFetchMessages();
+    } catch {
+        showAlert('Netzwerkfehler beim Senden der Datei.', 'error');
+    }
+}
+
+function triggerChatFilePicker() {
+    const input = document.getElementById('chatFileInput');
+    if (!input) return;
+    input.click();
+}
+
 async function initChatSection() {
     _chatCurrentGroupId = null;
     clearInterval(_chatPollInterval);
     document.getElementById('chatEmptyState').style.display = 'flex';
     document.getElementById('chatConv').style.display = 'none';
+    chatAskNotificationPermission();
     await chatLoadGroups();
 }
 
@@ -2448,6 +2620,7 @@ async function chatFetchMessages() {
         if (!msgs.length) return;
         const container = document.getElementById('chatMessages');
         const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 40;
+        const beforeLastMsgId = _chatLastMsgId;
         msgs.forEach(m => {
             _chatLastMsgId = Math.max(_chatLastMsgId, m.id);
             const isMe = m.sender === currentUser?.username;
@@ -2455,6 +2628,8 @@ async function chatFetchMessages() {
             div.className = `chat-msg ${isMe ? 'chat-msg-me' : 'chat-msg-other'}`;
             const time = new Date(m.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             const initial = (m.sender || '?')[0].toUpperCase();
+            const payload = chatParsePayload(m.encrypted_content);
+            const bodyHtml = chatRenderPayload(payload);
             div.innerHTML = `
                 <div class="chat-msg-avatar">${initial}</div>
                 <div class="chat-msg-body">
@@ -2462,10 +2637,20 @@ async function chatFetchMessages() {
                         ${escapeHtml(m.sender)}
                         <span class="chat-msg-time-inline">${time}</span>
                     </div>
-                    <div class="chat-msg-bubble">${escapeHtml(m.encrypted_content)}</div>
+                    <div class="chat-msg-bubble">${bodyHtml}</div>
                 </div>
             `;
             container.appendChild(div);
+
+            if (!isMe && m.id > beforeLastMsgId && beforeLastMsgId > 0 && chatCanNotify()) {
+                const preview = chatPayloadPreview(payload);
+                try {
+                    new Notification(`Neue Nachricht von ${m.sender}`, {
+                        body: preview,
+                        tag: `chat-${_chatCurrentGroupId}`
+                    });
+                } catch {}
+            }
         });
         if (wasAtBottom) container.scrollTop = container.scrollHeight;
     } catch {}
@@ -2481,10 +2666,11 @@ async function sendChatMsg() {
     input.value = '';
     input.style.height = 'auto';
     try {
+        const payload = JSON.stringify({ t: 'txt', v: text });
         await fetch(`${API_BASE}/chat/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ groupId: _chatCurrentGroupId, encryptedContent: text })
+            body: JSON.stringify({ groupId: _chatCurrentGroupId, encryptedContent: payload })
         });
         await chatFetchMessages();
     } catch {
@@ -2817,8 +3003,15 @@ async function saveAccountSettings() {
         language: document.getElementById('settingLanguage').value,
         design: document.getElementById('settingDesign').value,
         energySaver: document.getElementById('settingEnergySaver').checked,
-        personalizationEnabled: document.getElementById('settingPersonalizationEnabled').checked
+        personalizationEnabled: document.getElementById('settingPersonalizationEnabled').checked,
+        displayName: (document.getElementById('accountDisplayName')?.value || '').trim(),
+        avatarUrl: (document.getElementById('accountAvatarUrl')?.value || '').trim()
     };
+
+    if (payload.displayName.length > 40) {
+        showAlert('Anzeigename darf maximal 40 Zeichen haben.', 'error');
+        return;
+    }
 
     try {
         const response = await fetch(`${API_BASE}/me/settings`, {
