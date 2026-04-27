@@ -669,16 +669,14 @@ async function verifyToken(token) {
         clearTimeout(timeout);
 
         if (response.status === 401) {
-            // Token abgelaufen/ungÃ¼ltig â€“ Token NICHT lÃ¶schen!
-            // User kann sich erneut anmelden â†’ Token wird dann Ã¼berschrieben
+            localStorage.removeItem('token');
             localStorage.removeItem('proStatus');
-            showSection('mode-select');
+            showSection('auth');
             return;
         }
 
         if (!response.ok) {
-            // Server-Fehler: Token behalten, trotzdem UI laden
-            showSection('mode-select');
+            showSection('auth');
             return;
         }
 
@@ -695,8 +693,7 @@ async function verifyToken(token) {
         restoreReloadSnapshot();
         startOnlinePolling();
     } catch (err) {
-        // Netzwerkfehler: Token NICHT lÃ¶schen, Seite trotzdem zeigen
-        showSection('mode-select');
+        showSection('auth');
     }
 }
 
