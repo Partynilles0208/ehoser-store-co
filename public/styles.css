@@ -4129,6 +4129,22 @@ body[data-personalization-tone="focused"] .personalization-banner {
     padding: 8px 8px 4px;
     position: relative;
 }
+.chat-user-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.chat-small-btn {
+    border: 1px solid rgba(14, 240, 208, 0.18);
+    background: rgba(14, 240, 208, 0.08);
+    color: #0ef0d0;
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+.chat-small-btn:hover { background: rgba(14, 240, 208, 0.15); }
 .chat-dm-input {
     width: 100%;
     padding: 7px 12px;
@@ -4168,6 +4184,7 @@ body[data-personalization-tone="focused"] .personalization-banner {
     gap: 8px;
 }
 .chat-dd-item:hover { background: rgba(14, 240, 208, 0.12); color: #0ef0d0; }
+.chat-dd-item.selected { background: rgba(14, 240, 208, 0.18); color: #0ef0d0; }
 .chat-dd-empty { color: var(--muted); font-style: italic; cursor: default; font-size: 0.85rem; padding: 8px 10px; }
 .chat-group-list {
     flex: 1;
