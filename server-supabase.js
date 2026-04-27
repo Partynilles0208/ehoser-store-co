@@ -59,6 +59,39 @@ CREATE TABLE IF NOT EXISTS referral_invites (
   used_by TEXT NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   used_at TIMESTAMP NULL
+);
+CREATE TABLE IF NOT EXISTS screen_sessions (
+  id UUID PRIMARY KEY,
+  username TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  offer TEXT,
+  answer TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS chat_user_keys (
+  username TEXT PRIMARY KEY,
+  public_key TEXT NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS chat_groups (
+  id UUID PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS chat_group_members (
+  group_id UUID NOT NULL,
+  username TEXT NOT NULL,
+  encrypted_group_key TEXT,
+  joined_at TIMESTAMP DEFAULT NOW(),
+  PRIMARY KEY (group_id, username)
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id BIGSERIAL PRIMARY KEY,
+  group_id UUID NOT NULL,
+  sender TEXT NOT NULL,
+  encrypted_content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
 );`);
     return;
   }
