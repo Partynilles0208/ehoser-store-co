@@ -1260,6 +1260,46 @@ function selectMode(mode) {
         showSection('jokegen'); initJokegen();
     } else if (mode === 'breathe') {
         showSection('breathe'); initBreathe();
+    } else if (mode === 'sudoku') {
+        showSection('sudoku'); initSudoku();
+    } else if (mode === 'hangman') {
+        showSection('hangman'); initHangman();
+    } else if (mode === '2048') {
+        showSection('2048'); init2048();
+    } else if (mode === 'reaction') {
+        showSection('reaction'); initReaction();
+    } else if (mode === 'interest') {
+        showSection('interest'); initInterest();
+    } else if (mode === 'quote') {
+        showSection('quote'); initQuote();
+    } else if (mode === 'dice') {
+        showSection('dice'); initDice();
+    } else if (mode === 'mood') {
+        showSection('mood'); initMood();
+    } else if (mode === 'grades') {
+        showSection('grades'); initGrades();
+    } else if (mode === 'worldclock') {
+        showSection('worldclock'); initWorldclock();
+    } else if (mode === 'pong') {
+        showSection('pong'); initPong();
+    } else if (mode === 'pwdcheck') {
+        showSection('pwdcheck'); initPwdcheck();
+    } else if (mode === 'agecalc') {
+        showSection('agecalc'); initAgecalc();
+    } else if (mode === 'calendar') {
+        showSection('calendar'); initCalendar();
+    } else if (mode === 'wordle') {
+        showSection('wordle'); initWordle();
+    } else if (mode === 'breakout') {
+        showSection('breakout'); initBreakout();
+    } else if (mode === 'colorquiz') {
+        showSection('colorquiz'); initColorquiz();
+    } else if (mode === 'numguess') {
+        showSection('numguess'); initNumguess();
+    } else if (mode === 'birthday') {
+        showSection('birthday'); initBirthday();
+    } else if (mode === 'minesweeper') {
+        showSection('minesweeper'); initMinesweeper();
     } else {
         showSection('mode-select');
     }

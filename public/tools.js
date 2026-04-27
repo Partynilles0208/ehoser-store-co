@@ -731,3 +731,848 @@ function initKanban()     { kanbanLoad(); }
 function initEightball()  { /* nothing */ }
 function initJokegen()    { jokeSetCat('all'); }
 function initBreathe()    { breatheSet('box'); }
+
+/* ═══════════════════════════════════════════════════════════════
+   SUDOKU
+   ═══════════════════════════════════════════════════════════════ */
+let _sudokuPuzzle = [], _sudokuSolution = [], _sudokuCells = [];
+const SUDOKU_EASY = [
+  '530070000600195000098000060800060003400803001700020006060000280000419005000080079',
+  '003020600900305001001806400008102900700000008006708200002609500800203009005010300'
+];
+const SUDOKU_MEDIUM = [
+  '000000000302540000050301070000000004409006005023054790000010502700060830500080000',
+  '000075400000000008080190000300001060970000200050700190000024005600000000003850000'
+];
+const SUDOKU_HARD = [
+  '000000000000003085001020000000507000004000100090000000500000073002010000000040009',
+  '800000000003600000070090200060005030004806090030001060068090500070030040900000001'
+];
+function sudokuNew(diff) {
+  const sets = diff==='easy'?SUDOKU_EASY : diff==='medium'?SUDOKU_MEDIUM : SUDOKU_HARD;
+  const str = sets[Math.floor(Math.random()*sets.length)];
+  _sudokuPuzzle = str.split('').map(Number);
+  _sudokuSolution = sudokuSolveArr([..._sudokuPuzzle]);
+  _sudokuRender();
+  document.getElementById('sudokuMsg').textContent = '';
+}
+function sudokuSolveArr(board) {
+  const empty = board.indexOf(0);
+  if (empty === -1) return board;
+  const row = Math.floor(empty/9), col = empty%9;
+  for (let n = 1; n <= 9; n++) {
+    if (sudokuValid(board, row, col, n)) {
+      board[empty] = n;
+      const res = sudokuSolveArr(board);
+      if (res) return res;
+      board[empty] = 0;
+    }
+  }
+  return null;
+}
+function sudokuValid(b, r, c, n) {
+  for (let i = 0; i < 9; i++) {
+    if (b[r*9+i]===n || b[i*9+c]===n) return false;
+  }
+  const br = Math.floor(r/3)*3, bc = Math.floor(c/3)*3;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if (b[(br+i)*9+(bc+j)]===n) return false;
+  return true;
+}
+function _sudokuRender() {
+  const grid = document.getElementById('sudokuGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  _sudokuCells = [];
+  for (let i = 0; i < 81; i++) {
+    const v = _sudokuPuzzle[i];
+    const cell = document.createElement('input');
+    cell.type = 'text'; cell.maxLength = 1;
+    cell.value = v ? v : '';
+    cell.readOnly = !!v;
+    const row = Math.floor(i/9), col = i%9;
+    const borderR = (row%3===2 && row<8) ? '2px solid #4d9fff' : '1px solid #2a3a4a';
+    const borderB = (col%3===2 && col<8) ? '2px solid #4d9fff' : '1px solid #2a3a4a';
+    cell.style.cssText = `width:100%;aspect-ratio:1;text-align:center;font-size:clamp(10px,2.5vw,18px);font-weight:700;border:0;border-right:${borderR};border-bottom:${borderB};background:${v?'rgba(77,159,255,0.08)':'rgba(255,255,255,0.03)'};color:${v?'#8ab4c9':'#fff'};outline:none;cursor:${v?'default':'text'};`;
+    cell.dataset.idx = i;
+    cell.addEventListener('input', () => { cell.value = cell.value.replace(/[^1-9]/g,'').slice(-1); sudokuCheck(); });
+    grid.appendChild(cell);
+    _sudokuCells.push(cell);
+  }
+}
+function sudokuCheck() {
+  let complete = true;
+  for (let i = 0; i < 81; i++) {
+    const c = _sudokuCells[i]; if (!c) continue;
+    const v = parseInt(c.value)||0;
+    if (!c.readOnly) { if (!v) { complete = false; c.style.color='#fff'; } else if (v===(_sudokuSolution?.[i]||0)) { c.style.color='#4caf50'; } else { c.style.color='#ff5252'; complete = false; } }
+  }
+  if (complete) document.getElementById('sudokuMsg').textContent = '🎉 Gelöst!';
+}
+function sudokuHint() {
+  if (!_sudokuSolution) return;
+  for (let i = 0; i < 81; i++) {
+    const c = _sudokuCells[i];
+    if (c && !c.readOnly && (!c.value || c.value != _sudokuSolution[i])) {
+      c.value = _sudokuSolution[i]; c.style.color='#4d9fff'; sudokuCheck(); return;
+    }
+  }
+}
+function sudokuSolve() {
+  if (!_sudokuSolution) return;
+  _sudokuCells.forEach((c,i) => { if (!c.readOnly) { c.value=_sudokuSolution[i]; c.style.color='#4d9fff'; } });
+  document.getElementById('sudokuMsg').textContent = '✅ Gelöst!';
+}
+function initSudoku() { sudokuNew('easy'); }
+
+/* ═══════════════════════════════════════════════════════════════
+   HANGMAN
+   ═══════════════════════════════════════════════════════════════ */
+const HANGMAN_WORDS = ['SCHULE','FREUND','SOMMER','COMPUTER','MUSIK','BUCH','REISE','KÜCHE','WINTER','SPORT','GARTEN','FILM','BRÜCKE','FENSTER','KAFFEE','BLUME','STRAND','VOGEL','HUND','KATZE','HAUS','BAUM','AUTO','TISCH','LAMPE'];
+let _hangmanWord = '', _hangmanGuessed = new Set(), _hangmanWrong = 0;
+function hangmanNew() {
+  _hangmanWord = HANGMAN_WORDS[Math.floor(Math.random()*HANGMAN_WORDS.length)];
+  _hangmanGuessed = new Set();
+  _hangmanWrong = 0;
+  _hangmanRenderWord();
+  _hangmanRenderLetters();
+  _hangmanDraw(0);
+  document.getElementById('hangmanMsg').textContent = '';
+}
+function _hangmanRenderWord() {
+  const el = document.getElementById('hangmanWord');
+  if (!el) return;
+  el.textContent = _hangmanWord.split('').map(l => _hangmanGuessed.has(l)?l:'_').join(' ');
+}
+function _hangmanRenderLetters() {
+  const el = document.getElementById('hangmanLetters');
+  if (!el) return;
+  el.innerHTML = '';
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ'.split('').forEach(l => {
+    const b = document.createElement('button');
+    b.textContent = l;
+    b.disabled = _hangmanGuessed.has(l) || _hangmanWrong>=6;
+    b.style.cssText = `width:36px;height:36px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:${_hangmanGuessed.has(l)?(_hangmanWord.includes(l)?'rgba(76,175,80,0.3)':'rgba(255,82,82,0.3)'):'rgba(255,255,255,0.05)'};color:#fff;cursor:pointer;font-size:0.85rem;font-weight:700;`;
+    b.onclick = () => { _hangmanGuessed.add(l); if (!_hangmanWord.includes(l)) _hangmanWrong++; _hangmanRenderWord(); _hangmanRenderLetters(); _hangmanDraw(_hangmanWrong); _hangmanCheckEnd(); };
+    el.appendChild(b);
+  });
+}
+function _hangmanCheckEnd() {
+  const msg = document.getElementById('hangmanMsg'); if (!msg) return;
+  if (_hangmanWrong >= 6) { msg.textContent = `💀 Verloren! Das Wort war: ${_hangmanWord}`; msg.style.color='#ff5252'; return; }
+  if (_hangmanWord.split('').every(l => _hangmanGuessed.has(l))) { msg.textContent = '🎉 Gewonnen!'; msg.style.color='#4caf50'; }
+}
+function _hangmanDraw(n) {
+  const c = document.getElementById('hangmanCanvas'); if (!c) return;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,200,200);
+  ctx.strokeStyle='#4d9fff'; ctx.lineWidth=3; ctx.lineCap='round';
+  // Gallows
+  ctx.beginPath(); ctx.moveTo(20,180); ctx.lineTo(180,180); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(60,180); ctx.lineTo(60,20); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(60,20); ctx.lineTo(130,20); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(130,20); ctx.lineTo(130,40); ctx.stroke();
+  if (n>=1) { ctx.beginPath(); ctx.arc(130,55,15,0,Math.PI*2); ctx.stroke(); }
+  if (n>=2) { ctx.beginPath(); ctx.moveTo(130,70); ctx.lineTo(130,110); ctx.stroke(); }
+  if (n>=3) { ctx.beginPath(); ctx.moveTo(130,80); ctx.lineTo(110,100); ctx.stroke(); }
+  if (n>=4) { ctx.beginPath(); ctx.moveTo(130,80); ctx.lineTo(150,100); ctx.stroke(); }
+  if (n>=5) { ctx.beginPath(); ctx.moveTo(130,110); ctx.lineTo(110,135); ctx.stroke(); }
+  if (n>=6) { ctx.beginPath(); ctx.moveTo(130,110); ctx.lineTo(150,135); ctx.stroke(); }
+}
+function initHangman() { hangmanNew(); }
+
+/* ═══════════════════════════════════════════════════════════════
+   2048
+   ═══════════════════════════════════════════════════════════════ */
+let _grid2048 = [], _score2048 = 0, _best2048 = 0, _over2048 = false;
+const TILE_COLORS = {0:'#1a2a3a',2:'#eee4da',4:'#ede0c8',8:'#f2b179',16:'#f59563',32:'#f67c5f',64:'#f65e3b',128:'#edcf72',256:'#edcc61',512:'#edc850',1024:'#edc53f',2048:'#edc22e'};
+function init2048() {
+  _grid2048 = Array(16).fill(0); _score2048 = 0; _over2048 = false;
+  _best2048 = parseInt(localStorage.getItem('best2048'))||0;
+  _add2048(); _add2048(); _render2048();
+  document.getElementById('msg2048').textContent = '';
+}
+function _add2048() {
+  const empty = _grid2048.map((v,i)=>v===0?i:-1).filter(i=>i>=0);
+  if (!empty.length) return;
+  const i = empty[Math.floor(Math.random()*empty.length)];
+  _grid2048[i] = Math.random()<0.9 ? 2 : 4;
+}
+function _render2048() {
+  const g = document.getElementById('grid2048'); if (!g) return;
+  g.innerHTML = '';
+  _grid2048.forEach(v => {
+    const d = document.createElement('div');
+    const textColor = v <= 4 ? '#776e65' : '#fff';
+    d.style.cssText = `aspect-ratio:1;border-radius:8px;background:${TILE_COLORS[v]||'#3c2a1e'};display:flex;align-items:center;justify-content:center;font-weight:900;font-size:${v>=1000?'1rem':v>=100?'1.2rem':'1.5rem'};color:${textColor};`;
+    d.textContent = v||'';
+    g.appendChild(d);
+  });
+  document.getElementById('score2048').textContent = _score2048;
+  if (_score2048 > _best2048) { _best2048 = _score2048; localStorage.setItem('best2048', _best2048); }
+  document.getElementById('best2048').textContent = _best2048;
+}
+function _slide2048(row) {
+  let r = row.filter(v=>v); let changed = false;
+  for (let i = 0; i < r.length-1; i++) {
+    if (r[i]===r[i+1]) { r[i]*=2; _score2048+=r[i]; r.splice(i+1,1); changed=true; }
+  }
+  while (r.length<4) r.push(0);
+  return { row: r, changed: changed || r.some((v,i)=>v!==row[i]) };
+}
+function _move2048(dir) {
+  if (_over2048) return;
+  let changed = false;
+  if (dir==='left') {
+    for (let r = 0; r < 4; r++) { const {row,changed:c} = _slide2048(_grid2048.slice(r*4,r*4+4)); if(c){for(let i=0;i<4;i++)_grid2048[r*4+i]=row[i]; changed=true;} }
+  } else if (dir==='right') {
+    for (let r = 0; r < 4; r++) { const {row,changed:c} = _slide2048(_grid2048.slice(r*4,r*4+4).reverse()); if(c){for(let i=0;i<4;i++)_grid2048[r*4+(3-i)]=row[i]; changed=true;} }
+  } else if (dir==='up') {
+    for (let c = 0; c < 4; c++) { const col=[_grid2048[c],_grid2048[4+c],_grid2048[8+c],_grid2048[12+c]]; const {row,changed:ch}=_slide2048(col); if(ch){for(let i=0;i<4;i++)_grid2048[i*4+c]=row[i]; changed=true;} }
+  } else {
+    for (let c = 0; c < 4; c++) { const col=[_grid2048[12+c],_grid2048[8+c],_grid2048[4+c],_grid2048[c]]; const {row,changed:ch}=_slide2048(col); if(ch){for(let i=0;i<4;i++)_grid2048[(3-i)*4+c]=row[i]; changed=true;} }
+  }
+  if (changed) { _add2048(); _render2048(); }
+  if (_grid2048.includes(2048)) { document.getElementById('msg2048').textContent = '🎉 2048 erreicht!'; }
+  else if (!_grid2048.includes(0) && !_canMove2048()) { _over2048=true; document.getElementById('msg2048').textContent = 'Game Over!'; }
+}
+function _canMove2048() {
+  for (let i = 0; i < 16; i++) {
+    if (i%4!==3 && _grid2048[i]===_grid2048[i+1]) return true;
+    if (i<12 && _grid2048[i]===_grid2048[i+4]) return true;
+  }
+  return false;
+}
+(function(){
+  let _t2Start = null;
+  document.addEventListener('keydown', e => {
+    const m = {ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down'};
+    if (m[e.key] && document.getElementById('2048')?.classList.contains('active')) { e.preventDefault(); _move2048(m[e.key]); }
+  });
+  document.addEventListener('touchstart', e => { if (document.getElementById('2048')?.classList.contains('active')) _t2Start = e.touches[0]; }, {passive:true});
+  document.addEventListener('touchend', e => {
+    if (!_t2Start || !document.getElementById('2048')?.classList.contains('active')) return;
+    const dx = e.changedTouches[0].clientX - _t2Start.clientX;
+    const dy = e.changedTouches[0].clientY - _t2Start.clientY;
+    if (Math.abs(dx)>Math.abs(dy)) _move2048(dx>0?'right':'left'); else _move2048(dy>0?'down':'up');
+    _t2Start = null;
+  }, {passive:true});
+})();
+
+/* ═══════════════════════════════════════════════════════════════
+   REAKTIONSTEST
+   ═══════════════════════════════════════════════════════════════ */
+let _rxState = 'idle', _rxStart = 0, _rxTimeout = null, _rxHistory = [];
+function initReaction() { _rxState='idle'; _rxHistory=[]; _rxRender(); }
+function _rxRender() {
+  const box = document.getElementById('reactionBox'); if (!box) return;
+  if (_rxState==='idle') { box.style.background='#1a2a3a'; box.textContent='Klicke zum Starten'; }
+  else if (_rxState==='wait') { box.style.background='#b71c1c'; box.textContent='Warte…'; }
+  else if (_rxState==='go') { box.style.background='#1b5e20'; box.textContent='JETZT KLICKEN!'; }
+  const h = document.getElementById('reactionHistory');
+  if (h && _rxHistory.length) {
+    const avg = Math.round(_rxHistory.reduce((a,b)=>a+b,0)/_rxHistory.length);
+    h.textContent = `Letzte: ${_rxHistory.slice(-5).join(', ')} ms | Ø ${avg} ms`;
+  }
+}
+function reactionClick() {
+  if (_rxState==='idle'||_rxState==='result') {
+    _rxState='wait';
+    _rxRender();
+    clearTimeout(_rxTimeout);
+    _rxTimeout = setTimeout(() => { _rxState='go'; _rxStart=Date.now(); _rxRender(); }, 1000+Math.random()*3000);
+  } else if (_rxState==='wait') {
+    clearTimeout(_rxTimeout); _rxState='idle';
+    document.getElementById('reactionResult').textContent='⚠️ Zu früh!';
+    setTimeout(() => { _rxState='idle'; _rxRender(); }, 1200);
+  } else if (_rxState==='go') {
+    const ms = Date.now()-_rxStart;
+    _rxHistory.push(ms);
+    document.getElementById('reactionResult').textContent = `⚡ ${ms} ms`;
+    _rxState='result'; _rxRender();
+    setTimeout(() => { _rxState='idle'; _rxRender(); }, 1500);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ZINSEN-RECHNER
+   ═══════════════════════════════════════════════════════════════ */
+let _intMode = 'simple';
+function initInterest() { interestSetMode('simple'); }
+function interestSetMode(m) {
+  _intMode = m;
+  document.getElementById('intBtnSimple').style.opacity = m==='simple'?'1':'0.5';
+  document.getElementById('intBtnCompound').style.opacity = m==='compound'?'1':'0.5';
+  interestCalc();
+}
+function interestCalc() {
+  const P = parseFloat(document.getElementById('intCapital')?.value)||0;
+  const r = parseFloat(document.getElementById('intRate')?.value)||0;
+  const t = parseFloat(document.getElementById('intYears')?.value)||0;
+  const el = document.getElementById('intResult'); if (!el) return;
+  if (!P||!r||!t) { el.innerHTML='Bitte alle Felder ausfüllen.'; return; }
+  const rate = r/100;
+  let endValue, zinsen;
+  if (_intMode==='simple') {
+    zinsen = P*rate*t; endValue = P+zinsen;
+    el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;"><div>📥 Startkapital: <strong style="color:#fff">€${P.toFixed(2)}</strong></div><div>💰 Zinsen: <strong style="color:#4caf50">€${zinsen.toFixed(2)}</strong></div><div>🏦 Endkapital: <strong style="color:var(--brand)">€${endValue.toFixed(2)}</strong></div></div>`;
+  } else {
+    endValue = P*Math.pow(1+rate,t); zinsen = endValue-P;
+    el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;"><div>📥 Startkapital: <strong style="color:#fff">€${P.toFixed(2)}</strong></div><div>💰 Zinseszinsen: <strong style="color:#4caf50">€${zinsen.toFixed(2)}</strong></div><div>🏦 Endkapital: <strong style="color:var(--brand)">€${endValue.toFixed(2)}</strong></div></div>`;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ZITAT-GENERATOR
+   ═══════════════════════════════════════════════════════════════ */
+const QUOTES = [
+  {text:'Der Weg ist das Ziel.',author:'Konfuzius'},
+  {text:'Phantasie ist wichtiger als Wissen.',author:'Albert Einstein'},
+  {text:'Das Leben ist das, was passiert, während du andere Pläne machst.',author:'John Lennon'},
+  {text:'Wer kämpft, kann verlieren. Wer nicht kämpft, hat schon verloren.',author:'Bertolt Brecht'},
+  {text:'In der Ruhe liegt die Kraft.',author:'Deutsches Sprichwort'},
+  {text:'Erfolg ist die Summe kleiner Anstrengungen.',author:'Robert Collier'},
+  {text:'Träume nicht dein Leben, lebe deinen Traum.',author:'Mark Twain'},
+  {text:'Man muss das Unmögliche versuchen, um das Mögliche zu erreichen.',author:'Hermann Hesse'},
+  {text:'Irren ist menschlich.',author:'Cicero'},
+  {text:'Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt.',author:'Ludwig Wittgenstein'},
+  {text:'Handle nur nach derjenigen Maxime, durch die du zugleich wollen kannst, dass sie ein allgemeines Gesetz werde.',author:'Immanuel Kant'},
+  {text:'Wissen ist Macht.',author:'Francis Bacon'},
+  {text:'Das Glück begünstigt den vorbereiteten Geist.',author:'Louis Pasteur'},
+  {text:'Nicht die Verhältnisse machen den Menschen, sondern der Mensch macht die Verhältnisse.',author:'Karl Marx'},
+  {text:'Jeder ist seines Glückes Schmied.',author:'Appius Claudius'},
+  {text:'Dein heutiges Ich ist das Ergebnis deiner gestrigen Gedanken.',author:'Budda'},
+  {text:'Fange nie an aufzuhören, höre nie auf anzufangen.',author:'Cicero'},
+  {text:'Es ist besser, ein einziges kleines Licht anzuzünden, als die Dunkelheit zu verfluchen.',author:'Konfuzius'},
+  {text:'Mut ist nicht die Abwesenheit von Angst, sondern das Urteil, dass etwas anderes wichtiger ist.',author:'Ambrose Redmoon'},
+  {text:'Der beste Zeitpunkt einen Baum zu pflanzen war vor 20 Jahren. Der zweitbeste Zeitpunkt ist jetzt.',author:'Chinesisches Sprichwort'},
+];
+let _quoteIdx = 0, _quoteFavs = [];
+function initQuote() { _quoteIdx = Math.floor(Math.random()*QUOTES.length); _quoteFavs = JSON.parse(localStorage.getItem('quoteFavs')||'[]'); quoteRender(); quoteFavsRender(); }
+function quoteRender() {
+  const q = QUOTES[_quoteIdx];
+  document.getElementById('quoteText').textContent = `„${q.text}"`;
+  document.getElementById('quoteAuthor').textContent = `— ${q.author}`;
+}
+function quoteNext() { _quoteIdx = (_quoteIdx+1)%QUOTES.length; quoteRender(); }
+function quoteCopy() { navigator.clipboard?.writeText(`„${QUOTES[_quoteIdx].text}" — ${QUOTES[_quoteIdx].author}`).catch(()=>{}); }
+function quoteFav() {
+  const q = QUOTES[_quoteIdx];
+  if (!_quoteFavs.some(f=>f.text===q.text)) { _quoteFavs.unshift(q); if (_quoteFavs.length>10) _quoteFavs.pop(); localStorage.setItem('quoteFavs',JSON.stringify(_quoteFavs)); quoteFavsRender(); }
+}
+function quoteFavsRender() {
+  const el = document.getElementById('quoteFavs'); if (!el) return;
+  el.innerHTML = _quoteFavs.length ? `<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--brand);margin-bottom:6px;">❤️ Favoriten</div>` + _quoteFavs.map(f=>`<div style="font-size:0.85rem;color:var(--text-soft);margin-bottom:4px;">„${f.text}" — ${f.author}</div>`).join('') : '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WÜRFELSIMULATOR
+   ═══════════════════════════════════════════════════════════════ */
+let _diceType = 6, _diceRollHistory = [];
+function initDice() { diceSetType(6); }
+function diceSetType(n) { _diceType = n; document.getElementById('diceResults').innerHTML = ''; document.getElementById('diceSum').textContent = `W${n} ausgewählt`; }
+function diceRoll() {
+  const count = Math.min(10, Math.max(1, parseInt(document.getElementById('diceCount')?.value)||1));
+  const results = Array.from({length:count}, () => 1+Math.floor(Math.random()*_diceType));
+  const sum = results.reduce((a,b)=>a+b,0);
+  const el = document.getElementById('diceResults'); if (!el) return;
+  el.innerHTML = results.map(r => `<div style="width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#1a2a3a,#0d1f2d);border:2px solid var(--brand);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:800;color:#fff;">${r}</div>`).join('');
+  document.getElementById('diceSum').textContent = count>1 ? `Summe: ${sum}` : `Ergebnis: ${results[0]}`;
+  _diceRollHistory.unshift(`W${_diceType}×${count}: ${results.join(',')} = ${sum}`);
+  if (_diceRollHistory.length>8) _diceRollHistory.pop();
+  document.getElementById('diceHistory').textContent = _diceRollHistory.join(' | ');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STIMMUNGSTAGEBUCH
+   ═══════════════════════════════════════════════════════════════ */
+let _moodSelected = null;
+function initMood() { _moodSelected = null; moodRenderList(); }
+function moodSelect(emoji, label) {
+  _moodSelected = {emoji, label};
+  document.querySelectorAll('#moodEmojis button').forEach(b => b.style.transform = b.title===label ? 'scale(1.4)' : 'scale(1)');
+}
+function moodSave() {
+  if (!_moodSelected) { alert('Bitte erst eine Stimmung wählen.'); return; }
+  const note = document.getElementById('moodNote')?.value.trim()||'';
+  const entries = JSON.parse(localStorage.getItem('moodDiary')||'[]');
+  entries.unshift({ date: new Date().toLocaleDateString('de-DE'), emoji: _moodSelected.emoji, label: _moodSelected.label, note });
+  if (entries.length > 90) entries.pop();
+  localStorage.setItem('moodDiary', JSON.stringify(entries));
+  document.getElementById('moodNote').value = '';
+  _moodSelected = null;
+  document.querySelectorAll('#moodEmojis button').forEach(b => b.style.transform='scale(1)');
+  moodRenderList();
+}
+function moodRenderList() {
+  const el = document.getElementById('moodList'); if (!el) return;
+  const entries = JSON.parse(localStorage.getItem('moodDiary')||'[]');
+  el.innerHTML = entries.length ? entries.map(e => `<div style="display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,0.04);border-radius:10px;padding:10px 14px;"><div style="font-size:1.5rem;line-height:1;">${e.emoji}</div><div><div style="font-size:0.8rem;color:var(--text-soft);">${e.date} — ${e.label}</div>${e.note?`<div style="font-size:0.9rem;color:#fff;margin-top:2px;">${e.note}</div>`:''}</div></div>`).join('') : '<div style="color:var(--text-soft);font-size:0.9rem;">Noch keine Einträge.</div>';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NOTENRECHNER
+   ═══════════════════════════════════════════════════════════════ */
+let _gradesRows = [];
+function initGrades() { _gradesRows = []; document.getElementById('gradesList').innerHTML = ''; gradesAddRow(); gradesAddRow(); gradesCalc(); }
+function gradesAddRow() {
+  const id = Date.now()+Math.random();
+  _gradesRows.push(id);
+  const row = document.createElement('div');
+  row.id = `gradeRow_${id}`;
+  row.style.cssText = 'display:flex;gap:8px;align-items:center;';
+  row.innerHTML = `<input type="text" placeholder="Fach" class="tool-input" style="flex:2;" oninput="gradesCalc()"><input type="number" placeholder="Note (1-6)" min="1" max="6" step="0.1" class="tool-input" style="flex:1;" oninput="gradesCalc()"><input type="number" placeholder="Gewicht" min="1" value="1" class="tool-input" style="width:70px;" oninput="gradesCalc()"><button onclick="gradesRemoveRow('${id}')" style="background:none;border:none;color:#ff5252;cursor:pointer;font-size:1.1rem;flex-shrink:0;">✕</button>`;
+  document.getElementById('gradesList').appendChild(row);
+}
+function gradesRemoveRow(id) {
+  _gradesRows = _gradesRows.filter(r=>r!==id);
+  document.getElementById(`gradeRow_${id}`)?.remove();
+  gradesCalc();
+}
+function gradesClear() { _gradesRows=[]; document.getElementById('gradesList').innerHTML=''; document.getElementById('gradesResult').innerHTML=''; }
+function gradesCalc() {
+  let total = 0, weight = 0;
+  document.querySelectorAll('#gradesList > div').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const g = parseFloat(inputs[1]?.value), w = parseFloat(inputs[2]?.value)||1;
+    if (g>=1&&g<=6) { total += g*w; weight += w; }
+  });
+  const el = document.getElementById('gradesResult'); if (!el) return;
+  if (!weight) { el.textContent = 'Noch keine gültigen Noten.'; return; }
+  const avg = total/weight;
+  const color = avg<=2?'#4caf50':avg<=3?'#8bc34a':avg<=4?'#ff9800':avg<=5?'#ff5722':'#f44336';
+  el.innerHTML = `Ø <span style="color:${color};font-size:1.8rem;">${avg.toFixed(2)}</span>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WELTZEIT-UHR
+   ═══════════════════════════════════════════════════════════════ */
+const WORLD_CLOCKS = [
+  {city:'Berlin',tz:'Europe/Berlin',flag:'🇩🇪'},
+  {city:'London',tz:'Europe/London',flag:'🇬🇧'},
+  {city:'New York',tz:'America/New_York',flag:'🇺🇸'},
+  {city:'Los Angeles',tz:'America/Los_Angeles',flag:'🇺🇸'},
+  {city:'Tokio',tz:'Asia/Tokyo',flag:'🇯🇵'},
+  {city:'Dubai',tz:'Asia/Dubai',flag:'🇦🇪'},
+  {city:'Sydney',tz:'Australia/Sydney',flag:'🇦🇺'},
+  {city:'São Paulo',tz:'America/Sao_Paulo',flag:'🇧🇷'},
+  {city:'Moskau',tz:'Europe/Moscow',flag:'🇷🇺'},
+  {city:'Singapur',tz:'Asia/Singapore',flag:'🇸🇬'},
+  {city:'Kairo',tz:'Africa/Cairo',flag:'🇪🇬'},
+  {city:'Mumbai',tz:'Asia/Kolkata',flag:'🇮🇳'},
+];
+let _wclockInterval = null;
+function initWorldclock() {
+  const el = document.getElementById('worldclockGrid'); if (!el) return;
+  el.innerHTML = WORLD_CLOCKS.map(c=>`<div id="wc_${c.city.replace(/\s/g,'')}" style="background:rgba(255,255,255,0.04);border-radius:12px;padding:14px;text-align:center;"><div style="font-size:1.4rem;">${c.flag}</div><div style="font-size:0.85rem;color:var(--text-soft);margin:4px 0;">${c.city}</div><div id="wcTime_${c.city.replace(/\s/g,'')}" style="font-size:1.2rem;font-weight:700;color:#fff;font-family:monospace;"></div></div>`).join('');
+  clearInterval(_wclockInterval);
+  const tick = () => { const now = new Date(); WORLD_CLOCKS.forEach(c=>{ const el2=document.getElementById(`wcTime_${c.city.replace(/\s/g,'')}`); if(el2) el2.textContent=now.toLocaleTimeString('de-DE',{timeZone:c.tz,hour:'2-digit',minute:'2-digit',second:'2-digit'}); }); };
+  tick(); _wclockInterval = setInterval(tick, 1000);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PONG
+   ═══════════════════════════════════════════════════════════════ */
+let _pongRAF = null, _pongRunning = false;
+let _pong = { bx:240, by:160, bdx:3.5, bdy:2.5, py:120, ey:120, ps:0, es:0, pSpeed:5 };
+function initPong() { pongReset(); }
+function pongReset() { cancelAnimationFrame(_pongRAF); _pongRunning=false; _pong={bx:240,by:160,bdx:3.5,bdy:2.5,py:120,ey:120,ps:0,es:0,pSpeed:5}; pongDraw(); document.getElementById('pongStartBtn').textContent='▶ Start'; document.getElementById('pongScore').textContent=''; }
+function pongStart() {
+  if (_pongRunning) return;
+  _pongRunning = true;
+  document.getElementById('pongStartBtn').textContent='⏸ Läuft';
+  const keys = {};
+  const kd = e => { keys[e.key]=true; }; const ku = e => { delete keys[e.key]; };
+  window.addEventListener('keydown',kd); window.addEventListener('keyup',ku);
+  function loop() {
+    const p = _pong;
+    if (keys['w']||keys['W']||keys['ArrowUp']) p.py = Math.max(0, p.py-p.pSpeed);
+    if (keys['s']||keys['S']||keys['ArrowDown']) p.py = Math.min(260, p.py+p.pSpeed);
+    // AI
+    if (p.ey+30 < p.by) p.ey = Math.min(260, p.ey+3.2); else p.ey = Math.max(0, p.ey-3.2);
+    p.bx+=p.bdx; p.by+=p.bdy;
+    if (p.by<=0||p.by>=320) p.bdy*=-1;
+    // player paddle
+    if (p.bx<=24 && p.by>=p.py && p.by<=p.py+60) { p.bdx=Math.abs(p.bdx)+0.1; p.bx=24; }
+    // enemy paddle
+    if (p.bx>=456 && p.by>=p.ey && p.by<=p.ey+60) { p.bdx=-(Math.abs(p.bdx)+0.1); p.bx=456; }
+    if (p.bx<=0) { p.es++; p.bx=240; p.by=160; p.bdx=3.5; p.bdy=2.5*Math.sign(p.bdy||1); }
+    if (p.bx>=480) { p.ps++; p.bx=240; p.by=160; p.bdx=-3.5; p.bdy=2.5*Math.sign(p.bdy||1); }
+    pongDraw();
+    document.getElementById('pongScore').textContent = `Du ${p.ps} : ${p.es} Computer`;
+    if (p.ps>=7||p.es>=7) { _pongRunning=false; window.removeEventListener('keydown',kd); window.removeEventListener('keyup',ku); document.getElementById('pongScore').textContent+=` — ${p.ps>p.es?'🎉 Gewonnen!':'💀 Verloren!'}`; return; }
+    _pongRAF = requestAnimationFrame(loop);
+  }
+  _pongRAF = requestAnimationFrame(loop);
+}
+function pongDraw() {
+  const c = document.getElementById('pongCanvas'); if (!c) return;
+  const ctx = c.getContext('2d'), p = _pong;
+  ctx.fillStyle='#0d1f2d'; ctx.fillRect(0,0,480,320);
+  ctx.setLineDash([10,10]); ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.beginPath(); ctx.moveTo(240,0); ctx.lineTo(240,320); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#4d9fff'; ctx.fillRect(12,p.py,10,60); ctx.fillRect(458,p.ey,10,60);
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(p.bx,p.by,8,0,Math.PI*2); ctx.fill();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PASSWORT-STÄRKE
+   ═══════════════════════════════════════════════════════════════ */
+function initPwdcheck() { document.getElementById('pwdCheckInput').value=''; pwdCheckAnalyze(); }
+function pwdCheckToggle() {
+  const inp = document.getElementById('pwdCheckInput'); if (!inp) return;
+  inp.type = inp.type==='password' ? 'text' : 'password';
+}
+function pwdCheckAnalyze() {
+  const pw = document.getElementById('pwdCheckInput')?.value||'';
+  const bar = document.getElementById('pwdCheckBar');
+  const label = document.getElementById('pwdCheckLabel');
+  const tips = document.getElementById('pwdCheckTips');
+  if (!bar) return;
+  const checks = [pw.length>=8, pw.length>=12, /[A-Z]/.test(pw), /[a-z]/.test(pw), /[0-9]/.test(pw), /[^A-Za-z0-9]/.test(pw)];
+  const score = checks.filter(Boolean).length;
+  const colors = ['#ff1744','#ff5722','#ff9800','#ffc107','#8bc34a','#4caf50'];
+  const labels = ['Sehr schwach','Schwach','Mittelmäßig','Gut','Stark','Sehr stark'];
+  bar.style.width = `${Math.round(score/6*100)}%`; bar.style.background = colors[score-1]||'#333';
+  label.textContent = pw ? labels[score-1]||'' : '';
+  label.style.color = colors[score-1]||'#fff';
+  const hints = [];
+  if (!checks[0]) hints.push('Mindestens 8 Zeichen verwenden');
+  if (!checks[1]) hints.push('12+ Zeichen für maximale Sicherheit');
+  if (!checks[2]) hints.push('Großbuchstaben hinzufügen (A-Z)');
+  if (!checks[3]) hints.push('Kleinbuchstaben hinzufügen (a-z)');
+  if (!checks[4]) hints.push('Zahlen einbauen (0-9)');
+  if (!checks[5]) hints.push('Sonderzeichen verwenden (!@#$…)');
+  tips.innerHTML = hints.map(h=>`<li>${h}</li>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ALTER-RECHNER
+   ═══════════════════════════════════════════════════════════════ */
+function initAgecalc() {
+  const today = new Date();
+  document.getElementById('agecalcInput').max = today.toISOString().split('T')[0];
+}
+function agecalcCalc() {
+  const val = document.getElementById('agecalcInput')?.value;
+  const el = document.getElementById('agecalcResult'); if (!el) return;
+  if (!val) { el.innerHTML = ''; return; }
+  const born = new Date(val), now = new Date();
+  if (born > now) { el.innerHTML = 'Datum liegt in der Zukunft.'; return; }
+  let years = now.getFullYear()-born.getFullYear(), months = now.getMonth()-born.getMonth(), days = now.getDate()-born.getDate();
+  if (days < 0) { months--; days += new Date(now.getFullYear(), now.getMonth(), 0).getDate(); }
+  if (months < 0) { years--; months += 12; }
+  const totalDays = Math.floor((now-born)/86400000);
+  const nextBd = new Date(now.getFullYear(), born.getMonth(), born.getDate());
+  if (nextBd <= now) nextBd.setFullYear(now.getFullYear()+1);
+  const daysUntil = Math.floor((nextBd-now)/86400000);
+  el.innerHTML = `<div>🎂 <strong style="color:var(--brand);font-size:1.4rem;">${years} Jahre</strong> ${months} Monate ${days} Tage</div><div style="margin-top:8px;font-size:0.9rem;color:var(--text-soft);">= ${totalDays.toLocaleString('de-DE')} Tage gelebt</div><div style="margin-top:6px;font-size:0.9rem;color:var(--text-soft);">🎈 Nächster Geburtstag in <strong style="color:#fff">${daysUntil}</strong> Tagen</div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KALENDER
+   ═══════════════════════════════════════════════════════════════ */
+let _calYear = new Date().getFullYear(), _calMonth = new Date().getMonth();
+const DE_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const DE_DAYS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+const DE_HOLIDAYS = {
+  '01-01':'Neujahr','05-01':'Tag der Arbeit','10-03':'Tag der Deutschen Einheit','12-25':'1. Weihnachtstag','12-26':'2. Weihnachtstag','12-31':'Silvester'
+};
+function initCalendar() { _calYear=new Date().getFullYear(); _calMonth=new Date().getMonth(); calendarRender(); }
+function calendarNav(d) { _calMonth+=d; if(_calMonth>11){_calMonth=0;_calYear++;} if(_calMonth<0){_calMonth=11;_calYear--;} calendarRender(); }
+function calendarRender() {
+  document.getElementById('calendarTitle').textContent = `${DE_MONTHS[_calMonth]} ${_calYear}`;
+  const g = document.getElementById('calendarGrid'); if (!g) return;
+  const today = new Date(); const tY=today.getFullYear(),tM=today.getMonth(),tD=today.getDate();
+  const first = new Date(_calYear,_calMonth,1).getDay(); const days = new Date(_calYear,_calMonth+1,0).getDate();
+  const startOffset = (first+6)%7;
+  let html = DE_DAYS.map(d=>`<div style="font-size:0.75rem;font-weight:700;color:var(--text-soft);padding:4px 0;">${d}</div>`).join('');
+  for (let i = 0; i < startOffset; i++) html += '<div></div>';
+  for (let d = 1; d <= days; d++) {
+    const mm = String(_calMonth+1).padStart(2,'0'), dd = String(d).padStart(2,'0');
+    const holiday = DE_HOLIDAYS[`${mm}-${dd}`];
+    const isToday = _calYear===tY && _calMonth===tM && d===tD;
+    const isSun = (new Date(_calYear,_calMonth,d).getDay()===0);
+    const bg = isToday?'linear-gradient(135deg,#0e8a9b,#4d9fff)':'rgba(255,255,255,0.04)';
+    const col = holiday?'#ff9800':isSun?'#ff5252':'#fff';
+    html += `<div title="${holiday||''}" style="padding:5px 2px;border-radius:8px;background:${bg};color:${col};font-size:0.85rem;cursor:default;font-weight:${isToday?'800':'400'};">${d}${holiday?'*':''}</div>`;
+  }
+  g.innerHTML = html;
+  const holidaysThisMonth = Object.entries(DE_HOLIDAYS).filter(([k])=>k.startsWith(String(_calMonth+1).padStart(2,'0'))).map(([,v])=>v);
+  document.getElementById('calendarNote').textContent = holidaysThisMonth.length ? `* ${holidaysThisMonth.join(', ')}` : '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   WORDLE (5-Buchstaben-Wörter, Deutsch)
+   ═══════════════════════════════════════════════════════════════ */
+const WORDLE_WORDS = ['STEIN','STERN','RUFEN','BUCHE','TIGER','FLUSS','HUNDE','KATZE','MAUER','BRAUT','BRIEF','DUNST','EIMER','FLECK','GARDE','HAFER','JOKER','KARTE','LAMPE','MAGMA','NACHT','OPFER','PFEIL','QUARZ','RAHMEN','SCHUH','TINTE','ULMEN','VATER','WELLE','XENOS','YACHT','ZANGE','AMBER','BLANK','CREPE','DOLCH','EBENE','FALKE','GABEL','HOLME','INSEL','JACKE','KNALL','LAUBE','MILCH','NAPEL','OCKER','PRINZ','QUELL'];
+let _wordleWord='', _wordleGuesses=[], _wordleCurrent='', _wordleOver=false;
+function initWordle() { wordleNew(); }
+function wordleNew() {
+  _wordleWord = WORDLE_WORDS[Math.floor(Math.random()*WORDLE_WORDS.length)];
+  _wordleGuesses = []; _wordleCurrent = ''; _wordleOver = false;
+  wordleRenderGrid(); wordleRenderKeyboard();
+  document.getElementById('wordleMsg').textContent = '';
+}
+function wordleRenderGrid() {
+  const el = document.getElementById('wordleGrid'); if (!el) return;
+  el.innerHTML = '';
+  for (let r = 0; r < 6; r++) {
+    const guess = _wordleGuesses[r];
+    for (let c = 0; c < 5; c++) {
+      const d = document.createElement('div');
+      const letter = guess ? guess[c]||'' : (r===_wordleGuesses.length&&_wordleCurrent[c]||'');
+      let bg = 'rgba(255,255,255,0.06)'; let col = '#fff'; let border = '2px solid rgba(255,255,255,0.15)';
+      if (guess) {
+        const result = wordleScore(guess);
+        if (result[c]==='correct') { bg='#538d4e'; border='2px solid #538d4e'; }
+        else if (result[c]==='present') { bg='#b59f3b'; border='2px solid #b59f3b'; }
+        else { bg='#3a3a3c'; border='2px solid #3a3a3c'; }
+      } else if (r===_wordleGuesses.length&&_wordleCurrent[c]) border='2px solid rgba(255,255,255,0.4)';
+      d.style.cssText = `width:48px;height:48px;border-radius:6px;background:${bg};border:${border};display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:${col};`;
+      d.textContent = letter;
+      el.appendChild(d);
+    }
+  }
+}
+function wordleScore(guess) {
+  const res = Array(5).fill('absent'), word = _wordleWord.split(''), remaining = [...word];
+  for (let i = 0; i < 5; i++) { if (guess[i]===word[i]) { res[i]='correct'; remaining[i]=null; } }
+  for (let i = 0; i < 5; i++) { if (res[i]==='correct') continue; const ri=remaining.indexOf(guess[i]); if(ri>=0){res[i]='present';remaining[ri]=null;} }
+  return res;
+}
+function wordleRenderKeyboard() {
+  const rows = ['QWERTZUIOP','ASDFGHJKL','YXCVBNM'];
+  const el = document.getElementById('wordleKeyboard'); if (!el) return;
+  el.innerHTML = rows.map(row =>
+    `<div style="display:flex;gap:4px;justify-content:center;">${row.split('').concat(row===rows[2]?['⌫','↵']:[]).map(k=>`<button onclick="wordleKey('${k}')" style="min-width:${['⌫','↵'].includes(k)?'44px':'32px'};height:44px;border-radius:6px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:0.85rem;font-weight:700;cursor:pointer;">${k}</button>`).join('')}</div>`
+  ).join('');
+}
+function wordleKey(k) {
+  if (_wordleOver) return;
+  if (k==='⌫') { _wordleCurrent=_wordleCurrent.slice(0,-1); }
+  else if (k==='↵') { wordleSubmit(); return; }
+  else if (_wordleCurrent.length<5) _wordleCurrent+=k;
+  wordleRenderGrid();
+}
+function wordleSubmit() {
+  if (_wordleCurrent.length<5) return;
+  _wordleGuesses.push(_wordleCurrent); _wordleCurrent='';
+  wordleRenderGrid();
+  const last = _wordleGuesses[_wordleGuesses.length-1];
+  const msg = document.getElementById('wordleMsg');
+  if (last===_wordleWord) { msg.textContent='🎉 Gewonnen!'; _wordleOver=true; return; }
+  if (_wordleGuesses.length>=6) { msg.textContent=`💀 Verloren! Das Wort war: ${_wordleWord}`; _wordleOver=true; }
+}
+(function(){
+  document.addEventListener('keydown', e => {
+    if (!document.getElementById('wordle')?.classList.contains('active')) return;
+    if (e.key==='Backspace') wordleKey('⌫');
+    else if (e.key==='Enter') wordleKey('↵');
+    else if (/^[A-Za-zÄÖÜäöü]$/.test(e.key)) wordleKey(e.key.toUpperCase());
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════════════
+   BREAKOUT
+   ═══════════════════════════════════════════════════════════════ */
+let _boRAF = null, _boRunning = false;
+let _bo = {};
+function initBreakout() { breakoutReset(); }
+function breakoutReset() {
+  cancelAnimationFrame(_boRAF); _boRunning=false;
+  _bo = { bx:240, by:280, bdx:3, bdy:-3, px:200, pw:80, score:0, lives:3, bricks:[] };
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 10; c++) _bo.bricks.push({x:c*46+8,y:r*22+30,alive:true,color:`hsl(${r*40+160},80%,55%)`});
+  breakoutDraw();
+  document.getElementById('breakoutStartBtn').textContent='▶ Start';
+  _boUpdateHUD();
+}
+function _boUpdateHUD() { document.getElementById('breakoutHUD').textContent = `Punkte: ${_bo.score} | Leben: ${'❤️'.repeat(Math.max(0,_bo.lives))}`; }
+function breakoutStart() {
+  if (_boRunning) return;
+  _boRunning=true;
+  document.getElementById('breakoutStartBtn').textContent='⏸ Läuft';
+  const keys={};
+  const kd=e=>{keys[e.key]=true;}; const ku=e=>{delete keys[e.key];};
+  window.addEventListener('keydown',kd); window.addEventListener('keyup',ku);
+  const canvas = document.getElementById('breakoutCanvas');
+  canvas.onmousemove = e => { const r=canvas.getBoundingClientRect(); _bo.px=Math.min(480-_bo.pw,Math.max(0,(e.clientX-r.left)*(480/r.width)-_bo.pw/2)); };
+  canvas.ontouchmove = e => { e.preventDefault(); const r=canvas.getBoundingClientRect(); _bo.px=Math.min(480-_bo.pw,Math.max(0,(e.touches[0].clientX-r.left)*(480/r.width)-_bo.pw/2)); };
+  function loop() {
+    if (keys['ArrowLeft']) _bo.px=Math.max(0,_bo.px-6);
+    if (keys['ArrowRight']) _bo.px=Math.min(480-_bo.pw,_bo.px+6);
+    _bo.bx+=_bo.bdx; _bo.by+=_bo.bdy;
+    if (_bo.bx<=8||_bo.bx>=472) _bo.bdx*=-1;
+    if (_bo.by<=10) _bo.bdy*=-1;
+    if (_bo.by>=310 && _bo.bx>=_bo.px && _bo.bx<=_bo.px+_bo.pw) { _bo.bdy=-Math.abs(_bo.bdy); const rel=(_bo.bx-_bo.px)/_bo.pw-.5; _bo.bdx=rel*6; }
+    if (_bo.by>320) { _bo.lives--; _boUpdateHUD(); _bo.bx=240; _bo.by=280; _bo.bdx=3*Math.sign(_bo.bdx||1); _bo.bdy=-3; if(_bo.lives<=0){_boRunning=false;window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);document.getElementById('breakoutHUD').textContent+=' — Game Over!'; breakoutDraw(); return;} }
+    for (const brick of _bo.bricks) {
+      if (!brick.alive) continue;
+      if (_bo.bx>=brick.x&&_bo.bx<=brick.x+42&&_bo.by>=brick.y&&_bo.by<=brick.y+16) { brick.alive=false; _bo.bdy*=-1; _bo.score+=10; _boUpdateHUD(); break; }
+    }
+    if (_bo.bricks.every(b=>!b.alive)) { _boRunning=false; window.removeEventListener('keydown',kd); window.removeEventListener('keyup',ku); document.getElementById('breakoutHUD').textContent+=' — 🎉 Gewonnen!'; breakoutDraw(); return; }
+    breakoutDraw();
+    _boRAF=requestAnimationFrame(loop);
+  }
+  _boRAF=requestAnimationFrame(loop);
+}
+function breakoutDraw() {
+  const c=document.getElementById('breakoutCanvas'); if(!c) return;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#0d1f2d'; ctx.fillRect(0,0,480,320);
+  _bo.bricks.forEach(b=>{if(!b.alive)return; ctx.fillStyle=b.color; ctx.beginPath(); ctx.roundRect(b.x,b.y,42,16,4); ctx.fill();});
+  ctx.fillStyle='#4d9fff'; ctx.beginPath(); ctx.roundRect(_bo.px,300,_bo.pw,10,4); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(_bo.bx,_bo.by,7,0,Math.PI*2); ctx.fill();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FARB-QUIZ
+   ═══════════════════════════════════════════════════════════════ */
+let _cqAnswer='', _cqScore=0, _cqStreak=0;
+function initColorquiz() { _cqScore=0; _cqStreak=0; colorquizNext(); }
+function colorquizNext() {
+  const r=()=>Math.floor(Math.random()*256);
+  _cqAnswer = `#${r().toString(16).padStart(2,'0')}${r().toString(16).padStart(2,'0')}${r().toString(16).padStart(2,'0')}`;
+  document.getElementById('colorquizSwatch').style.background = _cqAnswer;
+  document.getElementById('colorquizHex').textContent = '?';
+  document.getElementById('colorquizPts').textContent = _cqScore;
+  document.getElementById('colorquizStreak').textContent = _cqStreak;
+  const wrong = Array.from({length:3},()=>`#${r().toString(16).padStart(2,'0')}${r().toString(16).padStart(2,'0')}${r().toString(16).padStart(2,'0')}`);
+  const opts = [...wrong, _cqAnswer].sort(()=>Math.random()-.5);
+  document.getElementById('colorquizBtns').innerHTML = opts.map(o=>`<button onclick="colorquizGuess('${o}')" style="padding:8px 16px;border-radius:10px;border:2px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:#fff;font-family:monospace;font-size:1rem;cursor:pointer;">${o.toUpperCase()}</button>`).join('');
+}
+function colorquizGuess(val) {
+  const correct = val===_cqAnswer;
+  document.getElementById('colorquizHex').textContent = _cqAnswer.toUpperCase();
+  document.querySelectorAll('#colorquizBtns button').forEach(b=>{
+    if (b.textContent===_cqAnswer.toUpperCase()) b.style.background='rgba(76,175,80,0.4)';
+    else if (b.textContent===val.toUpperCase()&&!correct) b.style.background='rgba(255,82,82,0.4)';
+    b.disabled=true;
+  });
+  if (correct) { _cqScore+=10+_cqStreak*2; _cqStreak++; } else _cqStreak=0;
+  setTimeout(colorquizNext, 1200);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ZAHL RATEN
+   ═══════════════════════════════════════════════════════════════ */
+let _ngRange=100, _ngSecret=0, _ngAttempts=0;
+function initNumguess() { numguessSetRange(100); }
+function numguessSetRange(n) { _ngRange=n; numguessNew(); }
+function numguessNew() { _ngSecret=1+Math.floor(Math.random()*_ngRange); _ngAttempts=0; document.getElementById('numguessInput').value=''; document.getElementById('numguessMsg').textContent=''; document.getElementById('numguessHistory').textContent=''; document.getElementById('numguessInfo').textContent=`Ich denke an eine Zahl zwischen 1 und ${_ngRange}. Rate!`; }
+function numguessGuess() {
+  const val = parseInt(document.getElementById('numguessInput')?.value);
+  if (!val||val<1||val>_ngRange) return;
+  _ngAttempts++;
+  const msg = document.getElementById('numguessMsg');
+  if (val===_ngSecret) { msg.textContent=`🎉 Richtig in ${_ngAttempts} Versuchen!`; msg.style.color='#4caf50'; }
+  else { msg.textContent=val<_ngSecret?'⬆️ Höher!':'⬇️ Niedriger!'; msg.style.color='var(--brand)'; }
+  document.getElementById('numguessHistory').textContent=`Versuch ${_ngAttempts}`;
+  document.getElementById('numguessInput').value='';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GEBURTSTAGS-TRACKER
+   ═══════════════════════════════════════════════════════════════ */
+function initBirthday() { birthdayRender(); }
+function birthdayAdd() {
+  const name = document.getElementById('birthdayName')?.value.trim();
+  const date = document.getElementById('birthdayDate')?.value;
+  if (!name||!date) return;
+  const list = JSON.parse(localStorage.getItem('birthdays')||'[]');
+  list.push({name,date});
+  list.sort((a,b)=>birthdayDaysUntil(a.date)-birthdayDaysUntil(b.date));
+  localStorage.setItem('birthdays',JSON.stringify(list));
+  document.getElementById('birthdayName').value='';
+  document.getElementById('birthdayDate').value='';
+  birthdayRender();
+}
+function birthdayDaysUntil(dateStr) {
+  const now=new Date(), bd=new Date(dateStr), next=new Date(now.getFullYear(),bd.getMonth(),bd.getDate());
+  if (next<now) next.setFullYear(now.getFullYear()+1);
+  return Math.floor((next-now)/86400000);
+}
+function birthdayRender() {
+  const el=document.getElementById('birthdayList'); if(!el) return;
+  const list=JSON.parse(localStorage.getItem('birthdays')||'[]');
+  el.innerHTML=list.length?list.map((b,i)=>{
+    const d=birthdayDaysUntil(b.date);
+    const bd=new Date(b.date);
+    const age=new Date().getFullYear()-bd.getFullYear();
+    return `<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.04);border-radius:10px;padding:10px 14px;"><div><div style="font-weight:700;color:#fff;">${b.name}</div><div style="font-size:0.82rem;color:var(--text-soft);">${bd.toLocaleDateString('de-DE')} · ${age} Jahre</div></div><div style="text-align:right;"><div style="font-size:1.1rem;font-weight:700;color:${d===0?'#4caf50':'var(--brand)'};">${d===0?'🎂 Heute!':d===1?'Morgen 🎈':`in ${d} Tagen`}</div><button onclick="birthdayRemove(${i})" style="background:none;border:none;color:#ff5252;cursor:pointer;font-size:0.8rem;">✕</button></div></div>`;
+  }).join(''):'<div style="color:var(--text-soft);font-size:0.9rem;">Noch keine Geburtstage gespeichert.</div>';
+}
+function birthdayRemove(i) {
+  const list=JSON.parse(localStorage.getItem('birthdays')||'[]');
+  list.splice(i,1); localStorage.setItem('birthdays',JSON.stringify(list)); birthdayRender();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MINESWEEPER
+   ═══════════════════════════════════════════════════════════════ */
+let _ms = { cols:9, rows:9, mines:10, board:[], revealed:[], flagged:[], started:false, over:false, timer:null, seconds:0 };
+function initMinesweeper() { minesweeperNew(9,9,10); }
+function minesweeperNew(rows,cols,mines) {
+  clearInterval(_ms.timer);
+  _ms = { rows, cols, mines, board:Array(rows*cols).fill(0), revealed:Array(rows*cols).fill(false), flagged:Array(rows*cols).fill(false), started:false, over:false, timer:null, seconds:0 };
+  document.getElementById('mineCount').textContent=mines;
+  document.getElementById('mineTimer').textContent='0';
+  document.getElementById('minesweeperMsg').textContent='';
+  _msRender();
+}
+function _msPlace(firstIdx) {
+  const forbidden = new Set([firstIdx, ..._msNeighbors(firstIdx, _ms.cols, _ms.rows)]);
+  let placed=0;
+  while(placed<_ms.mines) { const i=Math.floor(Math.random()*_ms.rows*_ms.cols); if(!forbidden.has(i)&&_ms.board[i]===0){_ms.board[i]=-1;placed++;} }
+  for(let i=0;i<_ms.board.length;i++) { if(_ms.board[i]===-1) continue; _ms.board[i]=_msNeighbors(i,_ms.cols,_ms.rows).filter(n=>_ms.board[n]===-1).length; }
+}
+function _msNeighbors(i, cols, rows) {
+  const r=Math.floor(i/cols), c=i%cols, ns=[];
+  for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++) { if(!dr&&!dc) continue; const nr=r+dr,nc=c+dc; if(nr>=0&&nr<rows&&nc>=0&&nc<cols) ns.push(nr*cols+nc); }
+  return ns;
+}
+function _msReveal(i) {
+  if(_ms.revealed[i]||_ms.flagged[i]) return;
+  _ms.revealed[i]=true;
+  if(_ms.board[i]===0) _msNeighbors(i,_ms.cols,_ms.rows).forEach(n=>{ if(!_ms.revealed[n]&&!_ms.flagged[n]) _msReveal(n); });
+}
+function _msRender() {
+  const el=document.getElementById('minesweeperGrid'); if(!el) return;
+  el.style.gridTemplateColumns=`repeat(${_ms.cols},1fr)`;
+  el.innerHTML='';
+  _ms.board.forEach((_,i)=>{
+    const d=document.createElement('div');
+    const r=_ms.revealed[i], f=_ms.flagged[i];
+    const val=_ms.board[i];
+    const numColors=['','#1565c0','#2e7d32','#c62828','#4a148c','#b71c1c','#006064','#000','#616161'];
+    let content='', bg='rgba(255,255,255,0.1)', col='#fff';
+    if(f){content='🚩';}
+    else if(!r){bg='rgba(255,255,255,0.1)';}
+    else if(val===-1){content='💣';bg='rgba(255,82,82,0.4)';}
+    else{bg='rgba(0,0,0,0.2)';content=val||'';col=numColors[val]||'#fff';}
+    d.style.cssText=`width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:${bg};color:${col};font-size:${val===-1||f?'1rem':'0.85rem'};font-weight:700;cursor:pointer;user-select:none;`;
+    d.textContent=content;
+    d.onclick=()=>{ if(_ms.over||f) return; if(!_ms.started){_ms.started=true;_msPlace(i);_ms.timer=setInterval(()=>{_ms.seconds++;document.getElementById('mineTimer').textContent=_ms.seconds;},1000);} _msReveal(i); if(_ms.board[i]===-1){_ms.over=true;clearInterval(_ms.timer);_ms.revealed.fill(true);_msRender();document.getElementById('minesweeperMsg').textContent='💥 Mine getroffen! Game Over.';return;} const won=_ms.revealed.filter(Boolean).length===_ms.board.length-_ms.mines; if(won){_ms.over=true;clearInterval(_ms.timer);document.getElementById('minesweeperMsg').textContent='🎉 Gewonnen!';} _msRender(); };
+    d.oncontextmenu=e=>{e.preventDefault();if(_ms.over||_ms.revealed[i])return;_ms.flagged[i]=!_ms.flagged[i];const f2=_ms.flagged.filter(Boolean).length;document.getElementById('mineCount').textContent=_ms.mines-f2;_msRender();};
+    el.appendChild(d);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   INIT-HOOKS für die 20 neuen Tools
+   ═══════════════════════════════════════════════════════════════ */
+function initReaction()    { _rxState='idle'; _rxHistory=[]; _rxRender(); }
+function initInterest()    { interestSetMode('simple'); }
+function initQuote()       { _quoteIdx=Math.floor(Math.random()*QUOTES.length); _quoteFavs=JSON.parse(localStorage.getItem('quoteFavs')||'[]'); quoteRender(); quoteFavsRender(); }
+function initDice()        { diceSetType(6); }
+function initMood()        { _moodSelected=null; moodRenderList(); }
+function initGrades()      { _gradesRows=[]; document.getElementById('gradesList').innerHTML=''; document.getElementById('gradesResult').innerHTML=''; gradesAddRow(); gradesAddRow(); gradesCalc(); }
+function initWorldclock()  { }
+function initPong()        { pongReset(); }
+function initPwdcheck()    { document.getElementById('pwdCheckInput').value=''; pwdCheckAnalyze(); }
+function initAgecalc()     { const t=new Date(); document.getElementById('agecalcInput').max=t.toISOString().split('T')[0]; }
+function initCalendar()    { _calYear=new Date().getFullYear(); _calMonth=new Date().getMonth(); calendarRender(); }
+function initWordle()      { wordleNew(); }
+function initBreakout()    { breakoutReset(); }
+function initColorquiz()   { _cqScore=0; _cqStreak=0; colorquizNext(); }
+function initNumguess()    { numguessSetRange(100); }
+function initBirthday()    { birthdayRender(); }
+function initMinesweeper() { minesweeperNew(9,9,10); }
