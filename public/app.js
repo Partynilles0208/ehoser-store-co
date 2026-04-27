@@ -577,6 +577,8 @@ function skipVote() {
 }
 
 function startApp() {
+    startOnlinePolling();
+    sendHeartbeat();
     const token = localStorage.getItem('token');
     if (token) {
         verifyToken(token);
@@ -2078,12 +2080,16 @@ function logout() {
 
 let onlineInterval = null;
 let heartbeatInterval = null;
+const guestId = localStorage.getItem('guestId') || crypto.randomUUID();
+localStorage.setItem('guestId', guestId);
 
 function startOnlinePolling() {
+    clearInterval(onlineInterval);
+    clearInterval(heartbeatInterval);
     fetchOnlineUsers();
     onlineInterval = setInterval(fetchOnlineUsers, 30000);
     heartbeatInterval = setInterval(sendHeartbeat, 60000);
-    startScreenSharePolling();
+    if (localStorage.getItem('token')) startScreenSharePolling();
 }
 
 function stopOnlinePolling() {
@@ -2094,29 +2100,35 @@ function stopOnlinePolling() {
 
 async function sendHeartbeat() {
     const token = localStorage.getItem('token');
-    if (!token) return;
-    fetch(`${API_BASE}/heartbeat`, {
+    if (token) {
+        fetch(`${API_BASE}/heartbeat`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` }
+        }).catch(() => {});
+        return;
+    }
+    fetch(`${API_BASE}/guest-heartbeat`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guestId })
     }).catch(() => {});
 }
 
 async function fetchOnlineUsers() {
     const token = localStorage.getItem('token');
-    if (!token) return;
     try {
-        const res = await fetch(`${API_BASE}/online-users`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const res = await fetch(`${API_BASE}/online-users`, { headers });
         if (!res.ok) return;
-        const users = await res.json();
+        const data = await res.json();
+        const users = Array.isArray(data) ? data : (data.users || []);
         const widget = document.getElementById('onlineWidget');
         const list = document.getElementById('onlineList');
         widget.style.display = '';
         if (users.length === 0) {
             list.innerHTML = '<li style="color:var(--muted)">Niemand online</li>';
         } else {
-            list.innerHTML = users.map(u => `<li>${escapeHtml(u.username)}</li>`).join('');
+            list.innerHTML = users.map(u => `<li>${escapeHtml(u.username || 'Gast')}</li>`).join('');
         }
     } catch {}
 }
@@ -2356,6 +2368,8 @@ let _chatPollInterval = null;
 let _chatLastMsgId = 0;
 let _chatGroups = [];
 let _chatUserSearchTimer = null;
+let _chatSelectedUsers = new Set();
+let _chatLastUserDirectory = [];
 
 function chatCanNotify() {
     return 'Notification' in window && Notification.permission === 'granted';
@@ -2479,7 +2493,9 @@ async function initChatSection() {
     document.getElementById('chatEmptyState').style.display = 'flex';
     document.getElementById('chatConv').style.display = 'none';
     chatAskNotificationPermission();
+    _chatSelectedUsers.clear();
     await chatLoadGroups();
+    await chatSearchUsers('');
 }
 
 async function chatLoadGroups() {
@@ -2493,15 +2509,15 @@ async function chatLoadGroups() {
         const data = await res.json();
         _chatGroups = data.groups || [];
         if (!_chatGroups.length) {
-            list.innerHTML = '<div class="chat-loading" style="color:#6a9bb8;font-size:0.9rem;padding:16px;">Noch keine Gespräche.<br>Suche einen Nutzer oben.</div>';
+            list.innerHTML = '<div class="chat-loading" style="color:#6a9bb8;font-size:0.9rem;padding:16px;">Noch keine Gespräche.<br>Wähle Nutzer und klicke auf Anwenden.</div>';
             return;
         }
         list.innerHTML = _chatGroups.map(g => `
             <button class="chat-group-item" onclick="openChatGroup('${escapeAttribute(g.id)}','${escapeAttribute(g.name)}')">
-                <div class="chat-group-avatar">${escapeHtml(g.name.charAt(0).toUpperCase())}</div>
+                <div class="chat-group-avatar">${g.photo_url ? `<img src="${escapeAttribute(g.photo_url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">` : escapeHtml(g.name.charAt(0).toUpperCase())}</div>
                 <div class="chat-group-info">
                     <div class="chat-group-name">${escapeHtml(g.name)}</div>
-                    <div class="chat-group-sub">Tippen zum öffnen</div>
+                    <div class="chat-group-sub">${g.type === 'private' ? 'Privater Chat' : `Gruppe · ${g.member_count || 0} Mitglieder`}</div>
                 </div>
             </button>
         `).join('');
@@ -2513,27 +2529,32 @@ async function chatLoadGroups() {
 function chatSearchUsers(query) {
     const dropdown = document.getElementById('chatUserDropdown');
     clearTimeout(_chatUserSearchTimer);
-    if (!query || query.length < 2) {
-        dropdown.style.display = 'none';
-        return;
-    }
     _chatUserSearchTimer = setTimeout(async () => {
         const token = localStorage.getItem('token');
         if (!token) return;
         try {
-            const res = await fetch(`${API_BASE}/chat/users/search?q=${encodeURIComponent(query)}`, {
+            const q = String(query || '').trim();
+            const url = q
+                ? `${API_BASE}/chat/users/search?q=${encodeURIComponent(q)}&limit=200`
+                : `${API_BASE}/chat/users/search?limit=200`;
+            const res = await fetch(url, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await res.json();
             const users = data.users || [];
+            _chatLastUserDirectory = users;
             if (!users.length) {
                 dropdown.innerHTML = '<div class="chat-dd-item chat-dd-empty">Kein Nutzer gefunden</div>';
                 dropdown.style.display = 'block';
                 return;
             }
-            dropdown.innerHTML = users.map(u =>
-                `<div class="chat-dd-item" onclick="chatStartDM('${escapeAttribute(u)}')">${escapeHtml(u)}</div>`
-            ).join('');
+            const selectedText = _chatSelectedUsers.size
+                ? `<div class="chat-dd-item chat-dd-empty">Ausgewählt: ${escapeHtml([..._chatSelectedUsers].join(', '))}</div>`
+                : '';
+            dropdown.innerHTML = selectedText + users.map(u => {
+                const selectedClass = _chatSelectedUsers.has(u) ? ' selected' : '';
+                return `<div class="chat-dd-item${selectedClass}" onclick="chatToggleUserSelection('${escapeAttribute(u)}')">${escapeHtml(u)}</div>`;
+            }).join('');
             dropdown.style.display = 'block';
         } catch {
             dropdown.style.display = 'none';
@@ -2541,23 +2562,43 @@ function chatSearchUsers(query) {
     }, 300);
 }
 
-async function chatStartDM(targetUsername) {
+function chatToggleUserSelection(username) {
+    if (_chatSelectedUsers.has(username)) _chatSelectedUsers.delete(username);
+    else _chatSelectedUsers.add(username);
+    chatSearchUsers(document.getElementById('chatDmInput')?.value || '');
+}
+
+async function chatApplySelectedUsers() {
+    const users = [..._chatSelectedUsers];
+    if (!users.length) {
+        showAlert('Bitte mindestens einen Nutzer auswählen.', 'error');
+        return;
+    }
+    await chatCreateConversation(users);
+}
+
+async function chatCreateConversation(targetUsers) {
     const token = localStorage.getItem('token');
     if (!token) return;
-    document.getElementById('chatUserDropdown').style.display = 'none';
-    document.getElementById('chatDmInput').value = '';
 
-    // Schauen ob bereits Gespräch existiert
-    const existing = _chatGroups.find(g => g.name === targetUsername || g.name === currentUser?.username + ' & ' + targetUsername || g.name === targetUsername + ' & ' + currentUser?.username);
-    if (existing) {
-        openChatGroup(existing.id, existing.name);
+    const uniqueUsers = [...new Set((targetUsers || []).map(u => String(u || '').trim()).filter(Boolean))];
+    if (!uniqueUsers.length) return;
+
+    const myUsername = currentUser?.username;
+    if (!myUsername) return;
+
+    const privateChat = uniqueUsers.length === 1;
+    const groupName = privateChat
+        ? uniqueUsers[0]
+        : (window.prompt('Gruppenname eingeben:', `Gruppe ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`) || '').trim();
+
+    if (!groupName) {
+        showAlert('Gruppenname fehlt.', 'error');
         return;
     }
 
-    // Neues Gespräch erstellen
-    const groupName = targetUsername;
-    const myUsername = currentUser?.username;
-    if (!myUsername) return;
+    const memberKeys = { [myUsername]: 'plain' };
+    uniqueUsers.forEach(u => { memberKeys[u] = 'plain'; });
 
     try {
         const res = await fetch(`${API_BASE}/chat/groups`, {
@@ -2565,7 +2606,8 @@ async function chatStartDM(targetUsername) {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({
                 name: groupName,
-                memberKeys: { [myUsername]: 'plain', [targetUsername]: 'plain' }
+                members: uniqueUsers,
+                memberKeys
             })
         });
         const data = await res.json();
@@ -2573,6 +2615,9 @@ async function chatStartDM(targetUsername) {
             showAlert(data.error || 'Gespräch konnte nicht erstellt werden.', 'error');
             return;
         }
+        _chatSelectedUsers.clear();
+        document.getElementById('chatDmInput').value = '';
+        document.getElementById('chatUserDropdown').style.display = 'none';
         await chatLoadGroups();
         openChatGroup(data.id, data.name);
     } catch {
@@ -2580,14 +2625,21 @@ async function chatStartDM(targetUsername) {
     }
 }
 
+async function chatStartDM(targetUsername) {
+    await chatCreateConversation([targetUsername]);
+}
+
 function openChatGroup(groupId, groupName) {
     _chatCurrentGroupId = groupId;
     _chatCurrentGroupName = groupName;
     _chatLastMsgId = 0;
+    const group = _chatGroups.find(g => g.id === groupId) || {};
     document.getElementById('chatEmptyState').style.display = 'none';
     document.getElementById('chatConv').style.display = 'flex';
     document.getElementById('chatConvName').textContent = groupName;
-    document.getElementById('chatConvStatus').textContent = '● Online';
+    document.getElementById('chatConvStatus').textContent = group.type === 'private' ? 'Privater Chat' : `Gruppe · ${group.member_count || 0} Mitglieder`;
+    const manageBtn = document.getElementById('chatManageBtn');
+    if (manageBtn) manageBtn.style.display = (group.type === 'group' && group.is_admin) ? '' : 'none';
     document.getElementById('chatMessages').innerHTML = '';
     clearInterval(_chatPollInterval);
     chatFetchMessages();
@@ -4598,4 +4650,93 @@ function metroClick() {
     gain.gain.setValueAtTime(0.3, _metroCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, _metroCtx.currentTime + 0.1);
     osc.start(_metroCtx.currentTime); osc.stop(_metroCtx.currentTime + 0.1);
+}
+
+function inviteClassToWebsite() {
+    const text = `Hey, schau dir meine ehoser Seite an: ${window.location.origin}`;
+    navigator.clipboard.writeText(text).then(() => {
+        showAlert('Einladung kopiert. Schick den Text an deine Klasse.', 'success');
+    }).catch(() => {
+        showAlert('Kopieren fehlgeschlagen.', 'error');
+    });
+}
+
+async function chatOpenGroupManage() {
+    if (!_chatCurrentGroupId) return;
+    const group = _chatGroups.find(g => g.id === _chatCurrentGroupId);
+    if (!group || !group.is_admin) {
+        showAlert('Nur Gruppenadmins können verwalten.', 'error');
+        return;
+    }
+    const action = window.prompt(
+        'Gruppenverwaltung:\n1 = Beschreibung setzen\n2 = Gruppenfoto URL setzen\n3 = Mitglied hinzufügen\n4 = Mitglied entfernen\n5 = Nutzer zum Admin machen\n6 = Namen ändern\nBitte Zahl eingeben:'
+    );
+    if (!action) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+        if (action === '1') {
+            const description = window.prompt('Neue Gruppenbeschreibung:', group.description || '') || '';
+            await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ description })
+            });
+        } else if (action === '2') {
+            const photoUrl = window.prompt('Neue Gruppenfoto URL:', group.photo_url || '') || '';
+            await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ photoUrl })
+            });
+        } else if (action === '3') {
+            const username = (window.prompt('Nutzername zum Hinzufügen:') || '').trim();
+            if (!username) return;
+            const res = await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/members`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ username, encryptedGroupKey: 'plain' })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Mitglied konnte nicht hinzugefügt werden');
+        } else if (action === '4') {
+            const username = (window.prompt('Nutzername zum Entfernen:') || '').trim();
+            if (!username) return;
+            const res = await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/members/${encodeURIComponent(username)}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Mitglied konnte nicht entfernt werden');
+        } else if (action === '5') {
+            const username = (window.prompt('Nutzername als Admin:') || '').trim();
+            if (!username) return;
+            const res = await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/admins`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ username })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Admin konnte nicht gesetzt werden');
+        } else if (action === '6') {
+            const name = (window.prompt('Neuer Gruppenname:', group.name || _chatCurrentGroupName) || '').trim();
+            if (!name) return;
+            await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ name })
+            });
+        } else {
+            return;
+        }
+
+        await chatLoadGroups();
+        const refreshed = _chatGroups.find(g => g.id === _chatCurrentGroupId);
+        openChatGroup(_chatCurrentGroupId, refreshed?.name || _chatCurrentGroupName);
+        showAlert('Gruppenverwaltung aktualisiert.', 'success');
+    } catch (err) {
+        showAlert(err?.message || 'Aktion fehlgeschlagen.', 'error');
+    }
 }

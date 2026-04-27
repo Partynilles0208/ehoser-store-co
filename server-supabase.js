@@ -20,6 +20,10 @@ const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_ATTEMPTS = 20;
+const guestPresence = new Map();
+const GUEST_WINDOW_MS = 5 * 60 * 1000;
+const chatGroupMetaMemory = new Map();
+const chatGroupAdminsMemory = new Map();
 
 // Supabase Init
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -93,6 +97,19 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   sender TEXT NOT NULL,
   encrypted_content TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS chat_group_meta (
+  group_id UUID PRIMARY KEY,
+  type TEXT NOT NULL DEFAULT 'group',
+  description TEXT,
+  photo_url TEXT,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS chat_group_admins (
+  group_id UUID NOT NULL,
+  username TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  PRIMARY KEY (group_id, username)
 );`);
     return;
   }
@@ -131,6 +148,23 @@ CREATE TABLE IF NOT EXISTS chat_messages (
         used_by TEXT NULL,
         created_at TIMESTAMP DEFAULT NOW(),
         used_at TIMESTAMP NULL
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_group_meta (
+        group_id UUID PRIMARY KEY,
+        type TEXT NOT NULL DEFAULT 'group',
+        description TEXT,
+        photo_url TEXT,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_group_admins (
+        group_id UUID NOT NULL,
+        username TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (group_id, username)
       );
     `);
     console.log('âœ… Datenbank-Tabellen Ã¼berprÃ¼ft/erstellt.');
@@ -1154,13 +1188,7 @@ app.get('/api/users/pro-badges', async (req, res) => {
 
 // Online-Nutzer (letzte 5 Minuten)
 app.get('/api/online-users', async (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Nicht angemeldet' });
-  try {
-    jwt.verify(token, JWT_SECRET);
-  } catch {
-    return res.status(401).json({ error: 'UngÃ¼ltiger Token' });
-  }
+  const authUser = optionalAuth(req);
 
   const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   const { data, error } = await supabase
@@ -1170,7 +1198,30 @@ app.get('/api/online-users', async (req, res) => {
     .order('last_seen', { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+
+  pruneGuestPresence();
+  const guestCount = guestPresence.size;
+
+  const users = [];
+  if (authUser) {
+    for (const row of (data || [])) {
+      users.push({ username: row.username, kind: 'user' });
+    }
+  }
+  for (let i = 0; i < guestCount; i += 1) {
+    users.push({ username: 'Gast', kind: 'guest' });
+  }
+
+  res.json({ users, guestCount });
+});
+
+// Guest Heartbeat: anonyme Besucher online markieren
+app.post('/api/guest-heartbeat', async (req, res) => {
+  const guestId = String(req.body?.guestId || '').trim().slice(0, 64);
+  if (!guestId) return res.status(400).json({ error: 'guestId fehlt' });
+  guestPresence.set(guestId, Date.now());
+  pruneGuestPresence();
+  res.json({ ok: true, guestCount: guestPresence.size });
 });
 
 // Heartbeat: last_seen aktualisieren
@@ -1780,6 +1831,112 @@ function chatAuth(req, res) {
   catch { res.status(401).json({ error: 'UngÃ¼ltiger Token' }); return null; }
 }
 
+function optionalAuth(req) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return null;
+  try { return jwt.verify(token, JWT_SECRET); }
+  catch { return null; }
+}
+
+function pruneGuestPresence() {
+  const now = Date.now();
+  for (const [guestId, ts] of guestPresence.entries()) {
+    if (now - ts > GUEST_WINDOW_MS) guestPresence.delete(guestId);
+  }
+}
+
+function memorySetGroupAdmin(groupId, username) {
+  if (!chatGroupAdminsMemory.has(groupId)) chatGroupAdminsMemory.set(groupId, new Set());
+  chatGroupAdminsMemory.get(groupId).add(username);
+}
+
+function memoryUnsetGroupAdmin(groupId, username) {
+  if (!chatGroupAdminsMemory.has(groupId)) return;
+  chatGroupAdminsMemory.get(groupId).delete(username);
+}
+
+async function getGroupMeta(groupId, fallback) {
+  const { data, error } = await supabaseAdmin
+    .from('chat_group_meta')
+    .select('type,description,photo_url')
+    .eq('group_id', groupId)
+    .maybeSingle();
+
+  if (!error && data) {
+    return {
+      type: data.type || fallback.type,
+      description: data.description || '',
+      photoUrl: data.photo_url || ''
+    };
+  }
+
+  const mem = chatGroupMetaMemory.get(groupId) || {};
+  return {
+    type: mem.type || fallback.type,
+    description: mem.description || '',
+    photoUrl: mem.photoUrl || ''
+  };
+}
+
+async function setGroupMeta(groupId, patch) {
+  const payload = {
+    group_id: groupId,
+    type: patch.type || 'group',
+    description: patch.description || '',
+    photo_url: patch.photoUrl || ''
+  };
+  const { error } = await supabaseAdmin
+    .from('chat_group_meta')
+    .upsert(payload, { onConflict: 'group_id' });
+  if (error) {
+    chatGroupMetaMemory.set(groupId, {
+      type: payload.type,
+      description: payload.description,
+      photoUrl: payload.photo_url
+    });
+  }
+}
+
+async function ensureGroupAdmin(groupId, username) {
+  const { error } = await supabaseAdmin
+    .from('chat_group_admins')
+    .upsert({ group_id: groupId, username }, { onConflict: 'group_id,username' });
+  if (error) memorySetGroupAdmin(groupId, username);
+}
+
+async function removeGroupAdmin(groupId, username) {
+  const { error } = await supabaseAdmin
+    .from('chat_group_admins')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('username', username);
+  if (error) memoryUnsetGroupAdmin(groupId, username);
+}
+
+async function listGroupAdmins(groupId, createdBy) {
+  const { data, error } = await supabaseAdmin
+    .from('chat_group_admins')
+    .select('username')
+    .eq('group_id', groupId);
+
+  if (!error && Array.isArray(data)) {
+    const admins = [...new Set(data.map(x => x.username).filter(Boolean))];
+    if (createdBy && !admins.includes(createdBy)) admins.push(createdBy);
+    return admins;
+  }
+
+  const mem = chatGroupAdminsMemory.get(groupId);
+  const admins = mem ? [...mem] : [];
+  if (createdBy && !admins.includes(createdBy)) admins.push(createdBy);
+  return admins;
+}
+
+async function isGroupAdmin(groupId, username, createdBy) {
+  if (username === createdBy) return true;
+  const admins = await listGroupAdmins(groupId, createdBy);
+  return admins.includes(username);
+}
+
 async function ensureChatUploadBucket() {
   const fallbackBuckets = ['app-icons', 'app-apks'];
 
@@ -1859,39 +2016,71 @@ app.get('/api/chat/key/:username', async (req, res) => {
 app.get('/api/chat/users/search', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const q = String(req.query.q || '').trim();
-  if (!q || q.length < 2) return res.json({ users: [] });
-  const { data } = await supabase.from('users').select('username').ilike('username', `%${q}%`).limit(10);
+  const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 60));
+  let query = supabase.from('users').select('username').order('username', { ascending: true }).limit(limit);
+  if (q) query = query.ilike('username', `%${q}%`);
+  const { data } = await query;
   const users = (data || []).map(u => u.username).filter(u => u !== user.username);
   res.json({ users });
 });
 
 // POST /api/chat/groups â€” neue Gruppe erstellen
-// Body: { name, memberKeys: { username: encryptedGroupKeyJson } }
+// Body: { name, members?: string[], memberKeys?: { username: encryptedGroupKeyJson }, description?, photoUrl? }
 app.post('/api/chat/groups', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  const { name, memberKeys } = req.body;
-  if (!name || typeof name !== 'string' || name.trim().length < 1 || name.length > 50) {
-    return res.status(400).json({ error: 'UngÃ¼ltiger Gruppenname (1-50 Zeichen)' });
+  const rawName = String(req.body?.name || '').trim();
+  const incomingMembers = Array.isArray(req.body?.members) ? req.body.members : [];
+  const memberKeys = (req.body?.memberKeys && typeof req.body.memberKeys === 'object' && !Array.isArray(req.body.memberKeys))
+    ? req.body.memberKeys
+    : {};
+
+  const normalizedMembers = [...new Set(
+    incomingMembers
+      .map(v => String(v || '').trim())
+      .filter(v => /^[a-zA-Z0-9_\-]{1,32}$/.test(v))
+      .filter(v => v !== user.username)
+  )];
+
+  if (Object.keys(memberKeys).length) {
+    for (const username of Object.keys(memberKeys)) {
+      const clean = String(username || '').trim();
+      if (/^[a-zA-Z0-9_\-]{1,32}$/.test(clean) && clean !== user.username && !normalizedMembers.includes(clean)) {
+        normalizedMembers.push(clean);
+      }
+    }
   }
-  if (!memberKeys || typeof memberKeys !== 'object' || Array.isArray(memberKeys)) {
-    return res.status(400).json({ error: 'memberKeys fehlt' });
+
+  if (!normalizedMembers.length) {
+    return res.status(400).json({ error: 'Mindestens ein weiterer Nutzer ist erforderlich' });
   }
-  if (!memberKeys[user.username]) {
-    return res.status(400).json({ error: 'Eigener SchlÃ¼ssel muss enthalten sein' });
-  }
+
+  const type = normalizedMembers.length === 1 ? 'private' : 'group';
+  const name = (rawName || (type === 'private' ? normalizedMembers[0] : `Gruppe (${normalizedMembers.length + 1})`)).slice(0, 50);
+
   const id = crypto.randomUUID();
-  const { error: gErr } = await supabaseAdmin.from('chat_groups').insert({ id, name: name.trim(), created_by: user.username });
+  const { error: gErr } = await supabaseAdmin.from('chat_groups').insert({ id, name, created_by: user.username });
   if (gErr) return res.status(500).json({ error: 'Fehler beim Erstellen der Gruppe: ' + gErr.message });
 
-  const rows = Object.entries(memberKeys).map(([username, encKey]) => ({
-    group_id: id, username, encrypted_group_key: String(encKey).substring(0, 8192)
+  const allMembers = [user.username, ...normalizedMembers];
+  const rows = allMembers.map((username) => ({
+    group_id: id,
+    username,
+    encrypted_group_key: String(memberKeys[username] || 'plain').substring(0, 8192)
   }));
   const { error: mErr } = await supabaseAdmin.from('chat_group_members').insert(rows);
   if (mErr) {
     await supabaseAdmin.from('chat_groups').delete().eq('id', id);
     return res.status(500).json({ error: 'Fehler beim HinzufÃ¼gen der Mitglieder: ' + mErr.message });
   }
-  res.json({ id, name: name.trim() });
+
+  await ensureGroupAdmin(id, user.username);
+  await setGroupMeta(id, {
+    type,
+    description: String(req.body?.description || '').slice(0, 300),
+    photoUrl: String(req.body?.photoUrl || '').slice(0, 2048)
+  });
+
+  res.json({ id, name, type });
 });
 
 // GET /api/chat/groups â€” eigene Gruppen abrufen
@@ -1900,8 +2089,35 @@ app.get('/api/chat/groups', async (req, res) => {
   const { data: memberships } = await supabaseAdmin.from('chat_group_members').select('group_id').eq('username', user.username);
   if (!memberships?.length) return res.json({ groups: [] });
   const ids = memberships.map(m => m.group_id);
-  const { data: groups } = await supabaseAdmin.from('chat_groups').select('id,name,created_by,created_at').in('id', ids).order('created_at', { ascending: false });
-  res.json({ groups: groups || [] });
+
+  const [{ data: groups }, { data: members }] = await Promise.all([
+    supabaseAdmin.from('chat_groups').select('id,name,created_by,created_at').in('id', ids).order('created_at', { ascending: false }),
+    supabaseAdmin.from('chat_group_members').select('group_id,username').in('group_id', ids)
+  ]);
+
+  const membersByGroup = new Map();
+  for (const row of (members || [])) {
+    if (!membersByGroup.has(row.group_id)) membersByGroup.set(row.group_id, []);
+    membersByGroup.get(row.group_id).push(row.username);
+  }
+
+  const enriched = [];
+  for (const group of (groups || [])) {
+    const groupMembers = membersByGroup.get(group.id) || [];
+    const fallbackType = groupMembers.length <= 2 ? 'private' : 'group';
+    const meta = await getGroupMeta(group.id, { type: fallbackType });
+    const admins = await listGroupAdmins(group.id, group.created_by);
+    enriched.push({
+      ...group,
+      type: meta.type || fallbackType,
+      description: meta.description || '',
+      photo_url: meta.photoUrl || '',
+      member_count: groupMembers.length,
+      is_admin: admins.includes(user.username)
+    });
+  }
+
+  res.json({ groups: enriched });
 });
 
 // GET /api/chat/groups/:id/key â€” eigenen verschlÃ¼sselten GruppenschlÃ¼ssel abrufen
@@ -1919,8 +2135,99 @@ app.get('/api/chat/groups/:id/members', async (req, res) => {
   const { id } = req.params;
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
-  const { data } = await supabaseAdmin.from('chat_group_members').select('username,joined_at').eq('group_id', id);
-  res.json({ members: data || [] });
+  const [{ data }, { data: groupRow }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username,joined_at').eq('group_id', id),
+    supabaseAdmin.from('chat_groups').select('created_by').eq('id', id).maybeSingle()
+  ]);
+  const admins = await listGroupAdmins(id, groupRow?.created_by);
+  const members = (data || []).map((m) => ({ ...m, is_admin: admins.includes(m.username) }));
+  res.json({ members });
+});
+
+// GET /api/chat/groups/:id/admins — Gruppenadmins abrufen
+app.get('/api/chat/groups/:id/admins', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const [{ data: self }, { data: groupRow }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).maybeSingle(),
+    supabaseAdmin.from('chat_groups').select('created_by').eq('id', id).maybeSingle()
+  ]);
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  const admins = await listGroupAdmins(id, groupRow?.created_by);
+  res.json({ admins });
+});
+
+// POST /api/chat/groups/:id/settings — Gruppe bearbeiten (Admin)
+app.post('/api/chat/groups/:id/settings', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const { data: groupRow } = await supabaseAdmin.from('chat_groups').select('id,created_by').eq('id', id).maybeSingle();
+  if (!groupRow) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
+
+  const admin = await isGroupAdmin(id, user.username, groupRow.created_by);
+  if (!admin) return res.status(403).json({ error: 'Nur Admins dürfen die Gruppe bearbeiten' });
+
+  const nextName = String(req.body?.name || '').trim();
+  const description = String(req.body?.description || '').slice(0, 300);
+  const photoUrl = String(req.body?.photoUrl || '').slice(0, 2048);
+  const type = String(req.body?.type || '').trim();
+
+  if (nextName) {
+    const { error: nameErr } = await supabaseAdmin.from('chat_groups').update({ name: nextName.slice(0, 50) }).eq('id', id);
+    if (nameErr) return res.status(500).json({ error: nameErr.message });
+  }
+
+  const meta = await getGroupMeta(id, { type: 'group' });
+  await setGroupMeta(id, {
+    type: (type === 'private' || type === 'group') ? type : meta.type,
+    description,
+    photoUrl
+  });
+  res.json({ ok: true });
+});
+
+// POST /api/chat/groups/:id/admins — Admin vergeben
+app.post('/api/chat/groups/:id/admins', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const username = String(req.body?.username || '').trim();
+  if (!/^[a-zA-Z0-9_\-]{1,32}$/.test(username)) return res.status(400).json({ error: 'Ungültiger Nutzername' });
+
+  const { data: groupRow } = await supabaseAdmin.from('chat_groups').select('created_by').eq('id', id).maybeSingle();
+  if (!groupRow) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
+
+  const admin = await isGroupAdmin(id, user.username, groupRow.created_by);
+  if (!admin) return res.status(403).json({ error: 'Nur Admins dürfen weitere Admins setzen' });
+
+  const { data: member } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', username).maybeSingle();
+  if (!member) return res.status(404).json({ error: 'Nutzer ist nicht Mitglied dieser Gruppe' });
+
+  await ensureGroupAdmin(id, username);
+  res.json({ ok: true });
+});
+
+// DELETE /api/chat/groups/:id/members/:username — Mitglied entfernen (Admin)
+app.delete('/api/chat/groups/:id/members/:username', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id, username } = req.params;
+  const { data: groupRow } = await supabaseAdmin.from('chat_groups').select('created_by').eq('id', id).maybeSingle();
+  if (!groupRow) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
+
+  const admin = await isGroupAdmin(id, user.username, groupRow.created_by);
+  if (!admin) return res.status(403).json({ error: 'Nur Admins dürfen Mitglieder entfernen' });
+  if (username === groupRow.created_by) return res.status(400).json({ error: 'Ersteller kann nicht entfernt werden' });
+
+  const { error: delErr } = await supabaseAdmin.from('chat_group_members').delete().eq('group_id', id).eq('username', username);
+  if (delErr) return res.status(500).json({ error: delErr.message });
+
+  await removeGroupAdmin(id, username);
+
+  const { data: afterMembers } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id);
+  const nextType = (afterMembers || []).length <= 2 ? 'private' : 'group';
+  const currentMeta = await getGroupMeta(id, { type: nextType });
+  await setGroupMeta(id, { type: nextType, description: currentMeta.description, photoUrl: currentMeta.photoUrl });
+
+  res.json({ ok: true });
 });
 
 // POST /api/chat/groups/:id/members â€” neues Mitglied hinzufÃ¼gen
@@ -1930,9 +2237,13 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
   const { id } = req.params;
   const { username, encryptedGroupKey } = req.body;
   if (!username || !encryptedGroupKey) return res.status(400).json({ error: 'username und encryptedGroupKey erforderlich' });
-  // Muss selbst Mitglied sein
-  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).single();
-  if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+
+  const { data: groupRow } = await supabaseAdmin.from('chat_groups').select('created_by').eq('id', id).maybeSingle();
+  if (!groupRow) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
+
+  const admin = await isGroupAdmin(id, user.username, groupRow.created_by);
+  if (!admin) return res.status(403).json({ error: 'Nur Admins dürfen Mitglieder hinzufügen' });
+
   // Ziel-Nutzer muss existieren
   const { data: target } = await supabase.from('users').select('username').eq('username', username).single();
   if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
@@ -1941,6 +2252,12 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
   if (existing) return res.status(409).json({ error: 'Nutzer ist bereits Mitglied' });
   const { error } = await supabaseAdmin.from('chat_group_members').insert({ group_id: id, username, encrypted_group_key: String(encryptedGroupKey).substring(0, 8192) });
   if (error) return res.status(500).json({ error: 'Fehler beim HinzufÃ¼gen' });
+
+  const { data: afterMembers } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id);
+  const nextType = (afterMembers || []).length <= 2 ? 'private' : 'group';
+  const currentMeta = await getGroupMeta(id, { type: nextType });
+  await setGroupMeta(id, { type: nextType, description: currentMeta.description, photoUrl: currentMeta.photoUrl });
+
   res.json({ ok: true });
 });
 

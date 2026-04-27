@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=11">
+    <link rel="stylesheet" href="styles.css?v=12">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
@@ -522,7 +522,12 @@
                             <h2 class="chat-sidebar-title">💬 Chat</h2>
                         </div>
                         <div class="chat-new-dm">
-                            <input type="text" id="chatDmInput" class="chat-dm-input" placeholder="Nutzer suchen…" oninput="chatSearchUsers(this.value)" autocomplete="off">
+                            <input type="text" id="chatDmInput" class="chat-dm-input" placeholder="Nutzer suchen oder leer lassen für alle…" oninput="chatSearchUsers(this.value)" autocomplete="off">
+                            <div class="chat-user-actions">
+                                <button class="chat-small-btn" onclick="chatSearchUsers(document.getElementById('chatDmInput').value)">Alle anzeigen</button>
+                                <button class="chat-small-btn" onclick="chatApplySelectedUsers()">Anwenden</button>
+                                <button class="chat-small-btn" onclick="inviteClassToWebsite()">Klasse einladen</button>
+                            </div>
                             <div id="chatUserDropdown" class="chat-user-dropdown" style="display:none;"></div>
                         </div>
                         <div id="chatGroupList" class="chat-group-list">
@@ -541,6 +546,7 @@
                                 <button class="chat-back-btn" onclick="closeChatConv()">←</button>
                                 <div class="chat-conv-name" id="chatConvName"></div>
                                 <div class="chat-conv-status" id="chatConvStatus"></div>
+                                <button class="chat-notify-btn" id="chatManageBtn" style="display:none;" onclick="chatOpenGroupManage()">Gruppe verwalten</button>
                                 <button class="chat-notify-btn" onclick="requestChatNotificationsManually()">Benachrichtigung aktivieren</button>
                             </div>
                             <div class="chat-messages" id="chatMessages"></div>
@@ -1963,7 +1969,7 @@ Ramen</textarea>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
     <script src="tools.js?v=1"></script>
 </body>
 </html>
