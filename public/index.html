@@ -544,8 +544,10 @@
                             </div>
                             <div class="chat-messages" id="chatMessages"></div>
                             <div class="chat-input-row">
-                                <textarea id="chatMsgInput" class="chat-msg-input" placeholder="Nachricht…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg();}"></textarea>
-                                <button class="chat-send-btn" onclick="sendChatMsg()">➤</button>
+                                <div class="chat-input-wrap">
+                                    <textarea id="chatMsgInput" class="chat-msg-input" placeholder="Nachricht schreiben…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg();}"></textarea>
+                                    <button class="chat-send-btn" onclick="sendChatMsg()">↩</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1945,7 +1947,7 @@ Ramen</textarea>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
     <script src="tools.js?v=1"></script>
 </body>
 </html>
