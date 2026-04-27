@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const UNLOCK_CODE = '020818';
 const ADMIN_UPLOAD_KEY = '135797531lol';
-const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre – Token läuft praktisch nie ab
+const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre â€“ Token lÃ¤uft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 
 const authAttempts = new Map();
@@ -26,13 +26,13 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('❌ Fehler: SUPABASE_URL oder SUPABASE_KEY nicht gesetzt!');
+  console.error('âŒ Fehler: SUPABASE_URL oder SUPABASE_KEY nicht gesetzt!');
   process.exit(1);
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Admin-Client mit service_role key – umgeht RLS für Server-seitige Operationen
+// Admin-Client mit service_role key â€“ umgeht RLS fÃ¼r Server-seitige Operationen
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || SUPABASE_KEY;
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
@@ -40,8 +40,8 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 async function initDatabase() {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) {
-    console.warn('⚠️  DATABASE_URL nicht gesetzt – Auto-Migration übersprungen.');
-    console.warn('   Bitte folgendes SQL in Supabase > SQL-Editor ausführen:');
+    console.warn('âš ï¸  DATABASE_URL nicht gesetzt â€“ Auto-Migration Ã¼bersprungen.');
+    console.warn('   Bitte folgendes SQL in Supabase > SQL-Editor ausfÃ¼hren:');
     console.warn(`
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT NULL;
 CREATE TABLE IF NOT EXISTS user_profiles (
@@ -132,9 +132,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
         used_at TIMESTAMP NULL
       );
     `);
-    console.log('✅ Datenbank-Tabellen überprüft/erstellt.');
+    console.log('âœ… Datenbank-Tabellen Ã¼berprÃ¼ft/erstellt.');
   } catch (err) {
-    console.error('⚠️  Auto-Migration fehlgeschlagen:', err.message);
+    console.error('âš ï¸  Auto-Migration fehlgeschlagen:', err.message);
   } finally {
     await pool.end();
   }
@@ -199,7 +199,7 @@ async function createAvailableGoogleUsername(email, name) {
   return `user_${crypto.randomBytes(4).toString('hex')}`;
 }
 
-// Fallback für Serverless/fehlende Tabellen
+// Fallback fÃ¼r Serverless/fehlende Tabellen
 const memoryProfiles = new Map();
 const memoryReferralCodes = new Map();
 
@@ -212,7 +212,7 @@ function readAuthUser(req, res) {
   try {
     return jwt.verify(token, JWT_SECRET);
   } catch {
-    res.status(401).json({ error: 'Ungültiger Token' });
+    res.status(401).json({ error: 'UngÃ¼ltiger Token' });
     return null;
   }
 }
@@ -301,7 +301,7 @@ async function inferPersonalizationPatch(groqKey, currentPersonalization, source
         messages: [
           {
             role: 'system',
-            content: 'Du extrahierst nur UI-Personalisierung für ehoser. Antworte NUR mit JSON. Erlaube nur diese Felder: tone (neutral|calm|focused|playful), layout (standard|simple|explore), simplifySearch (boolean), prioritizePs (boolean), heroLine (string <= 180), summary (string <= 280), interests (Array bis 6 kurze Strings), highlightModes (Array aus store,games,facewarp,chat,images,weather,map,youtube,ki,ps,gameCreator). Erfinde nichts ohne klare Signale.'
+            content: 'Du extrahierst nur UI-Personalisierung fÃ¼r ehoser. Antworte NUR mit JSON. Erlaube nur diese Felder: tone (neutral|calm|focused|playful), layout (standard|simple|explore), simplifySearch (boolean), prioritizePs (boolean), heroLine (string <= 180), summary (string <= 280), interests (Array bis 6 kurze Strings), highlightModes (Array aus store,games,facewarp,chat,images,weather,map,youtube,ki,ps,gameCreator). Erfinde nichts ohne klare Signale.'
           },
           {
             role: 'user',
@@ -343,7 +343,7 @@ function normalizeProfileRow(username, row) {
 }
 
 async function getProfile(username) {
-  // Primär: users Tabelle (existiert immer), optional: user_profiles für Settings
+  // PrimÃ¤r: users Tabelle (existiert immer), optional: user_profiles fÃ¼r Settings
   let proUntil = null;
   let settings = null;
   let psAccount = false;
@@ -368,7 +368,7 @@ async function getProfile(username) {
     if (!error && data) {
       settings = data.settings;
       psAccount = data.ps_account === true;
-      // Wenn user_profiles einen späteren pro_until hat, nutze den
+      // Wenn user_profiles einen spÃ¤teren pro_until hat, nutze den
       if (data.pro_until) {
         const a = proUntil ? Date.parse(proUntil) : 0;
         const b = Date.parse(data.pro_until);
@@ -400,7 +400,7 @@ async function upsertProfile(username, patch) {
   const newProUntil = Object.prototype.hasOwnProperty.call(patch, 'proUntil') ? patch.proUntil : current.proUntil;
   const newSettings = patch.settings ? normalizeSettings(patch.settings) : current.settings;
 
-  // Pro-Status in users Tabelle schreiben (primary – existiert garantiert)
+  // Pro-Status in users Tabelle schreiben (primary â€“ existiert garantiert)
   let savedToUsers = false;
   try {
     const { error } = await supabase
@@ -410,10 +410,10 @@ async function upsertProfile(username, patch) {
     if (!error) savedToUsers = true;
   } catch {}
 
-  // Wenn users.pro_until Spalte fehlt → Auto-Spalte anlegen versuchen
+  // Wenn users.pro_until Spalte fehlt â†’ Auto-Spalte anlegen versuchen
   if (!savedToUsers) {
     try {
-      // Spalte existiert nicht → in user_profiles speichern
+      // Spalte existiert nicht â†’ in user_profiles speichern
       await supabaseAdmin.from('user_profiles').upsert({
         username,
         settings: newSettings,
@@ -509,7 +509,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-// Öffentliche Client-Konfiguration (kein Authentifizierungs-Token nötig)
+// Ã–ffentliche Client-Konfiguration (kein Authentifizierungs-Token nÃ¶tig)
 app.get('/api/config', (req, res) => {
   res.json({
     ytApiKey: process.env.YT_API_KEY || '',
@@ -589,7 +589,7 @@ app.post('/api/auth/google', async (req, res) => {
     });
     const payload = await verifyRes.json();
     if (!verifyRes.ok || payload.aud !== googleClientId || !payload.email) {
-      return res.status(401).json({ error: 'Google-Token ungültig' });
+      return res.status(401).json({ error: 'Google-Token ungÃ¼ltig' });
     }
 
     const googleSub = String(payload.sub || '').trim();
@@ -674,7 +674,7 @@ app.post('/api/register', async (req, res) => {
   try {
     let { data, error } = await supabase.from('users').insert([insertPayload]).select();
 
-    // Falls password_hash Spalte nicht existiert → nochmal ohne versuchen
+    // Falls password_hash Spalte nicht existiert â†’ nochmal ohne versuchen
     if (error && (error.message.includes('password_hash') || error.message.includes('column'))) {
       const fallbackPayload = { username, email: email || null, access_code: loginCode, verified: 1 };
       const retry = await supabase.from('users').insert([fallbackPayload]).select();
@@ -780,11 +780,11 @@ app.post('/api/login', async (req, res) => {
             registerFailedAttempt(clientKey);
             return res.status(401).json({ error: 'Benutzername oder Passwort falsch' });
           }
-          // loginCode stimmt → durchlassen
+          // loginCode stimmt â†’ durchlassen
         }
-        // passwordOk → weiter
+        // passwordOk â†’ weiter
       } else if (loginCode && data.access_code === loginCode) {
-        // Altes Konto ohne Passwort, aber Login-Code stimmt → OK
+        // Altes Konto ohne Passwort, aber Login-Code stimmt â†’ OK
       } else if (loginCode) {
         registerFailedAttempt(clientKey);
         return res.status(401).json({ error: 'Login-Code ist falsch' });
@@ -955,7 +955,7 @@ app.post('/api/code-reset-complete', async (req, res) => {
   }
 });
 
-// Öffentlicher Endpoint: Zugangscode abrufen
+// Ã–ffentlicher Endpoint: Zugangscode abrufen
 app.get('/api/unlock-code', (req, res) => {
   res.json({ code: UNLOCK_CODE });
 });
@@ -980,7 +980,7 @@ app.post('/api/verify-token', async (req, res) => {
     const profile = await getProfile(decoded.username);
     res.json({ valid: true, user: decoded, token: refreshedToken, profile });
   } catch (err) {
-    res.status(401).json({ error: 'Ungültiger Token' });
+    res.status(401).json({ error: 'UngÃ¼ltiger Token' });
   }
 });
 
@@ -1055,7 +1055,7 @@ app.post('/api/me/personalization/event', async (req, res) => {
     patch = {
       layout: 'simple',
       simplifySearch: true,
-      heroLine: query ? `Ich passe ehoser an, damit du "${query.slice(0, 40)}" schneller findest.` : 'Ich mache ehoser gerade einfacher für dich.',
+      heroLine: query ? `Ich passe ehoser an, damit du "${query.slice(0, 40)}" schneller findest.` : 'Ich mache ehoser gerade einfacher fÃ¼r dich.',
       summary: category ? `Mehr Hilfe bei Suchen in ${category}.` : 'Mehr Hilfe bei leeren Suchergebnissen.',
       highlightModes: ['store', 'ki'],
       interests: query ? [query] : []
@@ -1103,12 +1103,12 @@ app.get('/api/pixabay', async (req, res) => {
   }
 });
 
-// Pixabay Bild-Proxy (für Canvas – CORS-freies Laden)
+// Pixabay Bild-Proxy (fÃ¼r Canvas â€“ CORS-freies Laden)
 app.get('/api/pixabay/image', async (req, res) => {
   const url = String(req.query.url || '').trim();
   const isAllowed = url.startsWith('https://cdn.pixabay.com/') || url.startsWith('https://pixabay.com/');
   if (!url || !isAllowed) {
-    return res.status(400).json({ error: 'Ungültige Bild-URL' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Bild-URL' });
   }
 
   try {
@@ -1125,7 +1125,7 @@ app.get('/api/pixabay/image', async (req, res) => {
   }
 });
 
-// Pro-Status für mehrere Nutzer
+// Pro-Status fÃ¼r mehrere Nutzer
 app.get('/api/users/pro-badges', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
@@ -1156,7 +1156,7 @@ app.get('/api/online-users', async (req, res) => {
   try {
     jwt.verify(token, JWT_SECRET);
   } catch {
-    return res.status(401).json({ error: 'Ungültiger Token' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Token' });
   }
 
   const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -1179,7 +1179,7 @@ app.post('/api/heartbeat', async (req, res) => {
     await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id);
     res.json({ ok: true });
   } catch {
-    res.status(401).json({ error: 'Ungültiger Token' });
+    res.status(401).json({ error: 'UngÃ¼ltiger Token' });
   }
 });
 
@@ -1226,7 +1226,7 @@ app.get('/api/apps/:id', async (req, res) => {
 app.post('/api/admin/upload-url', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const { iconName, apkName } = req.body;
@@ -1265,7 +1265,7 @@ app.post('/api/admin/upload-url', async (req, res) => {
 app.post('/api/admin/verify', (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
   res.json({ ok: true });
 });
@@ -1274,7 +1274,7 @@ app.post('/api/admin/verify', (req, res) => {
 app.get('/api/admin/users', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   try {
@@ -1312,7 +1312,7 @@ app.get('/api/admin/users', async (req, res) => {
 app.post('/api/admin/users/:id/pro', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const userId = Number(req.params.id);
@@ -1320,7 +1320,7 @@ app.post('/api/admin/users/:id/pro', async (req, res) => {
   const days = Math.max(1, Math.min(30, Number(req.body?.days) || 2));
 
   if (!Number.isInteger(userId) || userId <= 0) {
-    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Nutzer-ID' });
   }
 
   try {
@@ -1341,22 +1341,22 @@ app.post('/api/admin/users/:id/pro', async (req, res) => {
     return res.json({ ok: true, profile });
   } catch (error) {
     console.error('Admin Pro Toggle Error:', error);
-    return res.status(500).json({ error: 'Pro-Status konnte nicht geändert werden' });
+    return res.status(500).json({ error: 'Pro-Status konnte nicht geÃ¤ndert werden' });
   }
 });
 
-// Admin: Update für bestimmten User freischalten/sperren
+// Admin: Update fÃ¼r bestimmten User freischalten/sperren
 app.post('/api/admin/users/:id/unlock-update', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const userId = Number(req.params.id);
   const enabled = req.body?.enabled !== false; // default true
 
   if (!Number.isInteger(userId) || userId <= 0) {
-    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Nutzer-ID' });
   }
 
   try {
@@ -1374,18 +1374,18 @@ app.post('/api/admin/users/:id/unlock-update', async (req, res) => {
   }
 });
 
-// Admin: PS-Account für bestimmten User setzen/entfernen
+// Admin: PS-Account fÃ¼r bestimmten User setzen/entfernen
 app.post('/api/admin/users/:id/ps-account', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const userId = Number(req.params.id);
   const enabled = req.body?.enabled !== false;
 
   if (!Number.isInteger(userId) || userId <= 0) {
-    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Nutzer-ID' });
   }
 
   try {
@@ -1407,7 +1407,7 @@ app.post('/api/admin/users/:id/ps-account', async (req, res) => {
 app.get('/api/admin/reset-requests', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   try {
@@ -1429,12 +1429,12 @@ app.get('/api/admin/reset-requests', async (req, res) => {
 app.post('/api/admin/reset-requests/:id/approve', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const requestId = Number(req.params.id);
   if (!Number.isInteger(requestId) || requestId <= 0) {
-    return res.status(400).json({ error: 'Ungültige Anfrage-ID' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Anfrage-ID' });
   }
 
   const resetToken = createSecureToken();
@@ -1458,12 +1458,12 @@ app.post('/api/admin/reset-requests/:id/approve', async (req, res) => {
 app.post('/api/admin/reset-requests/:id/reject', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const requestId = Number(req.params.id);
   if (!Number.isInteger(requestId) || requestId <= 0) {
-    return res.status(400).json({ error: 'Ungültige Anfrage-ID' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Anfrage-ID' });
   }
 
   try {
@@ -1485,12 +1485,12 @@ app.post('/api/admin/reset-requests/:id/reject', async (req, res) => {
 app.delete('/api/admin/users/:id', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const userId = Number(req.params.id);
   if (!Number.isInteger(userId) || userId <= 0) {
-    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Nutzer-ID' });
   }
 
   try {
@@ -1502,20 +1502,20 @@ app.delete('/api/admin/users/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Admin Delete User Error:', error);
-    res.status(500).json({ error: 'Nutzer konnte nicht gelöscht werden' });
+    res.status(500).json({ error: 'Nutzer konnte nicht gelÃ¶scht werden' });
   }
 });
 
-// App löschen
+// App lÃ¶schen
 app.delete('/api/admin/apps/:id', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const appId = Number(req.params.id);
   if (!Number.isInteger(appId) || appId <= 0) {
-    return res.status(400).json({ error: 'Ungültige App-ID' });
+    return res.status(400).json({ error: 'UngÃ¼ltige App-ID' });
   }
 
   try {
@@ -1526,7 +1526,7 @@ app.delete('/api/admin/apps/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Admin Delete App Error:', error);
-    res.status(500).json({ error: 'App konnte nicht gelöscht werden' });
+    res.status(500).json({ error: 'App konnte nicht gelÃ¶scht werden' });
   }
 });
 
@@ -1534,13 +1534,13 @@ app.delete('/api/admin/apps/:id', async (req, res) => {
 app.post('/api/admin/apps', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
 
   const { name, description, category, version, sourceUrl, iconUrl, downloadUrl } = req.body;
 
   if (!name || !description || !category || !version) {
-    return res.status(400).json({ error: 'Bitte alle Pflichtfelder ausfüllen.' });
+    return res.status(400).json({ error: 'Bitte alle Pflichtfelder ausfÃ¼llen.' });
   }
 
   if (!iconUrl || !downloadUrl) {
@@ -1629,7 +1629,7 @@ app.use((err, req, res, next) => {
   next();
 });
 
-// ─── Screen Share Signaling ───────────────────────────────────────────────────
+// â”€â”€â”€ Screen Share Signaling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // POST /api/admin/screenshare/request  { username, offer }
 app.post('/api/admin/screenshare/request', async (req, res) => {
@@ -1657,7 +1657,7 @@ app.post('/api/admin/screenshare/request', async (req, res) => {
   res.json({ sessionId });
 });
 
-// GET /api/screenshare/pending  — Nutzer fragt ob Anfrage vorliegt
+// GET /api/screenshare/pending  â€” Nutzer fragt ob Anfrage vorliegt
 app.get('/api/screenshare/pending', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
@@ -1677,7 +1677,7 @@ app.get('/api/screenshare/pending', async (req, res) => {
     const s = data[0];
     res.json({ pending: true, sessionId: s.id, offer: JSON.parse(s.offer) });
   } catch {
-    return res.status(401).json({ error: 'Ungültiges Token' });
+    return res.status(401).json({ error: 'UngÃ¼ltiges Token' });
   }
 });
 
@@ -1708,7 +1708,7 @@ app.post('/api/screenshare/respond', async (req, res) => {
   }
 });
 
-// GET /api/admin/screenshare/session/:sessionId  — Admin fragt Status ab
+// GET /api/admin/screenshare/session/:sessionId  â€” Admin fragt Status ab
 app.get('/api/admin/screenshare/session/:sessionId', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
@@ -1719,7 +1719,7 @@ app.get('/api/admin/screenshare/session/:sessionId', async (req, res) => {
   res.json({ status: data.status, answer: data.answer ? JSON.parse(data.answer) : null });
 });
 
-// POST /api/admin/screenshare/end/:sessionId  — Admin beendet Session
+// POST /api/admin/screenshare/end/:sessionId  â€” Admin beendet Session
 app.post('/api/admin/screenshare/end/:sessionId', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
@@ -1727,7 +1727,7 @@ app.post('/api/admin/screenshare/end/:sessionId', async (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/screenshare/end  — Nutzer beendet Session
+// POST /api/screenshare/end  â€” Nutzer beendet Session
 app.post('/api/screenshare/end', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
@@ -1745,9 +1745,9 @@ app.post('/api/screenshare/end', async (req, res) => {
   }
 });
 
-// ─── Chat API (E2E verschlüsselt) ────────────────────────────────────────────
+// â”€â”€â”€ Chat API (E2E verschlÃ¼sselt) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// Multer – memory storage für Supabase-Upload
+// Multer â€“ memory storage fÃ¼r Supabase-Upload
 const CHAT_ALLOWED_MIME = new Set([
   'image/jpeg','image/png','image/gif','image/webp',
   'video/mp4','video/webm','video/quicktime',
@@ -1767,10 +1767,10 @@ function chatAuth(req, res) {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) { res.status(401).json({ error: 'Nicht angemeldet' }); return null; }
   try { return jwt.verify(token, JWT_SECRET); }
-  catch { res.status(401).json({ error: 'Ungültiger Token' }); return null; }
+  catch { res.status(401).json({ error: 'UngÃ¼ltiger Token' }); return null; }
 }
 
-// POST /api/chat/upload — Mediendatei hochladen (Bild / Video / Audio)
+// POST /api/chat/upload â€” Mediendatei hochladen (Bild / Video / Audio)
 app.post('/api/chat/upload', chatUpload.single('file'), async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   if (!req.file) return res.status(400).json({ error: 'Keine Datei oder Typ nicht erlaubt (max 50 MB)' });
@@ -1791,30 +1791,30 @@ app.post('/api/chat/upload', chatUpload.single('file'), async (req, res) => {
   res.json({ url: publicUrl, mime: req.file.mimetype, size: req.file.size, name: req.file.originalname });
 });
 
-// POST /api/chat/key — eigenen ECDH Public Key hochladen/aktualisieren
+// POST /api/chat/key â€” eigenen ECDH Public Key hochladen/aktualisieren
 app.post('/api/chat/key', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { publicKey } = req.body;
   if (!publicKey || typeof publicKey !== 'string' || publicKey.length > 4096) {
-    return res.status(400).json({ error: 'Ungültiger Public Key' });
+    return res.status(400).json({ error: 'UngÃ¼ltiger Public Key' });
   }
   try { JSON.parse(publicKey); } catch { return res.status(400).json({ error: 'Public Key muss valides JSON sein' }); }
-  const { error } = await supabase.from('chat_user_keys').upsert({ username: user.username, public_key: publicKey });
+  const { error } = await supabaseAdmin.from('chat_user_keys').upsert({ username: user.username, public_key: publicKey });
   if (error) return res.status(500).json({ error: 'Fehler beim Speichern' });
   res.json({ ok: true });
 });
 
-// GET /api/chat/key/:username — Public Key eines Nutzers abrufen
+// GET /api/chat/key/:username â€” Public Key eines Nutzers abrufen
 app.get('/api/chat/key/:username', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { username } = req.params;
-  if (!/^[a-zA-Z0-9_\-]{1,32}$/.test(username)) return res.status(400).json({ error: 'Ungültiger Nutzername' });
-  const { data } = await supabase.from('chat_user_keys').select('public_key').eq('username', username).single();
-  if (!data) return res.status(404).json({ error: 'Kein Public Key gefunden – Nutzer muss Chat einmal geöffnet haben' });
+  if (!/^[a-zA-Z0-9_\-]{1,32}$/.test(username)) return res.status(400).json({ error: 'UngÃ¼ltiger Nutzername' });
+  const { data } = await supabaseAdmin.from('chat_user_keys').select('public_key').eq('username', username).single();
+  if (!data) return res.status(404).json({ error: 'Kein Public Key gefunden â€“ Nutzer muss Chat einmal geÃ¶ffnet haben' });
   res.json({ publicKey: data.public_key });
 });
 
-// GET /api/chat/users/search?q= — Nutzer suchen (min. 2 Zeichen)
+// GET /api/chat/users/search?q= â€” Nutzer suchen (min. 2 Zeichen)
 app.get('/api/chat/users/search', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const q = String(req.query.q || '').trim();
@@ -1824,65 +1824,65 @@ app.get('/api/chat/users/search', async (req, res) => {
   res.json({ users });
 });
 
-// POST /api/chat/groups — neue Gruppe erstellen
+// POST /api/chat/groups â€” neue Gruppe erstellen
 // Body: { name, memberKeys: { username: encryptedGroupKeyJson } }
 app.post('/api/chat/groups', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { name, memberKeys } = req.body;
   if (!name || typeof name !== 'string' || name.trim().length < 1 || name.length > 50) {
-    return res.status(400).json({ error: 'Ungültiger Gruppenname (1-50 Zeichen)' });
+    return res.status(400).json({ error: 'UngÃ¼ltiger Gruppenname (1-50 Zeichen)' });
   }
   if (!memberKeys || typeof memberKeys !== 'object' || Array.isArray(memberKeys)) {
     return res.status(400).json({ error: 'memberKeys fehlt' });
   }
   if (!memberKeys[user.username]) {
-    return res.status(400).json({ error: 'Eigener Schlüssel muss enthalten sein' });
+    return res.status(400).json({ error: 'Eigener SchlÃ¼ssel muss enthalten sein' });
   }
   const id = crypto.randomUUID();
-  const { error: gErr } = await supabase.from('chat_groups').insert({ id, name: name.trim(), created_by: user.username });
+  const { error: gErr } = await supabaseAdmin.from('chat_groups').insert({ id, name: name.trim(), created_by: user.username });
   if (gErr) return res.status(500).json({ error: 'Fehler beim Erstellen der Gruppe: ' + gErr.message });
 
   const rows = Object.entries(memberKeys).map(([username, encKey]) => ({
     group_id: id, username, encrypted_group_key: String(encKey).substring(0, 8192)
   }));
-  const { error: mErr } = await supabase.from('chat_group_members').insert(rows);
+  const { error: mErr } = await supabaseAdmin.from('chat_group_members').insert(rows);
   if (mErr) {
-    await supabase.from('chat_groups').delete().eq('id', id);
-    return res.status(500).json({ error: 'Fehler beim Hinzufügen der Mitglieder: ' + mErr.message });
+    await supabaseAdmin.from('chat_groups').delete().eq('id', id);
+    return res.status(500).json({ error: 'Fehler beim HinzufÃ¼gen der Mitglieder: ' + mErr.message });
   }
   res.json({ id, name: name.trim() });
 });
 
-// GET /api/chat/groups — eigene Gruppen abrufen
+// GET /api/chat/groups â€” eigene Gruppen abrufen
 app.get('/api/chat/groups', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  const { data: memberships } = await supabase.from('chat_group_members').select('group_id').eq('username', user.username);
+  const { data: memberships } = await supabaseAdmin.from('chat_group_members').select('group_id').eq('username', user.username);
   if (!memberships?.length) return res.json({ groups: [] });
   const ids = memberships.map(m => m.group_id);
-  const { data: groups } = await supabase.from('chat_groups').select('id,name,created_by,created_at').in('id', ids).order('created_at', { ascending: false });
+  const { data: groups } = await supabaseAdmin.from('chat_groups').select('id,name,created_by,created_at').in('id', ids).order('created_at', { ascending: false });
   res.json({ groups: groups || [] });
 });
 
-// GET /api/chat/groups/:id/key — eigenen verschlüsselten Gruppenschlüssel abrufen
+// GET /api/chat/groups/:id/key â€” eigenen verschlÃ¼sselten GruppenschlÃ¼ssel abrufen
 app.get('/api/chat/groups/:id/key', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { id } = req.params;
-  const { data } = await supabase.from('chat_group_members').select('encrypted_group_key').eq('group_id', id).eq('username', user.username).single();
+  const { data } = await supabaseAdmin.from('chat_group_members').select('encrypted_group_key').eq('group_id', id).eq('username', user.username).single();
   if (!data) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
   res.json({ encryptedGroupKey: data.encrypted_group_key });
 });
 
-// GET /api/chat/groups/:id/members — Mitgliederliste abrufen
+// GET /api/chat/groups/:id/members â€” Mitgliederliste abrufen
 app.get('/api/chat/groups/:id/members', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { id } = req.params;
-  const { data: self } = await supabase.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).single();
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
-  const { data } = await supabase.from('chat_group_members').select('username,joined_at').eq('group_id', id);
+  const { data } = await supabaseAdmin.from('chat_group_members').select('username,joined_at').eq('group_id', id);
   res.json({ members: data || [] });
 });
 
-// POST /api/chat/groups/:id/members — neues Mitglied hinzufügen
+// POST /api/chat/groups/:id/members â€” neues Mitglied hinzufÃ¼gen
 // Body: { username, encryptedGroupKey }
 app.post('/api/chat/groups/:id/members', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
@@ -1890,49 +1890,49 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
   const { username, encryptedGroupKey } = req.body;
   if (!username || !encryptedGroupKey) return res.status(400).json({ error: 'username und encryptedGroupKey erforderlich' });
   // Muss selbst Mitglied sein
-  const { data: self } = await supabase.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).single();
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
   // Ziel-Nutzer muss existieren
   const { data: target } = await supabase.from('users').select('username').eq('username', username).single();
   if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
   // Bereits Mitglied?
-  const { data: existing } = await supabase.from('chat_group_members').select('username').eq('group_id', id).eq('username', username).single();
+  const { data: existing } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', username).single();
   if (existing) return res.status(409).json({ error: 'Nutzer ist bereits Mitglied' });
-  const { error } = await supabase.from('chat_group_members').insert({ group_id: id, username, encrypted_group_key: String(encryptedGroupKey).substring(0, 8192) });
-  if (error) return res.status(500).json({ error: 'Fehler beim Hinzufügen' });
+  const { error } = await supabaseAdmin.from('chat_group_members').insert({ group_id: id, username, encrypted_group_key: String(encryptedGroupKey).substring(0, 8192) });
+  if (error) return res.status(500).json({ error: 'Fehler beim HinzufÃ¼gen' });
   res.json({ ok: true });
 });
 
-// POST /api/chat/messages — Nachricht senden (verschlüsselt)
+// POST /api/chat/messages â€” Nachricht senden (verschlÃ¼sselt)
 app.post('/api/chat/messages', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { groupId, encryptedContent } = req.body;
   if (!groupId || !encryptedContent || typeof encryptedContent !== 'string' || encryptedContent.length > 65536) {
-    return res.status(400).json({ error: 'Ungültige Nachricht' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Nachricht' });
   }
   // Muss Mitglied sein
-  const { data: self } = await supabase.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
-  const { data, error } = await supabase.from('chat_messages').insert({ group_id: groupId, sender: user.username, encrypted_content: encryptedContent }).select('id,created_at').single();
+  const { data, error } = await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender: user.username, encrypted_content: encryptedContent }).select('id,created_at').single();
   if (error) return res.status(500).json({ error: 'Fehler beim Senden' });
   res.json({ id: data.id, created_at: data.created_at });
 });
 
-// GET /api/chat/messages/:groupId?after=<id> — Nachrichten abrufen (polling)
+// GET /api/chat/messages/:groupId?after=<id> â€” Nachrichten abrufen (polling)
 app.get('/api/chat/messages/:groupId', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { groupId } = req.params;
   const after = parseInt(req.query.after) || 0;
   // Muss Mitglied sein
-  const { data: self } = await supabase.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
-  let query = supabase.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).order('id', { ascending: true }).limit(50);
+  let query = supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).order('id', { ascending: true }).limit(50);
   if (after) query = query.gt('id', after);
   const { data } = await query;
   res.json({ messages: data || [] });
 });
 
-// ─── VirusTotal Integration ───────────────────────────────────────────────────
+// â”€â”€â”€ VirusTotal Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const VT_API_KEY = process.env.VIRUSTOTAL_API_KEY;
 const VT_BASE = 'https://www.virustotal.com/api/v3';
 
@@ -1949,7 +1949,7 @@ app.post('/api/admin/vt-scan', async (req, res) => {
 
   const { url } = req.body;
   if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
-    return res.status(400).json({ error: 'Ungültige URL' });
+    return res.status(400).json({ error: 'UngÃ¼ltige URL' });
   }
 
   try {
@@ -1996,7 +1996,7 @@ app.get('/api/admin/vt-result/:analysisId', async (req, res) => {
 
   const { analysisId } = req.params;
   if (!analysisId || !/^[A-Za-z0-9_\-=+]+$/.test(analysisId)) {
-    return res.status(400).json({ error: 'Ungültige Analyse-ID' });
+    return res.status(400).json({ error: 'UngÃ¼ltige Analyse-ID' });
   }
 
   try {
@@ -2006,7 +2006,7 @@ app.get('/api/admin/vt-result/:analysisId', async (req, res) => {
     });
 
     if (!response.ok) {
-      return res.status(502).json({ error: 'Ergebnis nicht verfügbar' });
+      return res.status(502).json({ error: 'Ergebnis nicht verfÃ¼gbar' });
     }
 
     const data = await response.json();
@@ -2030,7 +2030,7 @@ app.get('/api/admin/vt-result/:analysisId', async (req, res) => {
   }
 });
 
-// ─── Games Feed Proxy ────────────────────────────────────────────────────────
+// â”€â”€â”€ Games Feed Proxy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let gamesCache = null;
 let gamesCacheTime = 0;
 const GAMES_CACHE_TTL = 10 * 60 * 1000; // 10 Minuten
@@ -2060,7 +2060,7 @@ app.get('/api/games', async (req, res) => {
     try {
       games = JSON.parse(text);
     } catch {
-      return res.status(502).json({ error: 'Feed-Format ungültig' });
+      return res.status(502).json({ error: 'Feed-Format ungÃ¼ltig' });
     }
 
     if (!gamesCache) gamesCache = {};
@@ -2077,12 +2077,12 @@ app.get('/api/games', async (req, res) => {
 // Server starten (lokal) oder als Vercel-Handler exportieren
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
-    console.log(`🚀 ehoser läuft auf http://localhost:${PORT}`);
-    console.log(`📊 Connected to Supabase: ${SUPABASE_URL}`);
+    console.log(`ðŸš€ ehoser lÃ¤uft auf http://localhost:${PORT}`);
+    console.log(`ðŸ“Š Connected to Supabase: ${SUPABASE_URL}`);
   });
 }
 
-// ─── reCAPTCHA Enterprise Verify ──────────────────────────────────────────────
+// â”€â”€â”€ reCAPTCHA Enterprise Verify â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/api/verify-captcha', async (req, res) => {
   const { token, action } = req.body;
   if (!token) return res.status(400).json({ success: false, error: 'Token fehlt' });
@@ -2091,9 +2091,9 @@ app.post('/api/verify-captcha', async (req, res) => {
   const apiKey    = process.env.RECAPTCHA_SECRET_KEY;
   const siteKey   = '6Lf6esksAAAAAA7p5xYYHCrJze9a_ng_BUKHXyom';
 
-  // Ohne Konfiguration: immer erlauben (Fallback für lokale Entwicklung)
+  // Ohne Konfiguration: immer erlauben (Fallback fÃ¼r lokale Entwicklung)
   if (!projectId || !apiKey) {
-    console.warn('[reCAPTCHA] RECAPTCHA_PROJECT_ID oder RECAPTCHA_SECRET_KEY fehlt – Verifikation übersprungen');
+    console.warn('[reCAPTCHA] RECAPTCHA_PROJECT_ID oder RECAPTCHA_SECRET_KEY fehlt â€“ Verifikation Ã¼bersprungen');
     return res.json({ success: true, score: 1.0 });
   }
 
@@ -2115,7 +2115,7 @@ app.post('/api/verify-captcha', async (req, res) => {
     }
 
     const score = data.riskAnalysis?.score ?? 0.5;
-    // Score < 0.3 → wahrscheinlich Bot
+    // Score < 0.3 â†’ wahrscheinlich Bot
     if (score < 0.3) {
       return res.json({ success: false, blocked: true, score, reason: 'low_score' });
     }
@@ -2128,7 +2128,7 @@ app.post('/api/verify-captcha', async (req, res) => {
   }
 });
 
-// ─── Email-Verknüpfung ────────────────────────────────────────────────────────
+// â”€â”€â”€ Email-VerknÃ¼pfung â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Codes werden in user_profiles.settings._emailPending gespeichert (serverless-safe)
 
 async function getPendingEmailCode(username) {
@@ -2160,7 +2160,7 @@ app.post('/api/me/link-email', async (req, res) => {
 
   const { email } = req.body;
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ error: 'Ungültige E-Mail-Adresse.' });
+    return res.status(400).json({ error: 'UngÃ¼ltige E-Mail-Adresse.' });
   }
 
   // Rate limit: max 1 neuer Code pro 60s
@@ -2179,13 +2179,13 @@ app.post('/api/me/link-email', async (req, res) => {
       body: JSON.stringify({
         from: 'ehoser <noreply@ehoser.de>',
         to: [email],
-        subject: 'Dein ehoser Bestätigungscode',
+        subject: 'Dein ehoser BestÃ¤tigungscode',
         html: `<div style="font-family:sans-serif;max-width:420px;margin:0 auto;padding:32px;background:#0a1828;color:#fff;border-radius:16px">
           <div style="font-size:2rem;font-weight:900;color:#4d9fff">E</div>
-          <h2 style="margin:8px 0 20px;font-size:1.4rem">E-Mail Bestätigung</h2>
-          <p style="color:#aaa;margin:0 0 8px">Dein Bestätigungscode für ehoser:</p>
+          <h2 style="margin:8px 0 20px;font-size:1.4rem">E-Mail BestÃ¤tigung</h2>
+          <p style="color:#aaa;margin:0 0 8px">Dein BestÃ¤tigungscode fÃ¼r ehoser:</p>
           <div style="font-size:2.8rem;font-weight:900;letter-spacing:0.35em;color:#4d9fff;padding:20px;background:#111827;border-radius:12px;text-align:center;margin:12px 0">${code}</div>
-          <p style="color:#666;font-size:12px;margin-top:20px">Gültig für 10 Minuten. Wenn du das nicht angefordert hast, ignoriere diese Mail.</p>
+          <p style="color:#666;font-size:12px;margin-top:20px">GÃ¼ltig fÃ¼r 10 Minuten. Wenn du das nicht angefordert hast, ignoriere diese Mail.</p>
         </div>`
       })
     });
@@ -2264,7 +2264,7 @@ app.post('/api/me/chat-token', async (req, res) => {
   res.json({ token });
 });
 
-// ─── Update-Abstimmung ────────────────────────────────────────────────────────
+// â”€â”€â”€ Update-Abstimmung â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Stimmen werden in user_profiles.settings._updateVote gespeichert (per User)
 // Gesamtstatus wird in einem speziellen Supabase-Eintrag gehalten
 
@@ -2282,7 +2282,7 @@ async function getVoteStatus() {
   return { count, unlocked: count >= VOTE_THRESHOLD, voters };
 }
 
-// Öffentlich: Vote-Status abrufen (für Frontend-Polling)
+// Ã–ffentlich: Vote-Status abrufen (fÃ¼r Frontend-Polling)
 app.get('/api/vote/status', async (req, res) => {
   try {
     const status = await getVoteStatus();
@@ -2301,7 +2301,7 @@ app.get('/api/vote/status', async (req, res) => {
         myUnlocked = data?.update_unlocked === true;
       } catch {}
     }
-    // unlocked = globale Schwelle erreicht ODER User hat persönliche Freischaltung
+    // unlocked = globale Schwelle erreicht ODER User hat persÃ¶nliche Freischaltung
     const unlocked = status.unlocked || myUnlocked;
     res.json({ ...status, unlocked, myVote, myUnlocked });
   } catch {
@@ -2314,7 +2314,7 @@ app.post('/api/vote', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
 
-  // Prüfen ob bereits abgestimmt (direkt aus DB, nicht über normalizeSettings)
+  // PrÃ¼fen ob bereits abgestimmt (direkt aus DB, nicht Ã¼ber normalizeSettings)
   const { data: existing } = await supabaseAdmin
     .from('user_profiles')
     .select('update_vote')
@@ -2325,7 +2325,7 @@ app.post('/api/vote', async (req, res) => {
     return res.status(409).json({ error: 'Du hast bereits abgestimmt.' });
   }
 
-  // Stimme setzen (upsert, andere Felder unberührt lassen)
+  // Stimme setzen (upsert, andere Felder unberÃ¼hrt lassen)
   const { error: upsertError } = await supabaseAdmin
     .from('user_profiles')
     .upsert({ username: auth.username, update_vote: true }, { onConflict: 'username' });
@@ -2338,25 +2338,25 @@ app.post('/api/vote', async (req, res) => {
   res.json({ success: true, ...status, myVote: true });
 });
 
-// Admin: Abstimmungs-Übersicht
+// Admin: Abstimmungs-Ãœbersicht
 app.get('/api/admin/votes', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
   const status = await getVoteStatus();
   res.json({ ...status, threshold: VOTE_THRESHOLD, remaining: Math.max(0, VOTE_THRESHOLD - status.count) });
 });
 
-// ─── Psychologischer Support (PS) ────────────────────────────────────────────
+// â”€â”€â”€ Psychologischer Support (PS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// PS: 4 initiale Antworten analysieren → 5 personalisierte Folgefragen
+// PS: 4 initiale Antworten analysieren â†’ 5 personalisierte Folgefragen
 app.post('/api/ps/analyze', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
 
   const groqKey = process.env.GROQ_API_KEY;
-  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfügbar' });
+  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfÃ¼gbar' });
 
   const { name, answers } = req.body;
   if (!Array.isArray(answers) || answers.length < 4) {
@@ -2365,7 +2365,7 @@ app.post('/api/ps/analyze', async (req, res) => {
 
   const answersText = answers.map((a, i) => `Frage ${i + 1}: ${a.question}\nAntwort: ${a.answer}`).join('\n\n');
 
-  const systemPrompt = `Du bist ein einfühlsamer, psychologisch geschulter KI-Assistent.\nAnalysiere die Umfrageantworten von "${name || 'dem Nutzer'}" und erstelle genau 10 personalisierte Folgefragen auf Deutsch, die tiefer auf emotionale Bedürfnisse und Sorgen eingehen.\nAntworte NUR mit einem JSON-Array mit 10 Strings. Kein anderer Text.\nBeispiel: ["Frage 1?", "Frage 2?", "Frage 3?", "Frage 4?", "Frage 5?", "Frage 6?", "Frage 7?", "Frage 8?", "Frage 9?", "Frage 10?"]`;
+  const systemPrompt = `Du bist ein einfÃ¼hlsamer, psychologisch geschulter KI-Assistent.\nAnalysiere die Umfrageantworten von "${name || 'dem Nutzer'}" und erstelle genau 10 personalisierte Folgefragen auf Deutsch, die tiefer auf emotionale BedÃ¼rfnisse und Sorgen eingehen.\nAntworte NUR mit einem JSON-Array mit 10 Strings. Kein anderer Text.\nBeispiel: ["Frage 1?", "Frage 2?", "Frage 3?", "Frage 4?", "Frage 5?", "Frage 6?", "Frage 7?", "Frage 8?", "Frage 9?", "Frage 10?"]`;
 
   try {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -2395,16 +2395,16 @@ app.post('/api/ps/analyze', async (req, res) => {
     }
 
     const fallbacks = [
-      'Was beschäftigt dich gerade am meisten?',
-      'Gibt es Menschen in deinem Leben, mit denen du über deine Gefühle sprechen kannst?',
-      'Wie schläfst du momentan?',
-      'Was würde dir helfen, dich besser zu fühlen?',
-      'Hast du das Gefühl, dass du Unterstützung brauchst?',
-      'Gibt es Situationen, in denen du dich besonders unwohl fühlst?',
+      'Was beschÃ¤ftigt dich gerade am meisten?',
+      'Gibt es Menschen in deinem Leben, mit denen du Ã¼ber deine GefÃ¼hle sprechen kannst?',
+      'Wie schlÃ¤fst du momentan?',
+      'Was wÃ¼rde dir helfen, dich besser zu fÃ¼hlen?',
+      'Hast du das GefÃ¼hl, dass du UnterstÃ¼tzung brauchst?',
+      'Gibt es Situationen, in denen du dich besonders unwohl fÃ¼hlst?',
       'Wie gehst du normalerweise mit Stress um?',
-      'Gibt es etwas, das du dir selbst gegenüber wünschst?',
+      'Gibt es etwas, das du dir selbst gegenÃ¼ber wÃ¼nschst?',
       'Wie wichtig sind dir enge Beziehungen zu anderen Menschen?',
-      'Was macht dich glücklich, auch wenn es gerade schwer fällt?'
+      'Was macht dich glÃ¼cklich, auch wenn es gerade schwer fÃ¤llt?'
     ];
     while (questions.length < 10) questions.push(fallbacks[questions.length]);
     questions = questions.slice(0, 10);
@@ -2421,14 +2421,14 @@ app.post('/api/ps/chat', async (req, res) => {
   if (!auth) return;
 
   const groqKey = process.env.GROQ_API_KEY;
-  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfügbar' });
+  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfÃ¼gbar' });
 
   const { name, messages, allAnswersSummary } = req.body;
   if (!Array.isArray(messages) || !messages.length) {
     return res.status(400).json({ error: 'messages fehlt' });
   }
 
-  const systemPrompt = `Du bist ein einfühlsamer, psychologisch geschulter KI-Assistent auf der Plattform ehoser.\nDu hilfst ${name ? `"${name}"` : 'dem Nutzer'} dabei, Gefühle, Ängste und Sorgen zu verarbeiten.\nSei immer verständnisvoll, nicht wertend und ermutigend. Rede auf Deutsch, warm und natürlich.\nWenn ernsthafte psychische Probleme beschrieben werden: empfehle professionelle Hilfe.\nKrisentelefon Deutschland: 0800 111 0 111 (kostenlos, 24/7 erreichbar).\n${allAnswersSummary ? `\nHintergrund – Umfrageantworten des Nutzers:\n${allAnswersSummary}` : ''}`;
+  const systemPrompt = `Du bist ein einfÃ¼hlsamer, psychologisch geschulter KI-Assistent auf der Plattform ehoser.\nDu hilfst ${name ? `"${name}"` : 'dem Nutzer'} dabei, GefÃ¼hle, Ã„ngste und Sorgen zu verarbeiten.\nSei immer verstÃ¤ndnisvoll, nicht wertend und ermutigend. Rede auf Deutsch, warm und natÃ¼rlich.\nWenn ernsthafte psychische Probleme beschrieben werden: empfehle professionelle Hilfe.\nKrisentelefon Deutschland: 0800 111 0 111 (kostenlos, 24/7 erreichbar).\n${allAnswersSummary ? `\nHintergrund â€“ Umfrageantworten des Nutzers:\n${allAnswersSummary}` : ''}`;
 
   try {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -2454,8 +2454,8 @@ app.post('/api/ps/chat', async (req, res) => {
         prioritizePs: true,
         layout: 'simple',
         highlightModes: ['ps', 'ki'],
-        heroLine: 'ehoser stellt gerade ruhigere, hilfreichere Wege für dich nach vorne.',
-        summary: 'PS-Unterstützung wurde genutzt.'
+        heroLine: 'ehoser stellt gerade ruhigere, hilfreichere Wege fÃ¼r dich nach vorne.',
+        summary: 'PS-UnterstÃ¼tzung wurde genutzt.'
       }
     );
     res.json({ reply: data.choices?.[0]?.message?.content || '' });
@@ -2464,7 +2464,7 @@ app.post('/api/ps/chat', async (req, res) => {
   }
 });
 
-// ─── Spiele-KI: Spiel generieren ─────────────────────────────────────────────
+// â”€â”€â”€ Spiele-KI: Spiel generieren â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/api/game/create', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
@@ -2474,24 +2474,24 @@ app.post('/api/game/create', async (req, res) => {
   if (!profile.isPro) return res.status(403).json({ error: 'Diese Funktion erfordert PRO.' });
 
   const groqKey = process.env.GROQ_API_KEY;
-  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfügbar' });
+  if (!groqKey) return res.status(500).json({ error: 'KI nicht verfÃ¼gbar' });
 
   const { prompt, currentCode } = req.body;
   if (!prompt?.trim()) return res.status(400).json({ error: 'Kein Prompt' });
 
-  const systemPrompt = `Du bist ein Experte für HTML5-Spieleentwicklung.
-Erstelle ein vollständiges, spielbares Browserspiel als EINE einzige HTML-Datei.
+  const systemPrompt = `Du bist ein Experte fÃ¼r HTML5-Spieleentwicklung.
+Erstelle ein vollstÃ¤ndiges, spielbares Browserspiel als EINE einzige HTML-Datei.
 Das Spiel muss alle CSS-Styles und JavaScript INLINE enthalten (kein externes Laden).
 Anforderungen:
-- Vollständig spielbar im Browser, kein Laden externer Ressourcen
+- VollstÃ¤ndig spielbar im Browser, kein Laden externer Ressourcen
 - Canvas oder DOM-basiert, je nach Spieltyp
 - Sauberer, moderner Code
-- Spiel-Loop mit requestAnimationFrame wenn nötig
+- Spiel-Loop mit requestAnimationFrame wenn nÃ¶tig
 - Steuerung klar beschriftet (Tastatur/Maus)
 - Responsives Layout (passt in iframe)
-- Deutscher Text für UI-Elemente erlaubt
+- Deutscher Text fÃ¼r UI-Elemente erlaubt
 - Kein alert(), confirm() oder prompt() verwenden
-WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklärender Text davor oder danach. Beginne mit <!DOCTYPE html>.`;
+WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklÃ¤render Text davor oder danach. Beginne mit <!DOCTYPE html>.`;
 
   const userMsg = currentCode
     ? `Hier ist das aktuelle Spiel:\n\`\`\`html\n${currentCode.slice(0, 80000)}\n\`\`\`\n\nVerbesserungsanfrage: ${prompt}`
@@ -2514,7 +2514,7 @@ WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklärender Text davor
 
     const data = await groqRes.json();
     if (!groqRes.ok) {
-      // Fallback auf llama wenn Modell nicht verfügbar
+      // Fallback auf llama wenn Modell nicht verfÃ¼gbar
       if (groqRes.status === 400 || groqRes.status === 404) {
         const fallback = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
@@ -2554,7 +2554,7 @@ WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklärender Text davor
 // In-Memory Safeguard Violations: username -> { count, blockedUntil }
 const kiSafeguardViolations = new Map();
 
-// ─── KI Proxy (Groq) ──────────────────────────────────────────────────────────
+// â”€â”€â”€ KI Proxy (Groq) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/api/ki', async (req, res) => {
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY nicht konfiguriert' });
@@ -2577,13 +2577,13 @@ app.post('/api/ki', async (req, res) => {
     if (v?.blockedUntil && v.blockedUntil > Date.now()) {
       const days = Math.ceil((v.blockedUntil - Date.now()) / 86400000);
       return res.status(200).json({ choices: [{ message: { role: 'assistant',
-        content: `🚫 Dein Zugang zur KI ist wegen mehrfacher Verstöße für noch ${days} Tag(e) gesperrt.`
+        content: `ðŸš« Dein Zugang zur KI ist wegen mehrfacher VerstÃ¶ÃŸe fÃ¼r noch ${days} Tag(e) gesperrt.`
       }}]});
     }
   }
 
   try {
-    // Safeguard: letzte Nutzer-Nachricht prüfen
+    // Safeguard: letzte Nutzer-Nachricht prÃ¼fen
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     if (lastUserMsg) {
       const userText = typeof lastUserMsg.content === 'string'
@@ -2606,7 +2606,7 @@ app.post('/api/ki', async (req, res) => {
             const sgData = await sgRes.json();
             const verdict = sgData.choices?.[0]?.message?.content?.trim().toLowerCase() || '';
             if (verdict.startsWith('unsafe')) {
-              // Verstoß zählen
+              // VerstoÃŸ zÃ¤hlen
               let count = 1;
               if (username) {
                 const prev = kiSafeguardViolations.get(username) || { count: 0 };
@@ -2614,20 +2614,20 @@ app.post('/api/ki', async (req, res) => {
                 if (count >= 3) {
                   kiSafeguardViolations.set(username, { count, blockedUntil: Date.now() + 7 * 24 * 60 * 60 * 1000 });
                   return res.status(200).json({ choices: [{ message: { role: 'assistant',
-                    content: '🚫 Du wurdest wegen 3 Verstößen gegen die Nutzungsrichtlinien für 7 Tage von der KI gesperrt.'
+                    content: 'ðŸš« Du wurdest wegen 3 VerstÃ¶ÃŸen gegen die Nutzungsrichtlinien fÃ¼r 7 Tage von der KI gesperrt.'
                   }}]});
                 }
                 kiSafeguardViolations.set(username, { count, blockedUntil: null });
                 if (count === 2) {
                   return res.status(200).json({ choices: [{ message: { role: 'assistant',
-                    content: '⚠️ **Letzte Warnung:** Deine Anfrage verstößt gegen die Nutzungsrichtlinien. Bei einem weiteren Verstoß wird dein KI-Zugang für 7 Tage gesperrt.'
+                    content: 'âš ï¸ **Letzte Warnung:** Deine Anfrage verstÃ¶ÃŸt gegen die Nutzungsrichtlinien. Bei einem weiteren VerstoÃŸ wird dein KI-Zugang fÃ¼r 7 Tage gesperrt.'
                   }}]});
                 }
               }
-              // 1. Verstoß: KI antwortet über das Hauptmodell mit Ablehnung
+              // 1. VerstoÃŸ: KI antwortet Ã¼ber das Hauptmodell mit Ablehnung
               const refusalMessages = [
                 ...messages.slice(0, -1),
-                { role: 'system', content: 'Die Anfrage des Nutzers wurde von unserem Sicherheitssystem als problematisch eingestuft. Erkläre dem Nutzer freundlich aber bestimmt, dass du bei diesem Thema nicht helfen kannst. Gib keine Informationen zu dem angeforderten Thema.' },
+                { role: 'system', content: 'Die Anfrage des Nutzers wurde von unserem Sicherheitssystem als problematisch eingestuft. ErklÃ¤re dem Nutzer freundlich aber bestimmt, dass du bei diesem Thema nicht helfen kannst. Gib keine Informationen zu dem angeforderten Thema.' },
                 lastUserMsg
               ];
               try {
@@ -2686,7 +2686,7 @@ app.post('/api/ki', async (req, res) => {
   }
 });
 
-  // Video-KI: Komplett kostenlose HF ZeroGPU Space (hysts/zeroscope-v2) — kein API-Key nötig
+  // Video-KI: Komplett kostenlose HF ZeroGPU Space (hysts/zeroscope-v2) â€” kein API-Key nÃ¶tig
 app.post('/api/ki/video/create', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
@@ -2695,7 +2695,7 @@ app.post('/api/ki/video/create', async (req, res) => {
   const hfKey = process.env.HUGGINGFACE_API_KEY;
   const authHeaders = hfKey ? { 'Authorization': `Bearer ${hfKey}` } : {};
 
-  // Zufällige session_hash für Gradio-Queue
+  // ZufÃ¤llige session_hash fÃ¼r Gradio-Queue
   const sessionHash = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 
   try {
@@ -2719,7 +2719,7 @@ app.post('/api/ki/video/create', async (req, res) => {
       headers: { Accept: 'text/event-stream', ...authHeaders }
     });
     if (!sseRes.ok || !sseRes.body) {
-      return res.status(502).json({ error: 'SSE-Stream konnte nicht geöffnet werden' });
+      return res.status(502).json({ error: 'SSE-Stream konnte nicht geÃ¶ffnet werden' });
     }
 
     const reader = sseRes.body.getReader();
@@ -2783,7 +2783,7 @@ app.get('/api/ki/video/:id/status', async (req, res) => {
   res.status(410).json({ error: 'Status-Polling wird nicht verwendet.' });
 });
 
-// Bild-Generierung (HuggingFace SDXL primär, Pollinations als Fallback)
+// Bild-Generierung (HuggingFace SDXL primÃ¤r, Pollinations als Fallback)
 app.get('/api/ki/image', async (req, res) => {
   const prompt = req.query.prompt;
   if (!prompt || prompt.trim().length === 0) {
@@ -2842,7 +2842,7 @@ app.get('/api/ki/image', async (req, res) => {
       } catch {}
     }
     if (!imgRes || !imgRes.ok) {
-      return res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen – kein Dienst verfügbar' });
+      return res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen â€“ kein Dienst verfÃ¼gbar' });
     }
     const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
     res.setHeader('Content-Type', contentType);
@@ -2855,3 +2855,4 @@ app.get('/api/ki/image', async (req, res) => {
 });
 
 module.exports = app;
+
