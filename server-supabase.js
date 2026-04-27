@@ -22,16 +22,6 @@ const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_ATTEMPTS = 20;
 const guestPresence = new Map();
 const GUEST_WINDOW_MS = 5 * 60 * 1000;
-const suspiciousAccessAttempts = new Map();
-const blockedDevices = new Map();
-const blockedNetworks = new Map();
-const networkStrikeLog = new Map();
-const SECURITY_SIGNAL_WINDOW_MS = 15 * 60 * 1000;
-const SECURITY_DEVICE_BLOCK_THRESHOLD = 120;
-const SECURITY_DEVICE_BLOCK_MS = 12 * 60 * 60 * 1000;
-const SECURITY_NETWORK_STRIKE_WINDOW_MS = 60 * 60 * 1000;
-const SECURITY_NETWORK_DEVICE_THRESHOLD = 3;
-const SECURITY_NETWORK_BLOCK_MS = 12 * 60 * 60 * 1000;
 const chatGroupMetaMemory = new Map();
 const chatGroupAdminsMemory = new Map();
 
@@ -213,150 +203,6 @@ const clearAttempts = (key) => {
   authAttempts.delete(key);
 };
 
-function getRequestIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  const raw = forwarded || req.ip || req.socket?.remoteAddress || 'unknown';
-  return String(raw || '').replace('::ffff:', '').trim().toLowerCase() || 'unknown';
-}
-
-function getDeviceKey(req) {
-  const ip = getRequestIp(req);
-  const userAgent = String(req.headers['user-agent'] || 'unknown').slice(0, 240);
-  const uaHash = crypto.createHash('sha256').update(userAgent).digest('hex').slice(0, 12);
-  return { ip, key: `${ip}|${uaHash}` };
-}
-
-function getIpv4NetworkKey(ip) {
-  const match = String(ip || '').match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!match) return null;
-  const octets = match.slice(1).map(Number);
-  if (octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
-  return `${octets[0]}.${octets[1]}.${octets[2]}.0/24`;
-}
-
-function isPrivateOrLocalIp(ip) {
-  if (!ip || ip === 'unknown') return true;
-  if (ip === '127.0.0.1' || ip === '::1') return true;
-  if (ip.startsWith('10.')) return true;
-  if (ip.startsWith('192.168.')) return true;
-  if (ip.startsWith('172.')) {
-    const second = Number(ip.split('.')[1]);
-    if (second >= 16 && second <= 31) return true;
-  }
-  return false;
-}
-
-function pruneSecurityState() {
-  const now = Date.now();
-
-  for (const [deviceKey, entry] of suspiciousAccessAttempts.entries()) {
-    const events = (entry.events || []).filter((evt) => now - evt.at <= SECURITY_SIGNAL_WINDOW_MS);
-    if (!events.length) {
-      suspiciousAccessAttempts.delete(deviceKey);
-      continue;
-    }
-    entry.events = events;
-    entry.total = events.reduce((sum, evt) => sum + (evt.points || 0), 0);
-    suspiciousAccessAttempts.set(deviceKey, entry);
-  }
-
-  for (const [deviceKey, block] of blockedDevices.entries()) {
-    if (!block || now >= block.until) blockedDevices.delete(deviceKey);
-  }
-
-  for (const [networkKey, block] of blockedNetworks.entries()) {
-    if (!block || now >= block.until) blockedNetworks.delete(networkKey);
-  }
-
-  for (const [networkKey, events] of networkStrikeLog.entries()) {
-    const valid = (events || []).filter((evt) => now - evt.at <= SECURITY_NETWORK_STRIKE_WINDOW_MS);
-    if (!valid.length) {
-      networkStrikeLog.delete(networkKey);
-      continue;
-    }
-    networkStrikeLog.set(networkKey, valid);
-  }
-}
-
-function registerNetworkStrike(ip, deviceKey) {
-  const networkKey = getIpv4NetworkKey(ip);
-  if (!networkKey || isPrivateOrLocalIp(ip)) return;
-  const now = Date.now();
-  const events = networkStrikeLog.get(networkKey) || [];
-  events.push({ at: now, deviceKey });
-  const valid = events.filter((evt) => now - evt.at <= SECURITY_NETWORK_STRIKE_WINDOW_MS);
-  networkStrikeLog.set(networkKey, valid);
-
-  const uniqueDevices = new Set(valid.map((evt) => evt.deviceKey)).size;
-  if (uniqueDevices >= SECURITY_NETWORK_DEVICE_THRESHOLD) {
-    blockedNetworks.set(networkKey, {
-      until: now + SECURITY_NETWORK_BLOCK_MS,
-      reason: 'Mehrere verschiedene Geraete mit wiederholten unautorisierten Zugriffen',
-      networkKey
-    });
-  }
-}
-
-function recordSuspiciousAccess(req, reason, points = 1) {
-  const now = Date.now();
-  const { ip, key } = getDeviceKey(req);
-  const entry = suspiciousAccessAttempts.get(key) || { ip, events: [], total: 0 };
-  entry.events.push({ at: now, reason, points: Math.max(1, Number(points) || 1) });
-  entry.events = entry.events.filter((evt) => now - evt.at <= SECURITY_SIGNAL_WINDOW_MS);
-  entry.total = entry.events.reduce((sum, evt) => sum + (evt.points || 0), 0);
-  suspiciousAccessAttempts.set(key, entry);
-
-  if (entry.total < SECURITY_DEVICE_BLOCK_THRESHOLD) return;
-  if (blockedDevices.has(key)) return;
-
-  blockedDevices.set(key, {
-    until: now + SECURITY_DEVICE_BLOCK_MS,
-    reason: 'Zu viele unautorisierte Zugriffsversuche in kurzer Zeit',
-    ip
-  });
-  registerNetworkStrike(ip, key);
-}
-
-function resolveActiveBlock(req) {
-  pruneSecurityState();
-  const now = Date.now();
-  const { ip, key } = getDeviceKey(req);
-  const deviceBlock = blockedDevices.get(key);
-  if (deviceBlock && now < deviceBlock.until) {
-    return {
-      type: 'device',
-      reason: deviceBlock.reason,
-      retryAfterSeconds: Math.max(1, Math.ceil((deviceBlock.until - now) / 1000))
-    };
-  }
-
-  const networkKey = getIpv4NetworkKey(ip);
-  if (networkKey) {
-    const networkBlock = blockedNetworks.get(networkKey);
-    if (networkBlock && now < networkBlock.until) {
-      return {
-        type: 'network',
-        reason: networkBlock.reason,
-        retryAfterSeconds: Math.max(1, Math.ceil((networkBlock.until - now) / 1000))
-      };
-    }
-  }
-
-  return null;
-}
-
-function respondBlockedRequest(req, res, block) {
-  if (req.path.startsWith('/api/')) {
-    return res.status(403).json({
-      error: 'Zugriff voruebergehend gesperrt',
-      blockType: block.type,
-      reason: block.reason,
-      retryAfterSeconds: block.retryAfterSeconds
-    });
-  }
-
-  return res.status(403).send('Zugriff voruebergehend gesperrt. Bitte spaeter erneut versuchen.');
-}
 
 const PUBLIC_API_PATHS = new Set([
   '/api/config',
@@ -713,13 +559,6 @@ app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use((req, res, next) => {
-  const block = resolveActiveBlock(req);
-  if (block) {
-    return respondBlockedRequest(req, res, block);
-  }
-  next();
-});
 app.use('/api', (req, res, next) => {
   const apiPath = `/api${req.path === '/' ? '' : req.path}`;
   if (isPublicApiPath(apiPath)) {
@@ -728,13 +567,11 @@ app.use('/api', (req, res, next) => {
 
   const authHeader = String(req.headers.authorization || '');
   if (!authHeader.startsWith('Bearer ')) {
-    recordSuspiciousAccess(req, 'missing-token', 1);
     return res.status(401).json({ error: 'Login erforderlich' });
   }
 
   const token = authHeader.slice(7).trim();
   if (!token) {
-    recordSuspiciousAccess(req, 'empty-token', 1);
     return res.status(401).json({ error: 'Login erforderlich' });
   }
 
@@ -742,7 +579,6 @@ app.use('/api', (req, res, next) => {
     req.authUser = jwt.verify(token, JWT_SECRET);
     return next();
   } catch {
-    recordSuspiciousAccess(req, 'invalid-token', 2);
     return res.status(401).json({ error: 'Ungueltiger Token' });
   }
 });
