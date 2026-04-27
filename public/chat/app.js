@@ -26,14 +26,14 @@ let _attachOpen = false;
             // Token abgelaufen → einmalig neu anmelden nötig (nur 1x, dann 10 Jahre gültig)
             localStorage.removeItem('proStatus');
             const wall = document.getElementById('loginWall');
-            wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">🔑</div><h2>Erneut anmelden</h2><p style="color:#a88">Deine Sitzung ist abgelaufen. Melde dich einmal im Store neu an – danach bleibst du dauerhaft angemeldet.</p><a href="/" class="btn-primary" style="margin-top:8px;display:block;text-align:center">Im Store anmelden</a></div>`;
+            wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">🔑</div><h2>Erneut anmelden</h2><p style="color:#a88">Deine Sitzung ist abgelaufen. Melde dich neu an.</p><a href="/" class="btn-primary" style="margin-top:8px;display:block;text-align:center">Zur Anmeldung</a></div>`;
             show('loginWall');
             return;
         }
         if (!resp.ok) {
             // Server-Fehler: Token behalten, Retry anbieten
             const wall = document.getElementById('loginWall');
-            wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">⚠️</div><h2>Verbindungsfehler</h2><p>Der Server antwortet nicht. Bitte versuche es erneut.</p><button class="btn-primary" onclick="location.reload()">Neu laden</button><a href="/" class="btn-secondary" style="margin-top:8px;display:block">Zurück zum Store</a></div>`;
+            wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">⚠️</div><h2>Verbindungsfehler</h2><p>Der Server antwortet nicht. Bitte versuche es erneut.</p><button class="btn-primary" onclick="location.reload()">Neu laden</button><a href="/" class="btn-secondary" style="margin-top:8px;display:block">Zurück zur Anmeldung</a></div>`;
             show('loginWall');
             return;
         }
@@ -63,7 +63,7 @@ let _attachOpen = false;
     } catch {
         // Netzwerkfehler: Token behalten, Retry anbieten
         const wall = document.getElementById('loginWall');
-        wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">⚠️</div><h2>Keine Verbindung</h2><p>Netzwerkfehler. Bitte überprüfe deine Verbindung.</p><button class="btn-primary" onclick="location.reload()">Neu laden</button><a href="/" class="btn-secondary" style="margin-top:8px;display:block">Zurück zum Store</a></div>`;
+        wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">⚠️</div><h2>Keine Verbindung</h2><p>Netzwerkfehler. Bitte überprüfe deine Verbindung.</p><button class="btn-primary" onclick="location.reload()">Neu laden</button><a href="/" class="btn-secondary" style="margin-top:8px;display:block">Zurück zur Anmeldung</a></div>`;
         show('loginWall');
         return;
     }

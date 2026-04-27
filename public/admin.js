@@ -404,7 +404,7 @@ async function loadAdminApps() {
         const apps = await res.json();
 
         if (!apps.length) {
-            list.innerHTML = '<li style="color:var(--muted)">Keine Apps im Store.</li>';
+            list.innerHTML = '<li style="color:var(--muted)">Keine Inhalte vorhanden.</li>';
             return;
         }
 
@@ -423,7 +423,7 @@ async function loadAdminApps() {
 
 async function deleteApp(appId, appName) {
     if (!activeAdminCode) return;
-    if (!confirm(`App "${appName}" wirklich aus dem Store entfernen?`)) return;
+    if (!confirm(`Eintrag "${appName}" wirklich entfernen?`)) return;
 
     try {
         const res = await fetch(`${window.location.origin}/api/admin/apps/${appId}`, {
@@ -432,10 +432,10 @@ async function deleteApp(appId, appName) {
         });
         const data = await res.json();
         if (!res.ok) {
-            setStatus(data.error || 'App konnte nicht entfernt werden.', 'error');
+            setStatus(data.error || 'Eintrag konnte nicht entfernt werden.', 'error');
             return;
         }
-        setStatus(`App "${appName}" wurde entfernt.`, 'success');
+        setStatus(`Eintrag "${appName}" wurde entfernt.`, 'success');
         await loadAdminApps();
     } catch (err) {
         setStatus(`Fehler: ${err.message}`, 'error');
@@ -453,7 +453,7 @@ async function loadAppsForScan() {
         const apps = await res.json();
 
         if (!apps.length) {
-            list.innerHTML = '<li style="color:var(--muted)">Keine Apps im Store.</li>';
+            list.innerHTML = '<li style="color:var(--muted)">Keine Inhalte vorhanden.</li>';
             return;
         }
 
