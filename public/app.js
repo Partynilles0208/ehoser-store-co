@@ -577,15 +577,12 @@ function skipVote() {
 }
 
 function startApp() {
-    startOnlinePolling();
-    sendHeartbeat();
-    const token = localStorage.getItem('token');
-    if (token) {
-        verifyToken(token);
-        return;
-    }
-    showSection('mode-select');
-    restoreReloadSnapshot();
+    localStorage.removeItem('token');
+    localStorage.removeItem('proStatus');
+    currentUser = null;
+    currentProfile = null;
+    stopOnlinePolling();
+    showSection('auth');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1032,6 +1029,11 @@ async function loadMyApps() {
 }
 
 function showSection(sectionId) {
+    const token = localStorage.getItem('token');
+    if (sectionId !== 'auth' && !token) {
+        sectionId = 'auth';
+    }
+
     document.querySelectorAll('.section').forEach((section) => {
         section.classList.remove('active');
     });
@@ -2074,13 +2076,12 @@ function logout() {
     allApps = [];
     stopOnlinePolling();
     stopResetStatusPolling();
-    document.getElementById('onlineWidget').style.display = 'none';
-    location.reload();
-}
-
-let onlineInterval = null;
-let heartbeatInterval = null;
-const guestId = localStorage.getItem('guestId') || crypto.randomUUID();
+    localStorage.removeItem('token');
+    localStorage.removeItem('proStatus');
+    currentUser = null;
+    currentProfile = null;
+    stopOnlinePolling();
+    showSection('auth');
 localStorage.setItem('guestId', guestId);
 
 function startOnlinePolling() {
@@ -4739,4 +4740,6 @@ async function chatOpenGroupManage() {
     } catch (err) {
         showAlert(err?.message || 'Aktion fehlgeschlagen.', 'error');
     }
+}
+
 }
