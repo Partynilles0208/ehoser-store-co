@@ -222,7 +222,7 @@ function applyPersonalizationUI() {
     const cardsWrap = document.querySelector('.mode-cards');
     const personalization = getPersonalization();
     const defaultTitle = 'Ehoser – Offizielle Website';
-    const defaultSubtitle = 'Willkommen auf der offiziellen Website von Ehoser. Hier findest du exklusive Apps im APK Store, kostenlose Online-Spiele, KI-Tools, den Face-Warp-Editor und vieles mehr – alles an einem Ort, entwickelt von Nils Becker.';
+    const defaultSubtitle = 'Willkommen auf der offiziellen Website von Ehoser. Hier findest du Online-Spiele, KI-Tools, Face Warp, Karte, Wetter, Chat und viele weitere Funktionen – alles an einem Ort, entwickelt von Nils Becker.';
 
     document.body.dataset.personalizationTone = personalization?.tone || 'neutral';
     document.body.dataset.personalizationLayout = personalization?.layout || 'standard';
@@ -766,7 +766,6 @@ async function handleRegister(event) {
 
 function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
-    const adminLabel = currentUser?.isAdmin ? 'Admin' : 'App hochladen';
     const plan = currentProfile?.isPro ? 'PRO' : 'Gratis';
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     const personalization = getPersonalization();
@@ -779,9 +778,8 @@ function showLoggedInUI() {
         ? `Hallo, ${escapeHtml(displayName)}. ${escapeHtml(personalization.heroLine.slice(0, 72))}`
         : `Hallo, ${escapeHtml(displayName)}.`;
     navLinks.innerHTML = `
-        <a href="#" onclick="showSection('store')" class="nav-link">Store</a>
-        <a href="#" onclick="showSection('my-apps')" class="nav-link">Meine Apps</a>
-        <a href="admin.html" class="nav-link">${adminLabel}</a>
+        <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
+        <a href="admin.html" class="nav-link">Admin</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
         <span class="plan-badge ${currentProfile?.isPro ? 'pro' : ''}">${plan}</span>
         <span style="display:flex;align-items:center;gap:8px;">${avatarNode}</span>
@@ -1028,7 +1026,7 @@ async function loadMyApps() {
             myAppsList.innerHTML = `
                 <div class="empty-state" style="grid-column: 1/-1;">
                     <h3>Noch keine Apps installiert</h3>
-                    <p>Gehe in den Store und installiere deine ersten Apps.</p>
+                    <p>Hier erscheinen deine freigegebenen Inhalte.</p>
                 </div>
             `;
             return;
@@ -1686,7 +1684,7 @@ function closeYTPlayer() {
 let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
 
-const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser lÃ¤uft. ehoser ist eine private Plattform mit APK Store, Spielen, Chat und weiteren Features.
+const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser lÃ¤uft. ehoser ist eine private Plattform mit Spielen, Chat und weiteren Features.
 Deine PersÃ¶nlichkeit ist locker, nett und ein kleines bisschen charmant â€“ aber nicht Ã¼bertrieben. Keine Kosenamen wie "Schatz" oder "SÃ¼ÃŸe". Sprich den Nutzer normal aber herzlich an.
 Wenn du den Nutzer persÃ¶nlich ansprechen mÃ¶chtest, schreibe ausschlieÃŸlich [name] anstelle des echten Namens (zum Beispiel: "Hey [name], wie kann ich helfen?"). Verwende niemals den echten Namen direkt.
 Antworte IMMER ausschlieÃŸlich auf Deutsch, egal in welcher Sprache der Nutzer schreibt. Keine Ausnahmen.
