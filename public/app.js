@@ -3525,7 +3525,7 @@ let _srOffer = null;
 let _srPc = null;
 let _srStream = null;
 let _srPollInterval = null;
-let _srMouseHandler = null;
+let _srDisconnectTimer = null;
 
 function startScreenSharePolling() {
     if (_srPollInterval) return;
@@ -3586,16 +3586,29 @@ async function acceptShareRequest() {
             track.onended = () => endShareSession();
         });
 
-        // Maus-DataChannel empfangen (wird vom Admin erstellt)
-        pc.ondatachannel = (event) => {
-            if (event.channel.label !== 'mouse') return;
-            const ch = event.channel;
-            ch.onopen = () => _startMouseTracking(ch);
-            ch.onclose = () => _stopMouseTracking();
+        pc.onconnectionstatechange = () => {
+            const state = pc.connectionState;
+            if (state === 'connected') {
+                if (_srDisconnectTimer) { clearTimeout(_srDisconnectTimer); _srDisconnectTimer = null; }
+                return;
+            }
+            if (state === 'disconnected') {
+                if (!_srDisconnectTimer) {
+                    try { pc.restartIce && pc.restartIce(); } catch {}
+                    _srDisconnectTimer = setTimeout(() => {
+                        endShareSession();
+                    }, 10000);
+                }
+                return;
+            }
+            if (state === 'failed' || state === 'closed') endShareSession();
         };
 
-        pc.onconnectionstatechange = () => {
-            if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) endShareSession();
+        pc.oniceconnectionstatechange = () => {
+            const s = pc.iceConnectionState;
+            if (s === 'connected' || s === 'completed') {
+                if (_srDisconnectTimer) { clearTimeout(_srDisconnectTimer); _srDisconnectTimer = null; }
+            }
         };
 
         // Offer setzen, Answer erstellen
@@ -3641,30 +3654,11 @@ async function declineShareRequest() {
     startScreenSharePolling();
 }
 
-function _startMouseTracking(channel) {
-    let lastSend = 0;
-    _srMouseHandler = (e) => {
-        const now = Date.now();
-        if (now - lastSend < 33) return; // ~30fps
-        lastSend = now;
-        if (channel.readyState !== 'open') return;
-        channel.send(JSON.stringify({
-            x: e.clientX / window.innerWidth,
-            y: e.clientY / window.innerHeight
-        }));
-    };
-    document.addEventListener('mousemove', _srMouseHandler);
-}
-
-function _stopMouseTracking() {
-    if (_srMouseHandler) {
-        document.removeEventListener('mousemove', _srMouseHandler);
-        _srMouseHandler = null;
-    }
-}
-
 async function endShareSession() {
-    _stopMouseTracking();
+    if (_srDisconnectTimer) {
+        clearTimeout(_srDisconnectTimer);
+        _srDisconnectTimer = null;
+    }
     if (_srStream) { _srStream.getTracks().forEach(t => t.stop()); _srStream = null; }
     if (_srPc) { _srPc.close(); _srPc = null; }
     const token = localStorage.getItem('token');
