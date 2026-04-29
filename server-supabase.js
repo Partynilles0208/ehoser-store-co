@@ -190,6 +190,46 @@ CREATE TABLE IF NOT EXISTS chat_group_admins (
 
 initDatabase();
 
+let _screenSessionsReady = false;
+let _screenSessionsInitPromise = null;
+
+async function ensureScreenSessionsTableExists() {
+  if (_screenSessionsReady) return true;
+  if (_screenSessionsInitPromise) return _screenSessionsInitPromise;
+
+  _screenSessionsInitPromise = (async () => {
+    const dbUrl = process.env.DATABASE_URL
+      || process.env.SUPABASE_DB_URL
+      || process.env.POSTGRES_URL
+      || process.env.POSTGRES_PRISMA_URL;
+    if (!dbUrl) return false;
+
+    const pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS screen_sessions (
+          id UUID PRIMARY KEY,
+          username TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          offer TEXT,
+          answer TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+      _screenSessionsReady = true;
+      return true;
+    } catch (e) {
+      console.error('screen_sessions auto-create failed:', e?.message || e);
+      return false;
+    } finally {
+      await pool.end();
+      _screenSessionsInitPromise = null;
+    }
+  })();
+
+  return _screenSessionsInitPromise;
+}
+
 const isRateLimited = (key) => {
   const now = Date.now();
   const current = authAttempts.get(key);
@@ -1750,20 +1790,22 @@ app.post('/api/admin/screenshare/request', async (req, res) => {
   const { username, offer } = req.body;
   if (!username || !offer) return res.status(400).json({ error: 'username und offer erforderlich' });
 
+  await ensureScreenSessionsTableExists();
+
   // End existing sessions for this user
-  await supabase.from('screen_sessions')
+  await supabaseAdmin.from('screen_sessions')
     .update({ status: 'ended' })
     .eq('username', username)
     .in('status', ['pending', 'active']);
 
   const sessionId = crypto.randomUUID();
-  const { error } = await supabase.from('screen_sessions').insert({
+  const { error } = await supabaseAdmin.from('screen_sessions').insert({
     id: sessionId, username, status: 'pending', offer: JSON.stringify(offer)
   });
 
   if (error) {
     console.error('Screen session error:', error);
-    return res.status(500).json({ error: 'Tabelle screen_sessions fehlt. Bitte in Supabase anlegen.' });
+    return res.status(500).json({ error: `screen_sessions Fehler: ${error.message}` });
   }
   res.json({ sessionId });
 });
@@ -1773,10 +1815,11 @@ app.get('/api/screenshare/pending', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
   try {
+    await ensureScreenSessionsTableExists();
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    const { data } = await supabase
+    const { data } = await supabaseAdmin
       .from('screen_sessions')
       .select('id, offer, status')
       .eq('username', decoded.username)
@@ -1797,21 +1840,22 @@ app.post('/api/screenshare/respond', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
   try {
+    await ensureScreenSessionsTableExists();
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
     const { sessionId, answer, accept } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId fehlt' });
 
-    const { data: session } = await supabase
+    const { data: session } = await supabaseAdmin
       .from('screen_sessions').select('username').eq('id', sessionId).single();
     if (!session || session.username !== decoded.username)
       return res.status(403).json({ error: 'Session nicht gefunden' });
 
     if (!accept) {
-      await supabase.from('screen_sessions').update({ status: 'declined' }).eq('id', sessionId);
+      await supabaseAdmin.from('screen_sessions').update({ status: 'declined' }).eq('id', sessionId);
       return res.json({ ok: true });
     }
-    await supabase.from('screen_sessions')
+    await supabaseAdmin.from('screen_sessions')
       .update({ status: 'active', answer: JSON.stringify(answer) }).eq('id', sessionId);
     res.json({ ok: true });
   } catch {
@@ -1824,7 +1868,9 @@ app.get('/api/admin/screenshare/session/:sessionId', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
 
-  const { data } = await supabase
+  await ensureScreenSessionsTableExists();
+
+  const { data } = await supabaseAdmin
     .from('screen_sessions').select('status, answer').eq('id', req.params.sessionId).single();
   if (!data) return res.status(404).json({ error: 'Session nicht gefunden' });
   res.json({ status: data.status, answer: data.answer ? JSON.parse(data.answer) : null });
@@ -1834,7 +1880,8 @@ app.get('/api/admin/screenshare/session/:sessionId', async (req, res) => {
 app.post('/api/admin/screenshare/end/:sessionId', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
-  await supabase.from('screen_sessions').update({ status: 'ended' }).eq('id', req.params.sessionId);
+  await ensureScreenSessionsTableExists();
+  await supabaseAdmin.from('screen_sessions').update({ status: 'ended' }).eq('id', req.params.sessionId);
   res.json({ ok: true });
 });
 
@@ -1843,11 +1890,12 @@ app.post('/api/screenshare/end', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
   try {
+    await ensureScreenSessionsTableExists();
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
     const { sessionId } = req.body;
     if (sessionId) {
-      await supabase.from('screen_sessions')
+      await supabaseAdmin.from('screen_sessions')
         .update({ status: 'ended' }).eq('id', sessionId).eq('username', decoded.username);
     }
     res.json({ ok: true });
