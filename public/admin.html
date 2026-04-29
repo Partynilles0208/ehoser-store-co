@@ -109,6 +109,14 @@
                         <h3>Chat Meldungen</h3>
                         <p class="admin-help">Rechtsklick auf eine Nachricht und dann "Bericht fortsetzen", um Warnung/Bann/Löschung festzulegen.</p>
                         <ul id="chatReportsList" class="online-list"></ul>
+
+                                        <div style="margin-top: 16px; padding: 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                            <h4 style="margin:0 0 8px; font-size:0.95rem;">Nutzer entbannen</h4>
+                                            <div class="admin-actions" style="gap:8px; flex-wrap:wrap;">
+                                                <input id="unbanUsernameInput" type="text" placeholder="Benutzername" style="flex:1; min-width:160px; padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.07); color:#e2e8f0; font-size:0.9rem;">
+                                                <button class="btn-secondary" onclick="adminUnbanUser()">Entbannen</button>
+                                            </div>
+                                        </div>
                     </div>
 
                     <div style="margin-top: 24px;">
