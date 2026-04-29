@@ -563,6 +563,7 @@ function renderVtResult(stats, resultArea) {
 let svPc = null;
 let svSession = null;
 let svPoll = null;
+let svDisconnectTimer = null;
 
 async function requestScreenShare(username) {
     if (!activeAdminCode) { setStatus('Bitte zuerst einloggen.', 'error'); return; }
@@ -581,12 +582,6 @@ async function requestScreenShare(username) {
     });
     svPc = pc;
 
-    // Data channel: Nutzer sendet Mausposition hierher
-    const mouseChannel = pc.createDataChannel('mouse');
-    mouseChannel.onmessage = (e) => {
-        try { const { x, y } = JSON.parse(e.data); updateScreenCursor(x, y); } catch {}
-    };
-
     // Eingehender Video-Stream
     pc.ontrack = (event) => {
         const video = document.getElementById('screenVideo');
@@ -598,7 +593,28 @@ async function requestScreenShare(username) {
     };
 
     pc.onconnectionstatechange = () => {
-        if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) closeScreenShare();
+        const state = pc.connectionState;
+        if (state === 'connected') {
+            if (svDisconnectTimer) { clearTimeout(svDisconnectTimer); svDisconnectTimer = null; }
+            return;
+        }
+        if (state === 'disconnected') {
+            if (!svDisconnectTimer) {
+                try { pc.restartIce && pc.restartIce(); } catch {}
+                svDisconnectTimer = setTimeout(() => {
+                    closeScreenShare();
+                }, 10000);
+            }
+            return;
+        }
+        if (state === 'failed' || state === 'closed') closeScreenShare();
+    };
+
+    pc.oniceconnectionstatechange = () => {
+        const s = pc.iceConnectionState;
+        if (s === 'connected' || s === 'completed') {
+            if (svDisconnectTimer) { clearTimeout(svDisconnectTimer); svDisconnectTimer = null; }
+        }
     };
 
     // Video-Empfang anfordern
@@ -613,7 +629,6 @@ async function requestScreenShare(username) {
     statusEl.textContent = `Warte auf ${username}…`;
     statusEl.style.display = '';
     videoWrap.style.display = 'none';
-    document.getElementById('screenCursor').style.display = 'none';
     modal.style.display = 'flex';
 
     const res = await fetch(`${window.location.origin}/api/admin/screenshare/request`, {
@@ -662,18 +677,21 @@ function waitIce(pc) {
     });
 }
 
-function updateScreenCursor(x, y) {
-    const cursor = document.getElementById('screenCursor');
-    const wrap = document.getElementById('screenVideoWrap');
-    if (!cursor || !wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    cursor.style.left = (x * 100) + '%';
-    cursor.style.top = (y * 100) + '%';
-    cursor.style.display = 'block';
+async function toggleScreenFullscreen() {
+    const target = document.getElementById('screenVideoWrap') || document.getElementById('screenViewerModal');
+    if (!target) return;
+    try {
+        if (document.fullscreenElement) {
+            await document.exitFullscreen();
+        } else {
+            await target.requestFullscreen();
+        }
+    } catch {}
 }
 
 async function closeScreenShare() {
     if (svPoll) { clearInterval(svPoll); svPoll = null; }
+    if (svDisconnectTimer) { clearTimeout(svDisconnectTimer); svDisconnectTimer = null; }
     if (svPc) { svPc.close(); svPc = null; }
 
     if (svSession) {
