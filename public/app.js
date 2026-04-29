@@ -427,78 +427,142 @@ async function handleHelpRequest(event) {
     }
 }
 
-async function pollResetStatus() {
-    if (!resetRequestId || !resetLookupToken) return;
+async function showModerationLock(moderation) {
+    if (!moderation || _moderationLockActive) return;
 
-    try {
-        const response = await fetch(`${API_BASE}/code-reset-status`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requestId: resetRequestId, lookupToken: resetLookupToken })
-        });
-
-        const data = await response.json();
-        if (!response.ok) return;
-
-        if (data.status === 'approved' && data.resetToken) {
-            resetToken = data.resetToken;
-            stopResetStatusPolling();
-            document.getElementById('helpRequestForm').style.display = 'none';
-            document.getElementById('resetCompleteForm').style.display = '';
-            showAlert('Anfrage angenommen. Du kannst jetzt einen neuen Login-Code setzen.', 'success');
-            return;
-        }
-
-        if (data.status === 'rejected') {
-            stopResetStatusPolling();
-            showAlert('Deine Anfrage wurde vom Admin abgelehnt.', 'error');
-        }
-    } catch {
-        // polling silent
-    }
-}
-
-async function handleCompleteReset(event) {
-    event.preventDefault();
-
-    const newCode = document.getElementById('newLoginCode').value.trim();
-    const confirmCode = document.getElementById('confirmLoginCode').value.trim();
-
-    if (!resetRequestId || !resetToken) {
-        showAlert('Reset-Sitzung fehlt. Bitte erneut Hilfe anfordern.', 'error');
+    if (moderation.type === 'warn') {
+        showAlert(`Admin-Warnung: ${moderation.reason || 'Bitte halte dich an die Regeln.'}`, 'error');
+        try {
+            const token = localStorage.getItem('token');
+            if (token) {
+                await fetch(`${API_BASE}/me/moderation/ack`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+            }
+        } catch {}
         return;
     }
 
-    try {
-        const response = await fetch(`${API_BASE}/code-reset-complete`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                requestId: resetRequestId,
-                resetToken,
-                newCode,
-                confirmCode
-            })
-        });
+    _moderationLockActive = true;
 
-        const data = await response.json();
-        if (!response.ok) {
-            showAlert(`Fehler: ${data.error || 'Code konnte nicht aktualisiert werden'}`, 'error');
-            return;
+    const overlay = document.getElementById('moderationLock');
+    const termBody = document.getElementById('banTermBody');
+    if (!overlay || !termBody) return;
+
+    overlay.style.display = 'flex';
+    termBody.innerHTML = '';
+
+    const username = currentUser?.username || 'Nutzer';
+    const banUntil = moderation.banUntil || null;
+    const seqKey = `banSeq_${username}_${banUntil || moderation.type}`;
+    const seqAlreadyShown = localStorage.getItem(seqKey) === '1';
+
+    if (!seqAlreadyShown && moderation.type === 'ban') {
+        // Prompt-Zeile mit blinkendem Cursor
+        const promptLine = _banTermLine(termBody, '$ ');
+        const cursor = document.createElement('span');
+        cursor.className = 'ban-term-cursor';
+        termBody.appendChild(cursor);
+
+        // 3 Sekunden Verbindungsaufbau
+        await moderationSleep(3000);
+        cursor.remove();
+
+        // /ban username langsam eintippen
+        const cmd = `/ban ${username}`;
+        for (const ch of cmd) {
+            promptLine.textContent += ch;
+            await moderationSleep(75);
         }
+        await moderationSleep(500);
+        _banTermLine(termBody, '');
 
-        document.getElementById('resetCompleteForm').style.display = 'none';
-        document.getElementById('helpRequestForm').style.display = 'none';
-        document.getElementById('helpRequestForm').reset();
-        document.getElementById('resetCompleteForm').reset();
-        resetRequestId = null;
-        resetLookupToken = null;
-        resetToken = null;
+        // KI wird gelöscht (10s, kein Timer angezeigt)
+        const kiLine = _banTermLine(termBody, 'KI wird gelöscht');
+        const d1 = _banTermDots(kiLine, 'KI wird gelöscht');
+        await moderationSleep(10000);
+        clearInterval(d1);
+        kiLine.textContent = `KI erfolgreich für ${username} deaktiviert`;
+        await moderationSleep(700);
 
-        showAlert('Neuer Login-Code gespeichert. Du kannst dich jetzt anmelden.', 'success');
-    } catch (err) {
-        showAlert('Verbindungsfehler beim Speichern des neuen Codes.', 'error');
+        // Laden
+        const l1 = _banTermLine(termBody, 'Laden');
+        const d2 = _banTermDots(l1, 'Laden');
+        await moderationSleep(2200);
+        clearInterval(d2);
+        l1.textContent = 'Laden... abgeschlossen';
+        await moderationSleep(400);
+
+        // Alle Apps deaktivieren
+        _banTermLine(termBody, `Alle Apps deaktivieren für ${username}`);
+        const l2 = _banTermLine(termBody, 'Laden');
+        const d3 = _banTermDots(l2, 'Laden');
+        await moderationSleep(2200);
+        clearInterval(d3);
+        l2.textContent = 'Laden... abgeschlossen';
+        await moderationSleep(400);
+
+        _banTermLine(termBody, 'Ban erfolgreich');
+        await moderationSleep(600);
+        _banTermLine(termBody, '');
+
+        if (banUntil) localStorage.setItem(seqKey, '1');
     }
+
+    if (moderation.type === 'delete') {
+        _banTermLine(termBody, 'Account-Löschung wird durchgeführt...');
+        await moderationSleep(2000);
+        try {
+            const token = localStorage.getItem('token');
+            if (token) {
+                await fetch(`${API_BASE}/me/moderation/finalize-delete`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+            }
+        } catch {}
+        logout();
+        return;
+    }
+
+    if (banUntil) {
+        const until = Date.parse(banUntil);
+        if (Number.isFinite(until)) {
+            const cdLine = _banTermLine(termBody, '');
+            cdLine.style.color = '#ff5555';
+            const tick = () => {
+                const left = until - Date.now();
+                if (left <= 0) {
+                    cdLine.textContent = 'Bann abgelaufen. Bitte neu anmelden.';
+                    clearInterval(_moderationCountdownTimer);
+                    _moderationCountdownTimer = null;
+                    return;
+                }
+                cdLine.textContent = `Verbleibende Bannzeit: ${formatDuration(left)}`;
+            };
+            tick();
+            clearInterval(_moderationCountdownTimer);
+            _moderationCountdownTimer = setInterval(tick, 1000);
+        }
+    }
+}
+
+function _banTermLine(container, text) {
+    const span = document.createElement('span');
+    span.className = 'ban-term-line';
+    span.textContent = text !== undefined ? text : '';
+    container.appendChild(span);
+    return span;
+}
+
+function _banTermDots(el, base) {
+    let n = 0;
+    return setInterval(() => {
+        n = (n % 3) + 1;
+        el.textContent = base + '.'.repeat(n);
+    }, 400);
+}
 }
 
 async function handleLogin(event) {

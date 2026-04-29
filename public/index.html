@@ -2290,17 +2290,20 @@ Ramen</textarea>
         </main>
     </div>
 
-    <div id="moderationLock" class="moderation-lock">
-        <div class="moderation-lock-card">
-            <h3 id="moderationTitle" class="moderation-lock-title">Moderationsmaßnahme aktiv</h3>
-            <div id="moderationReason" class="moderation-lock-note"></div>
-            <div id="moderationPhase" class="moderation-lock-phase">Bitte warten…</div>
-            <div id="moderationCountdown" class="moderation-lock-countdown"></div>
+    <div id="moderationLock" class="ban-term-overlay" style="display:none">
+        <div class="ban-term-window">
+            <div class="ban-term-titlebar">
+                <span class="ban-term-dot" style="background:#ff5f57"></span>
+                <span class="ban-term-dot" style="background:#febc2e"></span>
+                <span class="ban-term-dot" style="background:#28c840"></span>
+                <span class="ban-term-name">bash — system@ehoser</span>
+            </div>
+            <div class="ban-term-body" id="banTermBody"></div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=16"></script>
+    <script src="app.js?v=17"></script>
     <script src="tools.js?v=3"></script>
 </body>
 </html>

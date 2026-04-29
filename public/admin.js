@@ -409,6 +409,38 @@ async function adminContinueReport() {
 function closeReportContextMenu() {
     if (!reportMessageContext) return;
     reportMessageContext.style.display = 'none';
+
+async function adminUnbanUser() {
+    const input = document.getElementById('unbanUsernameInput');
+    const username = (input?.value || '').trim();
+    if (!username) {
+        setStatus('Bitte einen Benutzernamen eingeben.', 'error');
+        return;
+    }
+    if (!activeAdminCode) {
+        setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
+        return;
+    }
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/unban`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ username })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Entbannen fehlgeschlagen.', 'error');
+            return;
+        }
+        setStatus(`${username} wurde erfolgreich entbannt.`, 'success');
+        if (input) input.value = '';
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    }
+}
 }
 
 document.addEventListener('click', () => {
