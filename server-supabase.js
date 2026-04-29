@@ -24,6 +24,12 @@ const guestPresence = new Map();
 const GUEST_WINDOW_MS = 5 * 60 * 1000;
 const chatGroupMetaMemory = new Map();
 const chatGroupAdminsMemory = new Map();
+const MODERATION_SEQUENCE_STEPS = [
+  { text: 'KI wird deaktiviert', seconds: 4 },
+  { text: 'Wetter und Maps werden deaktiviert', seconds: 8 },
+  { text: 'Chat Nachrichten werden endgültig gelöscht', seconds: 20 },
+  { text: 'Apps werden gesperrt', seconds: 30 }
+];
 
 // Supabase Init
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -113,6 +119,33 @@ CREATE TABLE IF NOT EXISTS chat_group_admins (
   username TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   PRIMARY KEY (group_id, username)
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMP NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT NULL;
+CREATE TABLE IF NOT EXISTS chat_reports (
+  id BIGSERIAL PRIMARY KEY,
+  group_id UUID NOT NULL,
+  group_name TEXT,
+  reported_by TEXT NOT NULL,
+  target_username TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  messages JSONB DEFAULT '[]'::jsonb,
+  action_type TEXT,
+  action_description TEXT,
+  action_by TEXT,
+  action_at TIMESTAMP,
+  ban_until TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS moderation_actions (
+  id BIGSERIAL PRIMARY KEY,
+  report_id BIGINT,
+  username TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  duration_hours INTEGER,
+  reason TEXT,
+  action_by TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
 );`);
     return;
   }
@@ -124,6 +157,12 @@ CREATE TABLE IF NOT EXISTS chat_group_admins (
     `);
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pro_until TIMESTAMP NULL;
+    `);
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMP NULL;
+    `);
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT NULL;
     `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS user_profiles (
@@ -178,6 +217,35 @@ CREATE TABLE IF NOT EXISTS chat_group_admins (
         username TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT NOW(),
         PRIMARY KEY (group_id, username)
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_reports (
+        id BIGSERIAL PRIMARY KEY,
+        group_id UUID NOT NULL,
+        group_name TEXT,
+        reported_by TEXT NOT NULL,
+        target_username TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        messages JSONB DEFAULT '[]'::jsonb,
+        action_type TEXT,
+        action_description TEXT,
+        action_by TEXT,
+        action_at TIMESTAMP,
+        ban_until TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS moderation_actions (
+        id BIGSERIAL PRIMARY KEY,
+        report_id BIGINT,
+        username TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        duration_hours INTEGER,
+        reason TEXT,
+        action_by TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
       );
     `);
     console.log('âœ… Datenbank-Tabellen Ã¼berprÃ¼ft/erstellt.');
@@ -359,6 +427,23 @@ function normalizePersonalization(raw) {
   };
 }
 
+function normalizeModerationSettings(raw) {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const allowedStatus = new Set(['none', 'pending', 'shown', 'resolved']);
+  const allowedType = new Set(['warn', 'ban', 'delete', 'none']);
+  const status = allowedStatus.has(String(src.status || '').trim()) ? String(src.status).trim() : 'none';
+  const type = allowedType.has(String(src.type || '').trim()) ? String(src.type).trim() : 'none';
+  const reportId = Number(src.reportId);
+  return {
+    status,
+    type,
+    reason: typeof src.reason === 'string' ? src.reason.trim().slice(0, 500) : '',
+    banUntil: typeof src.banUntil === 'string' ? src.banUntil : null,
+    createdAt: typeof src.createdAt === 'string' ? src.createdAt : null,
+    reportId: Number.isFinite(reportId) && reportId > 0 ? Math.trunc(reportId) : null
+  };
+}
+
 function normalizeSettings(raw) {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
   return {
@@ -368,8 +453,77 @@ function normalizeSettings(raw) {
     displayName: typeof src.displayName === 'string' ? src.displayName.trim().slice(0, 40) : '',
     avatarUrl: typeof src.avatarUrl === 'string' ? src.avatarUrl.trim().slice(0, 2048) : '',
     personalizationEnabled: src.personalizationEnabled !== false,
-    personalization: normalizePersonalization(src.personalization)
+    personalization: normalizePersonalization(src.personalization),
+    moderation: normalizeModerationSettings(src.moderation)
   };
+}
+
+function parseChatMessagePreview(encryptedContent) {
+  const raw = String(encryptedContent || '');
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.t === 'txt' && typeof parsed.v === 'string') return parsed.v.slice(0, 400);
+      if (parsed.t === 'img' && parsed.url) return `[Bild] ${String(parsed.url).slice(0, 180)}`;
+      if (parsed.t === 'file' && parsed.name) return `[Datei] ${String(parsed.name).slice(0, 180)}`;
+      if (parsed.t === 'audio') return '[Audio]';
+      if (parsed.t === 'video') return '[Video]';
+    }
+  } catch {}
+  return raw.slice(0, 400);
+}
+
+function toModerationPayload(state) {
+  if (!state || !state.type || state.type === 'none') return null;
+  if (state.type === 'warn') {
+    return {
+      type: 'warn',
+      reason: state.reason || 'Dein Verhalten wurde gemeldet. Bitte beachte die Regeln.',
+      reportId: state.reportId || null,
+      createdAt: state.createdAt || new Date().toISOString()
+    };
+  }
+  const finalStepText = state.type === 'delete' ? 'Account wird gelöscht' : 'Account wird gebannt';
+  return {
+    type: state.type,
+    reason: state.reason || '',
+    banUntil: state.banUntil || null,
+    reportId: state.reportId || null,
+    createdAt: state.createdAt || new Date().toISOString(),
+    sequence: [
+      ...MODERATION_SEQUENCE_STEPS,
+      { text: finalStepText, seconds: 10 }
+    ]
+  };
+}
+
+function getActiveModerationState(userRow, profile) {
+  const moderation = normalizeModerationSettings(profile?.settings?.moderation);
+  const bannedUntilMs = userRow?.banned_until ? Date.parse(userRow.banned_until) : NaN;
+  if (Number.isFinite(bannedUntilMs) && bannedUntilMs > Date.now()) {
+    return {
+      type: 'ban',
+      reason: userRow?.ban_reason || moderation.reason || '',
+      banUntil: userRow?.banned_until || moderation.banUntil || null,
+      reportId: moderation.reportId || null,
+      createdAt: moderation.createdAt || new Date().toISOString()
+    };
+  }
+  if (moderation.status === 'pending' && moderation.type !== 'none') {
+    if (moderation.type === 'ban' && moderation.banUntil) {
+      const untilMs = Date.parse(moderation.banUntil);
+      if (Number.isFinite(untilMs) && untilMs <= Date.now()) return null;
+    }
+    return {
+      type: moderation.type,
+      reason: moderation.reason,
+      banUntil: moderation.banUntil,
+      reportId: moderation.reportId,
+      createdAt: moderation.createdAt
+    };
+  }
+  return null;
 }
 
 function mergePersonalization(currentRaw, patchRaw) {
@@ -555,6 +709,20 @@ async function extendProFor(username, ms = PRO_BONUS_MS) {
   const base = Number.isFinite(from) && from > Date.now() ? from : Date.now();
   const next = new Date(base + ms).toISOString();
   return upsertProfile(username, { proUntil: next });
+}
+
+async function setModerationForUser(username, payload) {
+  const profile = await getProfile(username);
+  const settings = normalizeSettings({
+    ...profile.settings,
+    moderation: {
+      ...payload,
+      status: payload?.status || 'pending',
+      createdAt: payload?.createdAt || new Date().toISOString()
+    }
+  });
+  const updated = await upsertProfile(username, { settings });
+  return normalizeModerationSettings(updated?.settings?.moderation);
 }
 
 async function createReferralCode(inviterUsername) {
@@ -947,11 +1115,20 @@ app.post('/api/login', async (req, res) => {
 
     const profile = await getProfile(data.username);
 
+    const moderationState = getActiveModerationState(data, profile);
+    if (moderationState && moderationState.type !== 'warn') {
+      return res.status(423).json({
+        error: 'Konto ist moderiert',
+        moderation: toModerationPayload(moderationState)
+      });
+    }
+
     res.json({
       success: true,
       token,
       userId: data.id,
       profile,
+      moderationWarning: moderationState?.type === 'warn' ? toModerationPayload(moderationState) : null,
       redirectToAdmin: isAdmin
     });
   } catch (error) {
@@ -1104,6 +1281,16 @@ app.post('/api/verify-token', async (req, res) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    let userRow = null;
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('id,username,banned_until,ban_reason')
+        .eq('id', decoded.id)
+        .single();
+      userRow = data || null;
+    } catch {}
+
     // last_seen aktualisieren (Fehler ignorieren)
     try { await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id); } catch {}
     const refreshedToken = jwt.sign(
@@ -1111,8 +1298,22 @@ app.post('/api/verify-token', async (req, res) => {
       JWT_SECRET,
       { expiresIn: TOKEN_EXPIRES_IN }
     );
-    const profile = await getProfile(decoded.username);
-    res.json({ valid: true, user: decoded, token: refreshedToken, profile });
+    const effectiveUsername = userRow?.username || decoded.username;
+    const profile = await getProfile(effectiveUsername);
+    const moderationState = getActiveModerationState(userRow, profile);
+    if (moderationState && moderationState.type !== 'warn') {
+      return res.status(423).json({
+        error: 'Konto ist moderiert',
+        moderation: toModerationPayload(moderationState)
+      });
+    }
+    res.json({
+      valid: true,
+      user: decoded,
+      token: refreshedToken,
+      profile,
+      moderationWarning: moderationState?.type === 'warn' ? toModerationPayload(moderationState) : null
+    });
   } catch (err) {
     res.status(401).json({ error: 'UngÃ¼ltiger Token' });
   }
@@ -1142,9 +1343,11 @@ app.get('/api/me', async (req, res) => {
   const profile = await getProfile(auth.username);
   // email aus users-Tabelle lesen
   let email = null;
+  let userRow = null;
   try {
-    const { data } = await supabase.from('users').select('email').eq('id', auth.id).single();
+    const { data } = await supabase.from('users').select('email,banned_until,ban_reason').eq('id', auth.id).single();
     email = data?.email || null;
+    userRow = data || null;
   } catch {}
   res.json({
     user: {
@@ -1153,7 +1356,8 @@ app.get('/api/me', async (req, res) => {
       isAdmin: Boolean(auth.isAdmin),
       email
     },
-    profile
+    profile,
+    moderation: toModerationPayload(getActiveModerationState(userRow, profile))
   });
 });
 
@@ -1164,7 +1368,8 @@ app.put('/api/me/settings', async (req, res) => {
   const current = await getProfile(auth.username);
   const settings = normalizeSettings({
     ...(req.body || {}),
-    personalization: current.settings?.personalization
+    personalization: current.settings?.personalization,
+    moderation: current.settings?.moderation
   });
   const profile = await upsertProfile(auth.username, { settings });
   res.json({ ok: true, profile });
@@ -1200,6 +1405,55 @@ app.post('/api/me/personalization/event', async (req, res) => {
 
   const profile = await patchProfilePersonalization(auth.username, patch);
   res.json({ ok: true, profile });
+});
+
+app.get('/api/me/moderation', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  try {
+    const [{ data: userRow }, profile] = await Promise.all([
+      supabase.from('users').select('banned_until,ban_reason').eq('id', auth.id).single(),
+      getProfile(auth.username)
+    ]);
+    const moderation = toModerationPayload(getActiveModerationState(userRow, profile));
+    res.json({ moderation });
+  } catch (error) {
+    res.status(500).json({ error: 'Moderationsstatus konnte nicht geladen werden' });
+  }
+});
+
+app.post('/api/me/moderation/ack', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const profile = await getProfile(auth.username);
+  const current = normalizeModerationSettings(profile?.settings?.moderation);
+  if (current.type === 'none') return res.json({ ok: true, moderation: null });
+  const updated = await setModerationForUser(auth.username, {
+    ...current,
+    status: 'shown'
+  });
+  res.json({ ok: true, moderation: updated });
+});
+
+app.post('/api/me/moderation/finalize-delete', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  try {
+    const profile = await getProfile(auth.username);
+    const moderation = normalizeModerationSettings(profile?.settings?.moderation);
+    if (moderation.type !== 'delete' || moderation.status === 'none') {
+      return res.status(400).json({ error: 'Keine Löschaktion aktiv' });
+    }
+    await supabase.from('installations').delete().eq('user_id', auth.id);
+    await supabaseAdmin.from('chat_group_members').delete().eq('username', auth.username);
+    await supabaseAdmin.from('chat_messages').delete().eq('sender', auth.username);
+    await supabaseAdmin.from('user_profiles').delete().eq('username', auth.username);
+    const { error } = await supabase.from('users').delete().eq('id', auth.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Konto konnte nicht gelöscht werden' });
+  }
 });
 
 // Referral-Link erstellen
@@ -1629,6 +1883,128 @@ app.post('/api/admin/reset-requests/:id/reject', async (req, res) => {
   } catch (error) {
     console.error('Reject Reset Error:', error);
     res.status(500).json({ error: 'Anfrage konnte nicht abgelehnt werden' });
+  }
+});
+
+// Admin: Chat-Meldungen abrufen
+app.get('/api/admin/chat-reports', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
+  }
+  const status = String(req.query.status || 'open').trim();
+  try {
+    let query = supabaseAdmin
+      .from('chat_reports')
+      .select('id,group_id,group_name,reported_by,target_username,status,messages,action_type,action_description,action_by,action_at,ban_until,created_at')
+      .order('created_at', { ascending: false })
+      .limit(120);
+    if (status && status !== 'all') query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json({ reports: data || [] });
+  } catch (error) {
+    res.status(500).json({ error: 'Meldungen konnten nicht geladen werden' });
+  }
+});
+
+// Admin: Chat-Meldung bearbeiten/abschließen
+app.post('/api/admin/chat-reports/:id/resolve', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
+  }
+  const reportId = Number(req.params.id);
+  if (!Number.isInteger(reportId) || reportId <= 0) return res.status(400).json({ error: 'UngÃ¼ltige Report-ID' });
+
+  const actionType = String(req.body?.actionType || '').trim().toLowerCase();
+  const targetUsername = String(req.body?.targetUsername || '').trim();
+  const reason = String(req.body?.description || '').trim().slice(0, 500);
+  const banHours = Math.max(1, Math.min(24 * 365, Number(req.body?.banHours) || 24));
+
+  try {
+    const { data: reportRow } = await supabaseAdmin
+      .from('chat_reports')
+      .select('id,status')
+      .eq('id', reportId)
+      .single();
+    if (!reportRow) return res.status(404).json({ error: 'Meldung nicht gefunden' });
+
+    if (actionType === 'dismiss') {
+      const { error: dismissErr } = await supabaseAdmin
+        .from('chat_reports')
+        .update({
+          status: 'dismissed',
+          action_type: 'dismiss',
+          action_description: reason || null,
+          action_by: 'admin-panel',
+          action_at: new Date().toISOString(),
+          target_username: targetUsername || null
+        })
+        .eq('id', reportId);
+      if (dismissErr) throw dismissErr;
+      return res.json({ ok: true });
+    }
+
+    if (!['warn', 'ban', 'delete'].includes(actionType)) {
+      return res.status(400).json({ error: 'UngÃ¼ltiger Aktionstyp' });
+    }
+    if (!targetUsername) return res.status(400).json({ error: 'Zielnutzer fehlt' });
+
+    const { data: targetUser } = await supabase
+      .from('users')
+      .select('id,username')
+      .eq('username', targetUsername)
+      .single();
+    if (!targetUser) return res.status(404).json({ error: 'Zielnutzer nicht gefunden' });
+
+    let banUntilIso = null;
+    if (actionType === 'ban') {
+      banUntilIso = new Date(Date.now() + (banHours * 60 * 60 * 1000)).toISOString();
+      const { error: banErr } = await supabase
+        .from('users')
+        .update({ banned_until: banUntilIso, ban_reason: reason || 'Regelverstoß im Chat' })
+        .eq('id', targetUser.id);
+      if (banErr) throw banErr;
+    }
+    if (actionType === 'warn') {
+      await supabase.from('users').update({ banned_until: null, ban_reason: null }).eq('id', targetUser.id);
+    }
+
+    await setModerationForUser(targetUsername, {
+      status: 'pending',
+      type: actionType,
+      reason: reason || '',
+      banUntil: banUntilIso,
+      reportId
+    });
+
+    const { error: reportErr } = await supabaseAdmin
+      .from('chat_reports')
+      .update({
+        status: 'resolved',
+        target_username: targetUsername,
+        action_type: actionType,
+        action_description: reason || null,
+        action_by: 'admin-panel',
+        action_at: new Date().toISOString(),
+        ban_until: banUntilIso
+      })
+      .eq('id', reportId);
+    if (reportErr) throw reportErr;
+
+    await supabaseAdmin.from('moderation_actions').insert({
+      report_id: reportId,
+      username: targetUsername,
+      action_type: actionType,
+      duration_hours: actionType === 'ban' ? banHours : null,
+      reason: reason || null,
+      action_by: 'admin-panel'
+    });
+
+    res.json({ ok: true, banUntil: banUntilIso });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Meldung konnte nicht bearbeitet werden' });
   }
 });
 
@@ -2368,6 +2744,56 @@ app.delete('/api/chat/groups/:id', async (req, res) => {
   chatGroupAdminsMemory.delete(id);
 
   res.json({ ok: true });
+});
+
+// POST /api/chat/groups/:id/report — Gruppe melden (letzte 10 Nachrichten)
+app.post('/api/chat/groups/:id/report', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const reason = String(req.body?.reason || '').trim().slice(0, 500);
+  const targetUsername = String(req.body?.targetUsername || '').trim().slice(0, 32) || null;
+
+  const [{ data: self }, { data: groupRow }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).maybeSingle(),
+    supabaseAdmin.from('chat_groups').select('id,name').eq('id', id).maybeSingle()
+  ]);
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+  if (!groupRow) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
+
+  const { data: latest } = await supabaseAdmin
+    .from('chat_messages')
+    .select('id,sender,encrypted_content,created_at')
+    .eq('group_id', id)
+    .order('id', { ascending: false })
+    .limit(10);
+
+  const messages = (latest || [])
+    .slice()
+    .reverse()
+    .map((m, idx) => ({
+      order: idx + 1,
+      sender: m.sender,
+      created_at: m.created_at,
+      preview: parseChatMessagePreview(m.encrypted_content),
+      raw: String(m.encrypted_content || '').slice(0, 2000)
+    }));
+
+  const { data, error } = await supabaseAdmin
+    .from('chat_reports')
+    .insert({
+      group_id: id,
+      group_name: groupRow.name || '',
+      reported_by: user.username,
+      target_username: targetUsername,
+      status: 'open',
+      messages,
+      action_description: reason || null
+    })
+    .select('id')
+    .single();
+
+  if (error) return res.status(500).json({ error: 'Meldung konnte nicht gespeichert werden: ' + error.message });
+  res.json({ ok: true, reportId: data.id });
 });
 
 // POST /api/chat/groups/:id/members â€” neues Mitglied hinzufÃ¼gen
