@@ -43,7 +43,10 @@ const CHAT_MEDIA_BUCKET = process.env.CHAT_MEDIA_BUCKET || 'chat-media';
 
 // Auto-Migration: Tabellen anlegen wenn nicht vorhanden
 async function initDatabase() {
-  const dbUrl = process.env.DATABASE_URL;
+  const dbUrl = process.env.DATABASE_URL
+    || process.env.SUPABASE_DB_URL
+    || process.env.POSTGRES_URL
+    || process.env.POSTGRES_PRISMA_URL;
   if (!dbUrl) {
     console.warn('âš ï¸  DATABASE_URL nicht gesetzt â€“ Auto-Migration Ã¼bersprungen.');
     console.warn('   Bitte folgendes SQL in Supabase > SQL-Editor ausfÃ¼hren:');
@@ -148,6 +151,16 @@ CREATE TABLE IF NOT EXISTS chat_group_admins (
         used_by TEXT NULL,
         created_at TIMESTAMP DEFAULT NOW(),
         used_at TIMESTAMP NULL
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS screen_sessions (
+        id UUID PRIMARY KEY,
+        username TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        offer TEXT,
+        answer TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
       );
     `);
     await pool.query(`
@@ -2274,6 +2287,41 @@ app.delete('/api/chat/groups/:id/members/:username', async (req, res) => {
   res.json({ ok: true });
 });
 
+// DELETE /api/chat/groups/:id — Gruppe löschen (Admin)
+app.delete('/api/chat/groups/:id', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+
+  const { data: groupRow } = await supabaseAdmin
+    .from('chat_groups')
+    .select('id,created_by')
+    .eq('id', id)
+    .maybeSingle();
+  if (!groupRow) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
+
+  const admin = await isGroupAdmin(id, user.username, groupRow.created_by);
+  if (!admin) return res.status(403).json({ error: 'Nur Admins dürfen Gruppen löschen' });
+
+  const deleteTasks = [
+    supabaseAdmin.from('chat_messages').delete().eq('group_id', id),
+    supabaseAdmin.from('chat_group_members').delete().eq('group_id', id),
+    supabaseAdmin.from('chat_group_admins').delete().eq('group_id', id),
+    supabaseAdmin.from('chat_group_meta').delete().eq('group_id', id),
+    supabaseAdmin.from('chat_groups').delete().eq('id', id)
+  ];
+
+  const results = await Promise.allSettled(deleteTasks);
+  const rejected = results.find(r => r.status === 'rejected');
+  if (rejected) return res.status(500).json({ error: 'Gruppe konnte nicht gelöscht werden' });
+  const firstErr = results.find(r => r.status === 'fulfilled' && r.value?.error)?.value?.error;
+  if (firstErr) return res.status(500).json({ error: 'Gruppe konnte nicht gelöscht werden: ' + firstErr.message });
+
+  chatGroupMetaMemory.delete(id);
+  chatGroupAdminsMemory.delete(id);
+
+  res.json({ ok: true });
+});
+
 // POST /api/chat/groups/:id/members â€” neues Mitglied hinzufÃ¼gen
 // Body: { username, encryptedGroupKey }
 app.post('/api/chat/groups/:id/members', async (req, res) => {
@@ -2436,6 +2484,7 @@ app.get('/api/admin/vt-result/:analysisId', async (req, res) => {
 let gamesCache = null;
 let gamesCacheTime = 0;
 const GAMES_CACHE_TTL = 10 * 60 * 1000; // 10 Minuten
+const LEGACY_GAMEMONETIZE_FEED = 'https://gamemonetize.com/feed.php?format=0&page=1';
 
 app.get('/api/games', async (req, res) => {
   const page = parseInt(req.query.page) || 1;
@@ -2447,7 +2496,9 @@ app.get('/api/games', async (req, res) => {
   }
 
   try {
-    const feedUrl = `https://gamemonetize.com/feed.php?format=0&page=${page}`;
+    const feedUrlObj = new URL(LEGACY_GAMEMONETIZE_FEED);
+    feedUrlObj.searchParams.set('page', String(page));
+    const feedUrl = feedUrlObj.toString();
     const response = await fetch(feedUrl, {
       headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
       signal: AbortSignal.timeout(8000)

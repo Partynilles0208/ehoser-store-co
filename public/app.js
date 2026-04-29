@@ -1065,6 +1065,10 @@ function showSection(sectionId) {
     }
 
     section.classList.add('active');
+
+    // Chat hat eigenes internes Scroll-Layout; Seiten-Scroll dafür sperren.
+    document.body.classList.toggle('chat-scroll-lock', sectionId === 'chat');
+
     if (sectionId === 'auth') {
         loadUnlockCode();
     }
@@ -2382,10 +2386,44 @@ async function uploadAccountAvatar() {
         const avatarInput = document.getElementById('accountAvatarUrl');
         if (avatarInput) avatarInput.value = data.url || '';
         refreshAccountAvatarPreview();
-        showAlert('Profilbild hochgeladen. Bitte noch speichern.', 'success');
+
+        // Direkt speichern, damit das Profilbild sofort aktiv ist.
+        const saveRes = await fetch(`${API_BASE}/me/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ avatarUrl: data.url || '' })
+        });
+        const saveData = await saveRes.json().catch(() => ({}));
+        if (!saveRes.ok) {
+            showAlert(saveData.error || 'Profilbild hochgeladen, aber Speichern fehlgeschlagen.', 'error');
+            return;
+        }
+        currentProfile = saveData.profile || currentProfile;
+        if (currentProfile) {
+            localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+            applyProfileSettings();
+            showLoggedInUI();
+        }
+        showAlert('Profilbild gespeichert!', 'success');
     } catch {
         showAlert('Netzwerkfehler beim Upload.', 'error');
     }
+}
+
+function _chatPickImageFile() {
+    return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.style.display = 'none';
+        document.body.appendChild(input);
+        input.onchange = () => {
+            const file = input.files?.[0] || null;
+            input.remove();
+            resolve(file);
+        };
+        input.click();
+    });
 }
 
 async function loadChatToken() {
@@ -2699,6 +2737,32 @@ async function chatStartDM(targetUsername) {
     await chatCreateConversation([targetUsername]);
 }
 
+function chatIsNearBottom(container) {
+    if (!container) return true;
+    return container.scrollHeight - container.scrollTop <= container.clientHeight + 40;
+}
+
+function chatUpdateScrollButton() {
+    const container = document.getElementById('chatMessages');
+    const btn = document.getElementById('chatScrollBottomBtn');
+    if (!container || !btn) return;
+    btn.style.display = chatIsNearBottom(container) ? 'none' : 'inline-flex';
+}
+
+function chatScrollToBottom(smooth = false) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    chatUpdateScrollButton();
+}
+
+function chatScrollBy(delta) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    container.scrollBy({ top: delta, behavior: 'smooth' });
+    setTimeout(chatUpdateScrollButton, 120);
+}
+
 function openChatGroup(groupId, groupName) {
     _chatCurrentGroupId = groupId;
     _chatCurrentGroupName = groupName;
@@ -2710,10 +2774,13 @@ function openChatGroup(groupId, groupName) {
     document.getElementById('chatConvStatus').textContent = group.type === 'private' ? 'Privater Chat' : `Gruppe · ${group.member_count || 0} Mitglieder`;
     const manageBtn = document.getElementById('chatManageBtn');
     if (manageBtn) manageBtn.style.display = (group.type === 'group' && group.is_admin) ? '' : 'none';
-    document.getElementById('chatMessages').innerHTML = '';
+    const chatMessages = document.getElementById('chatMessages');
+    chatMessages.innerHTML = '';
+    chatMessages.onscroll = chatUpdateScrollButton;
     clearInterval(_chatPollInterval);
     chatFetchMessages();
     _chatPollInterval = setInterval(chatFetchMessages, 3000);
+    chatUpdateScrollButton();
     setTimeout(() => document.getElementById('chatMsgInput')?.focus(), 50);
     // Highlight aktive Gruppe
     document.querySelectorAll('.chat-group-item').forEach(el => el.classList.remove('active'));
@@ -2726,6 +2793,8 @@ function closeChatConv() {
     _chatCurrentGroupId = null;
     document.getElementById('chatConv').style.display = 'none';
     document.getElementById('chatEmptyState').style.display = 'flex';
+    const btn = document.getElementById('chatScrollBottomBtn');
+    if (btn) btn.style.display = 'none';
 }
 
 async function chatFetchMessages() {
@@ -2741,7 +2810,7 @@ async function chatFetchMessages() {
         const msgs = data.messages || [];
         if (!msgs.length) return;
         const container = document.getElementById('chatMessages');
-        const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 40;
+        const wasAtBottom = chatIsNearBottom(container);
         const beforeLastMsgId = _chatLastMsgId;
         msgs.forEach(m => {
             _chatLastMsgId = Math.max(_chatLastMsgId, m.id);
@@ -2774,7 +2843,8 @@ async function chatFetchMessages() {
                 } catch {}
             }
         });
-        if (wasAtBottom) container.scrollTop = container.scrollHeight;
+        if (wasAtBottom) chatScrollToBottom(false);
+        else chatUpdateScrollButton();
     } catch {}
 }
 
@@ -4739,28 +4809,51 @@ async function chatOpenGroupManage() {
         return;
     }
     const action = window.prompt(
-        'Gruppenverwaltung:\n1 = Beschreibung setzen\n2 = Gruppenfoto URL setzen\n3 = Mitglied hinzufügen\n4 = Mitglied entfernen\n5 = Nutzer zum Admin machen\n6 = Namen ändern\nBitte Zahl eingeben:'
+        'Gruppenverwaltung:\n1 = Beschreibung setzen\n2 = Gruppenbild setzen\n3 = Mitglied hinzufügen\n4 = Mitglied entfernen\n5 = Nutzer zum Admin machen\n6 = Namen ändern\n7 = Gruppe löschen\nBitte Zahl eingeben:'
     );
     if (!action) return;
 
     const token = localStorage.getItem('token');
     if (!token) return;
 
+    const postGroupSettings = async (payload) => {
+        const res = await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Gruppeneinstellung konnte nicht gespeichert werden');
+    };
+
     try {
         if (action === '1') {
             const description = window.prompt('Neue Gruppenbeschreibung:', group.description || '') || '';
-            await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/settings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ description })
-            });
+            await postGroupSettings({ description });
         } else if (action === '2') {
-            const photoUrl = window.prompt('Neue Gruppenfoto URL:', group.photo_url || '') || '';
-            await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/settings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ photoUrl })
-            });
+            const mode = (window.prompt('Gruppenbild setzen:\n1 = Bild hochladen\n2 = URL eingeben\nBitte Zahl eingeben:', '1') || '1').trim();
+            let photoUrl = '';
+            if (mode === '1') {
+                const file = await _chatPickImageFile();
+                if (!file) return;
+                if (!file.type.startsWith('image/')) {
+                    showAlert('Nur Bilder sind erlaubt.', 'error');
+                    return;
+                }
+                const fd = new FormData();
+                fd.append('file', file);
+                const uploadRes = await fetch(`${API_BASE}/chat/upload`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    body: fd
+                });
+                const uploadData = await uploadRes.json().catch(() => ({}));
+                if (!uploadRes.ok) throw new Error(uploadData.error || 'Bild-Upload fehlgeschlagen');
+                photoUrl = String(uploadData.url || '').trim();
+            } else {
+                photoUrl = window.prompt('Neue Gruppenfoto URL:', group.photo_url || '') || '';
+            }
+            await postGroupSettings({ photoUrl });
         } else if (action === '3') {
             const username = (window.prompt('Nutzername zum Hinzufügen:') || '').trim();
             if (!username) return;
@@ -4793,11 +4886,26 @@ async function chatOpenGroupManage() {
         } else if (action === '6') {
             const name = (window.prompt('Neuer Gruppenname:', group.name || _chatCurrentGroupName) || '').trim();
             if (!name) return;
-            await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/settings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ name })
+            await postGroupSettings({ name });
+        } else if (action === '7') {
+            const ok = window.confirm(`Gruppe "${group.name || _chatCurrentGroupName}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`);
+            if (!ok) return;
+            const res = await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` }
             });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Gruppe konnte nicht gelöscht werden');
+
+            clearInterval(_chatPollInterval);
+            _chatCurrentGroupId = null;
+            _chatCurrentGroupName = '';
+            document.getElementById('chatConv').style.display = 'none';
+            document.getElementById('chatEmptyState').style.display = 'flex';
+
+            await chatLoadGroups();
+            showAlert('Gruppe wurde gelöscht.', 'success');
+            return;
         } else {
             return;
         }
