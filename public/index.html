@@ -571,6 +571,7 @@
                                 <div class="chat-conv-name" id="chatConvName"></div>
                                 <div class="chat-conv-status" id="chatConvStatus"></div>
                                 <button class="chat-notify-btn" id="chatManageBtn" style="display:none;" onclick="chatOpenGroupManage()">Gruppe verwalten</button>
+                                <button class="chat-notify-btn" onclick="chatReportCurrentGroup()">Gruppe melden</button>
                                 <button class="chat-notify-btn" onclick="requestChatNotificationsManually()">Benachrichtigung aktivieren</button>
                             </div>
                             <div class="chat-messages" id="chatMessages"></div>
@@ -2287,6 +2288,15 @@ Ramen</textarea>
     </section>
 
         </main>
+    </div>
+
+    <div id="moderationLock" class="moderation-lock">
+        <div class="moderation-lock-card">
+            <h3 id="moderationTitle" class="moderation-lock-title">Moderationsmaßnahme aktiv</h3>
+            <div id="moderationReason" class="moderation-lock-note"></div>
+            <div id="moderationPhase" class="moderation-lock-phase">Bitte warten…</div>
+            <div id="moderationCountdown" class="moderation-lock-countdown"></div>
+        </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>

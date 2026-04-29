@@ -4626,3 +4626,112 @@ body.chat-scroll-lock {
     .chat-sidebar.mobile-open { display: flex; }
     .chat-wrapper { position: relative; border-radius: 12px; }
 }
+
+.report-item {
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: rgba(7, 12, 24, 0.45);
+}
+
+.report-item-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+}
+
+.report-reason {
+    color: #cbd5e1;
+    margin-bottom: 8px;
+    font-size: 0.84rem;
+}
+
+.report-messages {
+    display: grid;
+    gap: 6px;
+}
+
+.report-message-item {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 0.82rem;
+    display: grid;
+    gap: 4px;
+    cursor: context-menu;
+}
+
+.report-context-menu {
+    position: absolute;
+    z-index: 30000;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: #111827;
+    border-radius: 10px;
+    padding: 6px;
+    box-shadow: 0 16px 30px rgba(0,0,0,0.4);
+}
+
+.report-context-menu button {
+    border: none;
+    background: transparent;
+    color: #e2e8f0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.report-context-menu button:hover {
+    background: rgba(255,255,255,0.12);
+}
+
+.moderation-lock {
+    position: fixed;
+    inset: 0;
+    z-index: 40000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: radial-gradient(circle at 20% 15%, rgba(252, 165, 165, 0.22), transparent 45%),
+                radial-gradient(circle at 78% 82%, rgba(248, 113, 113, 0.25), transparent 40%),
+                rgba(12, 14, 24, 0.94);
+    backdrop-filter: blur(8px);
+}
+
+.moderation-lock-card {
+    width: min(680px, 100%);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 18px;
+    background: linear-gradient(140deg, rgba(12,18,33,0.92), rgba(27,15,19,0.9));
+    padding: 22px;
+    color: #e5e7eb;
+    box-shadow: 0 20px 45px rgba(0,0,0,0.45);
+}
+
+.moderation-lock-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+}
+
+.moderation-lock-phase {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(239,68,68,0.12);
+    border: 1px solid rgba(239,68,68,0.25);
+}
+
+.moderation-lock-note {
+    margin-top: 10px;
+    color: #fca5a5;
+}
+
+.moderation-lock-countdown {
+    margin-top: 14px;
+    font-size: 1.05rem;
+    font-weight: 600;
+}

@@ -106,6 +106,12 @@
                     </div>
 
                     <div style="margin-top: 24px;">
+                        <h3>Chat Meldungen</h3>
+                        <p class="admin-help">Rechtsklick auf eine Nachricht und dann "Bericht fortsetzen", um Warnung/Bann/Löschung festzulegen.</p>
+                        <ul id="chatReportsList" class="online-list"></ul>
+                    </div>
+
+                    <div style="margin-top: 24px;">
                         <h3>Veröffentlichte Inhalte</h3>
                         <p class="admin-help">Hier kannst du veröffentlichte Apps entfernen.</p>
                         <ul id="adminAppsList" class="online-list"></ul>
@@ -152,6 +158,10 @@
             </div>
             <p class="sv-note">🔒 Übertragung ist Ende-zu-Ende verschlüsselt (WebRTC DTLS-SRTP)</p>
         </div>
+    </div>
+
+    <div id="reportMessageContext" class="report-context-menu" style="display:none;">
+        <button onclick="adminContinueReport()">Bericht fortsetzen</button>
     </div>
 
     <script src="admin.js"></script>

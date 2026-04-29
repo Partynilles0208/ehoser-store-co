@@ -11,6 +11,8 @@ let pendingReferral = null;
 let imageSearchLastQuery = '';
 let _lastPersonalizationSearchMiss = '';
 let _chatNotifyInitialized = false;
+let _moderationLockActive = false;
+let _moderationCountdownTimer = null;
 
 // Client-Konfiguration (API Keys sicher vom Backend laden)
 window.__ENV__ = { __loaded: false };
@@ -42,6 +44,93 @@ function getActiveAuthUnlockCode() {
         ? document.getElementById('unlockCode')
         : document.getElementById('loginUnlockCode');
     return normalizeUnlockCodeValue(input?.value || '');
+}
+
+function moderationSleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatDuration(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+}
+
+async function showModerationLock(moderation) {
+    if (!moderation || _moderationLockActive) return;
+
+    if (moderation.type === 'warn') {
+        showAlert(`Admin-Warnung: ${moderation.reason || 'Bitte halte dich an die Regeln.'}`, 'error');
+        try {
+            const token = localStorage.getItem('token');
+            if (token) {
+                await fetch(`${API_BASE}/me/moderation/ack`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+            }
+        } catch {}
+        return;
+    }
+
+    _moderationLockActive = true;
+
+    const lock = document.getElementById('moderationLock');
+    const title = document.getElementById('moderationTitle');
+    const reason = document.getElementById('moderationReason');
+    const phase = document.getElementById('moderationPhase');
+    const countdown = document.getElementById('moderationCountdown');
+    if (!lock || !title || !reason || !phase || !countdown) return;
+
+    lock.style.display = 'flex';
+    reason.textContent = moderation.reason ? `Grund: ${moderation.reason}` : '';
+    countdown.textContent = '';
+
+    title.textContent = moderation.type === 'delete' ? 'Account wird gelöscht' : 'Account wird gesperrt';
+    const sequence = Array.isArray(moderation.sequence) ? moderation.sequence : [];
+    for (const step of sequence) {
+        const seconds = Math.max(1, Number(step.seconds) || 1);
+        phase.textContent = `${step.text} (${seconds}s)`;
+        await moderationSleep(seconds * 1000);
+    }
+
+    if (moderation.type === 'delete') {
+        phase.textContent = 'Account wird jetzt entfernt...';
+        try {
+            const token = localStorage.getItem('token');
+            if (token) {
+                await fetch(`${API_BASE}/me/moderation/finalize-delete`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+            }
+        } catch {}
+        logout();
+        return;
+    }
+
+    if (moderation.banUntil) {
+        const until = Date.parse(moderation.banUntil);
+        if (Number.isFinite(until)) {
+            const tick = () => {
+                const left = until - Date.now();
+                if (left <= 0) {
+                    countdown.textContent = 'Bann ist abgelaufen. Bitte neu anmelden.';
+                    clearInterval(_moderationCountdownTimer);
+                    _moderationCountdownTimer = null;
+                    return;
+                }
+                countdown.textContent = `Verbleibende Bannzeit: ${formatDuration(left)}`;
+            };
+            tick();
+            clearInterval(_moderationCountdownTimer);
+            _moderationCountdownTimer = setInterval(tick, 1000);
+        }
+    }
 }
 
 function captureReloadSnapshot() {
@@ -438,6 +527,11 @@ async function handleLogin(event) {
 
         const data = await response.json();
 
+        if (response.status === 423) {
+            await showModerationLock(data.moderation || null);
+            return;
+        }
+
         if (!response.ok) {
             showAlert(`Fehler: ${data.error || 'Anmeldung fehlgeschlagen'}`, 'error');
             return;
@@ -460,6 +554,13 @@ async function handleLogin(event) {
         showSection('mode-select');
         restoreReloadSnapshot();
         startOnlinePolling();
+        if (data.moderationWarning?.type === 'warn') {
+            showAlert(`Admin-Warnung: ${data.moderationWarning.reason || 'Bitte halte dich an die Regeln.'}`, 'error');
+            fetch(`${API_BASE}/me/moderation/ack`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${data.token}` }
+            }).catch(() => {});
+        }
         document.getElementById('loginForm').reset();
     } catch (err) {
         showAlert('Verbindungsfehler. PrÃ¼fe ob der Server lÃ¤uft.', 'error');
@@ -681,6 +782,12 @@ async function verifyToken(token) {
             return;
         }
 
+        if (response.status === 423) {
+            const payload = await response.json().catch(() => ({}));
+            await showModerationLock(payload.moderation || null);
+            return;
+        }
+
         if (!response.ok) {
             showSection('auth');
             return;
@@ -698,6 +805,13 @@ async function verifyToken(token) {
         showSection('mode-select');
         restoreReloadSnapshot();
         startOnlinePolling();
+        if (data.moderationWarning?.type === 'warn') {
+            showAlert(`Admin-Warnung: ${data.moderationWarning.reason || 'Bitte halte dich an die Regeln.'}`, 'error');
+            fetch(`${API_BASE}/me/moderation/ack`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${data.token || token}` }
+            }).catch(() => {});
+        }
     } catch (err) {
         showSection('auth');
     }
@@ -4803,7 +4917,7 @@ async function chatOpenGroupManage() {
         return;
     }
     const action = window.prompt(
-        'Gruppenverwaltung:\n1 = Beschreibung setzen\n2 = Gruppenbild setzen\n3 = Mitglied hinzufügen\n4 = Mitglied entfernen\n5 = Nutzer zum Admin machen\n6 = Namen ändern\n7 = Gruppe löschen\nBitte Zahl eingeben:'
+        'Gruppenverwaltung:\n1 = Beschreibung setzen\n2 = Gruppenbild setzen\n3 = Mitglied hinzufügen\n4 = Mitglied entfernen\n5 = Nutzer zum Admin machen\n6 = Namen ändern\n7 = Gruppe löschen\n8 = Gruppe melden\nBitte Zahl eingeben:'
     );
     if (!action) return;
 
@@ -4900,6 +5014,9 @@ async function chatOpenGroupManage() {
             await chatLoadGroups();
             showAlert('Gruppe wurde gelöscht.', 'success');
             return;
+        } else if (action === '8') {
+            await chatReportCurrentGroup();
+            return;
         } else {
             return;
         }
@@ -4910,5 +5027,30 @@ async function chatOpenGroupManage() {
         showAlert('Gruppenverwaltung aktualisiert.', 'success');
     } catch (err) {
         showAlert(err?.message || 'Aktion fehlgeschlagen.', 'error');
+    }
+}
+
+async function chatReportCurrentGroup() {
+    if (!_chatCurrentGroupId) {
+        showAlert('Bitte erst eine Gruppe öffnen.', 'error');
+        return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const targetUsername = (window.prompt('Optional: Nutzername gegen den sich die Meldung richtet:', '') || '').trim();
+    const reason = (window.prompt('Grund der Meldung (optional):', '') || '').trim();
+
+    try {
+        const res = await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ targetUsername, reason })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Meldung fehlgeschlagen');
+        showAlert(`Meldung gesendet (ID ${data.reportId}).`, 'success');
+    } catch (err) {
+        showAlert(err?.message || 'Meldung konnte nicht gesendet werden.', 'error');
     }
 }

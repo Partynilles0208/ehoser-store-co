@@ -6,7 +6,10 @@ const form = document.getElementById('uploadForm');
 const statusBox = document.getElementById('uploadStatus');
 const usersList = document.getElementById('registeredUsersList');
 const resetRequestsList = document.getElementById('resetRequestsList');
+const chatReportsList = document.getElementById('chatReportsList');
+const reportMessageContext = document.getElementById('reportMessageContext');
 let adminRefreshInterval = null;
+let _reportContextPayload = null;
 
 accessForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -26,13 +29,14 @@ accessForm.addEventListener('submit', async (event) => {
         activeAdminCode = code;
         secureArea.style.display = '';
         setStatus('Admin-Bereich freigeschaltet.', 'success');
-        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadAdminApps(), loadVotes()]);
+        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadAdminApps(), loadVotes(), loadChatReports()]);
         clearInterval(adminRefreshInterval);
         adminRefreshInterval = setInterval(() => {
             loadRegisteredUsers();
             loadResetRequests();
             loadAdminApps();
             loadVotes();
+            loadChatReports();
         }, 8000);
     } catch (err) {
         setStatus('Verbindungsfehler.', 'error');
@@ -302,6 +306,114 @@ async function loadResetRequests() {
         setStatus(`Fehler beim Laden der Anfragen: ${error.message}`, 'error');
     }
 }
+
+async function loadChatReports() {
+    if (!activeAdminCode || !chatReportsList) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/chat-reports?status=open`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            setStatus(payload.error || 'Chat-Meldungen konnten nicht geladen werden.', 'error');
+            return;
+        }
+
+        const reports = Array.isArray(payload.reports) ? payload.reports : [];
+        if (!reports.length) {
+            chatReportsList.innerHTML = '<li>Keine offenen Meldungen.</li>';
+            return;
+        }
+
+        chatReportsList.innerHTML = reports.map((report) => {
+            const messages = Array.isArray(report.messages) ? report.messages : [];
+            const msgHtml = messages.map((msg) => `
+                <div class="report-message-item"
+                    oncontextmenu="openReportMessageMenu(event, ${Number(report.id)}, '${escapeJs(report.target_username || '')}', '${escapeJs(msg.sender || '')}', '${escapeJs(msg.preview || '')}')">
+                    <strong>${escapeHtml(msg.sender || 'Unbekannt')}</strong>
+                    <span>${escapeHtml(msg.preview || '')}</span>
+                </div>
+            `).join('');
+
+            return `
+                <li class="report-item">
+                    <div class="report-item-head">
+                        <strong>#${report.id} · ${escapeHtml(report.group_name || 'Unbekannte Gruppe')}</strong>
+                        <span>von ${escapeHtml(report.reported_by || 'Unbekannt')}</span>
+                    </div>
+                    ${report.action_description ? `<div class="report-reason">Grund: ${escapeHtml(report.action_description)}</div>` : ''}
+                    <div class="report-messages">${msgHtml || '<em>Keine Nachrichten gefunden.</em>'}</div>
+                </li>
+            `;
+        }).join('');
+    } catch (error) {
+        setStatus(`Fehler bei Meldungen: ${error.message}`, 'error');
+    }
+}
+
+function openReportMessageMenu(event, reportId, targetUsername, messageSender, messagePreview) {
+    event.preventDefault();
+    if (!reportMessageContext) return;
+    _reportContextPayload = {
+        reportId,
+        targetUsername: (targetUsername || '').trim() || (messageSender || '').trim(),
+        messagePreview: messagePreview || ''
+    };
+    reportMessageContext.style.display = 'block';
+    reportMessageContext.style.left = `${event.pageX}px`;
+    reportMessageContext.style.top = `${event.pageY}px`;
+}
+
+async function adminContinueReport() {
+    if (!_reportContextPayload || !activeAdminCode) return;
+    closeReportContextMenu();
+
+    const targetUsername = (window.prompt('Nutzername für Maßnahme:', _reportContextPayload.targetUsername || '') || '').trim();
+    if (!targetUsername) return;
+
+    const actionType = (window.prompt('Aktion wählen:\nwarn = Warnung\nban = Bann\ndelete = Account löschen\ndismiss = Meldung löschen', 'warn') || '').trim().toLowerCase();
+    if (!actionType) return;
+
+    let banHours = 24;
+    if (actionType === 'ban') {
+        banHours = Number(window.prompt('Bann-Dauer in Stunden:', '24') || '24');
+        if (!Number.isFinite(banHours) || banHours <= 0) {
+            setStatus('Ungültige Bann-Dauer.', 'error');
+            return;
+        }
+    }
+
+    const description = (window.prompt('Beschreibung / Grund:', _reportContextPayload.messagePreview || '') || '').trim();
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/chat-reports/${_reportContextPayload.reportId}/resolve`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ actionType, targetUsername, banHours, description })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Meldung konnte nicht bearbeitet werden.', 'error');
+            return;
+        }
+        setStatus('Maßnahme wurde gespeichert.', 'success');
+        await loadChatReports();
+    } catch (error) {
+        setStatus(`Fehler bei Moderation: ${error.message}`, 'error');
+    }
+}
+
+function closeReportContextMenu() {
+    if (!reportMessageContext) return;
+    reportMessageContext.style.display = 'none';
+}
+
+document.addEventListener('click', () => {
+    closeReportContextMenu();
+});
 
 async function deleteUser(userId, username) {
     if (!activeAdminCode) {
