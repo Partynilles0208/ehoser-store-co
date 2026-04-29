@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=13">
+    <link rel="stylesheet" href="styles.css?v=14">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
@@ -574,6 +574,11 @@
                                 <button class="chat-notify-btn" onclick="requestChatNotificationsManually()">Benachrichtigung aktivieren</button>
                             </div>
                             <div class="chat-messages" id="chatMessages"></div>
+                            <div class="chat-scroll-controls">
+                                <button class="chat-scroll-btn" onclick="chatScrollBy(-260)" title="Nach oben">↑</button>
+                                <button class="chat-scroll-btn" onclick="chatScrollBy(260)" title="Nach unten">↓</button>
+                            </div>
+                            <button id="chatScrollBottomBtn" class="chat-scroll-bottom-btn" onclick="chatScrollToBottom(true)" style="display:none;">⬇ Neueste</button>
                             <div class="chat-input-row">
                                 <div class="chat-input-wrap">
                                     <button class="chat-attach-btn" onclick="triggerChatFilePicker()">+</button>
@@ -2285,7 +2290,7 @@ Ramen</textarea>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=15"></script>
-    <script src="tools.js?v=2"></script>
+    <script src="app.js?v=16"></script>
+    <script src="tools.js?v=3"></script>
 </body>
 </html>

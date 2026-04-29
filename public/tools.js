@@ -1,6 +1,98 @@
 /* ═══════════════════════════════════════════════════════════════
-   tools.js — 15 neue Tools für ehoser.de
+   tools.js — alle Tools + SFX + VFX
    ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   SFX — Web-Audio-Engine (keine externen Dateien, reine Synthese)
+   ═══════════════════════════════════════════════════════════════ */
+const SFX = (() => {
+  let ctx = null;
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  function beep(freq, type, duration, vol = 0.3, delay = 0) {
+    try {
+      const c = getCtx(), t = c.currentTime + delay;
+      const osc = c.createOscillator(), g = c.createGain();
+      osc.connect(g); g.connect(c.destination);
+      osc.type = type; osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + duration);
+      osc.start(t); osc.stop(t + duration);
+    } catch(e) {}
+  }
+  function noise(duration, vol = 0.2, delay = 0) {
+    try {
+      const c = getCtx(), t = c.currentTime + delay;
+      const buf = c.createBuffer(1, Math.ceil(c.sampleRate * duration), c.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+      const src = c.createBufferSource(), g = c.createGain();
+      src.buffer = buf; src.connect(g); g.connect(c.destination);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + duration);
+      src.start(t); src.stop(t + duration);
+    } catch(e) {}
+  }
+  return {
+    click:    () => beep(900, 'sine', 0.04, 0.12),
+    pop:      () => beep(620, 'sine', 0.07, 0.22),
+    eat:      () => { beep(523, 'square', 0.06, 0.18); beep(659, 'square', 0.06, 0.18, 0.07); },
+    correct:  () => { beep(523, 'sine', 0.09, 0.28); beep(659, 'sine', 0.09, 0.28, 0.10); beep(784, 'sine', 0.12, 0.28, 0.20); },
+    wrong:    () => beep(200, 'sawtooth', 0.18, 0.28),
+    win:      () => { [523, 659, 784, 1047].forEach((f, i) => beep(f, 'sine', 0.22, 0.32, i * 0.11)); },
+    lose:     () => { [300, 250, 200, 150].forEach((f, i) => beep(f, 'sawtooth', 0.22, 0.28, i * 0.10)); },
+    tick:     () => beep(880, 'sine', 0.04, 0.10),
+    merge:    () => beep(480, 'sine', 0.07, 0.22),
+    bounce:   () => beep(380, 'square', 0.05, 0.14),
+    brickHit: () => { beep(280, 'square', 0.05, 0.18); beep(180, 'square', 0.05, 0.15, 0.04); },
+    explosion:() => { noise(0.35, 0.4); beep(80, 'sawtooth', 0.3, 0.35, 0.02); },
+    chime:    () => { [784, 1047, 1319, 1568].forEach((f, i) => beep(f, 'sine', 0.28, 0.28, i * 0.09)); },
+    score:    () => beep(760, 'sine', 0.10, 0.25),
+    flip:     () => beep(500, 'triangle', 0.05, 0.12),
+    match2:   () => { beep(523, 'sine', 0.10, 0.28); beep(784, 'sine', 0.15, 0.28, 0.10); },
+    roll:     () => { [0, 1, 2].forEach(i => noise(0.05, 0.15, i * 0.06)); },
+    tooEarly: () => beep(160, 'sawtooth', 0.20, 0.35),
+    draw:     () => { beep(400, 'sine', 0.12, 0.22); beep(380, 'sine', 0.12, 0.22, 0.12); },
+  };
+})();
+
+/* ═══════════════════════════════════════════════════════════════
+   VFX — Konfetti, Pop-Animation, Shake
+   ═══════════════════════════════════════════════════════════════ */
+function vfxConfetti(count = 50) {
+  for (let i = 0; i < count; i++) {
+    const d = document.createElement('div');
+    d.className = 'confetti-p';
+    d.style.cssText = `left:${5 + Math.random() * 90}%;` +
+      `background:hsl(${Math.random() * 360},90%,60%);` +
+      `width:${5 + Math.random() * 7}px;height:${5 + Math.random() * 7}px;` +
+      `animation-delay:${Math.random() * 0.6}s;` +
+      `animation-duration:${0.8 + Math.random() * 0.9}s;`;
+    document.body.appendChild(d);
+    setTimeout(() => d.remove(), 2200);
+  }
+}
+function vfxPop(el) {
+  if (!el) return;
+  el.classList.remove('vfx-pop'); void el.offsetWidth; el.classList.add('vfx-pop');
+  setTimeout(() => el.classList.remove('vfx-pop'), 400);
+}
+function vfxShake(el) {
+  if (!el) return;
+  el.classList.remove('vfx-shake'); void el.offsetWidth; el.classList.add('vfx-shake');
+  setTimeout(() => el.classList.remove('vfx-shake'), 500);
+}
+function vfxFloat(text, x, y, color = '#0ef0d0') {
+  const d = document.createElement('div');
+  d.className = 'vfx-float';
+  d.textContent = text;
+  d.style.cssText = `left:${x}px;top:${y}px;color:${color};`;
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 900);
+}
 
 /* ─────────────────────────────────────────────────────────────
    1. SNAKE
@@ -75,13 +167,18 @@ class SnakeGame {
     if (head.x < 0 || head.x >= this.COLS || head.y < 0 || head.y >= this.ROWS || this.snake.some(s => s.x === head.x && s.y === head.y)) {
       this.alive = false;
       this.draw();
-      if (this.score > this.hi) { this.hi = this.score; localStorage.setItem('snakeHi', this.hi); document.getElementById('snakeHi').textContent = 'Highscore: ' + this.hi; }
+      SFX.lose();
+      vfxShake(this.canvas);
+      if (this.score > this.hi) { this.hi = this.score; localStorage.setItem('snakeHi', this.hi); document.getElementById('snakeHi').textContent = 'Highscore: ' + this.hi; SFX.chime(); }
       return;
     }
     this.snake.unshift(head);
     if (head.x === this.food.x && head.y === this.food.y) {
       this.score++;
-      document.getElementById('snakeScore').textContent = 'Punkte: ' + this.score;
+      SFX.eat();
+      const scoreEl = document.getElementById('snakeScore');
+      scoreEl.textContent = 'Punkte: ' + this.score;
+      vfxPop(scoreEl);
       this.placeFood();
     } else {
       this.snake.pop();
@@ -156,17 +253,20 @@ function tttRender() {
 }
 function tttMove(i) {
   if (tttBoard[i] || tttCheckWin(tttBoard)) return;
+  SFX.click();
   tttBoard[i] = tttCurrent;
   const winner = tttCheckWin(tttBoard);
   if (winner) {
     tttRender();
-    if (winner === 'X') tttScoreX++; else tttScoreO++;
+    if (winner === 'X') { tttScoreX++; SFX.win(); setTimeout(vfxConfetti, 100); }
+    else { tttScoreO++; if (tttVsAI) SFX.lose(); else SFX.win(); }
     document.getElementById('tttStatus').textContent = winner === 'X' ? '🎉 Du hast gewonnen!' : (tttVsAI ? '🤖 KI gewinnt!' : '🎉 ' + winner + ' gewinnt!');
     document.getElementById('tttScores').textContent = `X: ${tttScoreX} | O: ${tttScoreO} | Unentschieden: ${tttScoreDraw}`;
     return;
   }
   if (!tttBoard.includes(null)) {
     tttScoreDraw++;
+    SFX.draw();
     tttRender();
     document.getElementById('tttStatus').textContent = '🤝 Unentschieden!';
     document.getElementById('tttScores').textContent = `X: ${tttScoreX} | O: ${tttScoreO} | Unentschieden: ${tttScoreDraw}`;
@@ -236,6 +336,7 @@ function memRender() {
 function memFlip(i) {
   if (memLocked || memFlipped.includes(i) || memMatched.includes(i)) return;
   if (memFlipped.length === 2) return;
+  SFX.flip();
   memFlipped.push(i);
   memRender();
   if (memFlipped.length === 2) {
@@ -245,8 +346,14 @@ function memFlip(i) {
     setTimeout(() => {
       if (memCards[memFlipped[0]] === memCards[memFlipped[1]]) {
         memMatched.push(...memFlipped);
+        SFX.match2();
         document.getElementById('memPairs').textContent = `Paare: ${memMatched.length / 2}/8`;
-        if (memMatched.length === 16) document.getElementById('memPairs').textContent = `🎉 Gewonnen in ${memMoves2} Zügen!`;
+        if (memMatched.length === 16) {
+          document.getElementById('memPairs').textContent = `🎉 Gewonnen in ${memMoves2} Zügen!`;
+          SFX.win(); setTimeout(vfxConfetti, 100);
+        }
+      } else {
+        SFX.wrong();
       }
       memFlipped = [];
       memLocked = false;
@@ -804,9 +911,14 @@ function sudokuCheck() {
   for (let i = 0; i < 81; i++) {
     const c = _sudokuCells[i]; if (!c) continue;
     const v = parseInt(c.value)||0;
-    if (!c.readOnly) { if (!v) { complete = false; c.style.color='#fff'; } else if (v===(_sudokuSolution?.[i]||0)) { c.style.color='#4caf50'; } else { c.style.color='#ff5252'; complete = false; } }
+    if (!c.readOnly) {
+      if (!v) { complete = false; c.style.color='#fff'; } else if (v===(_sudokuSolution?.[i]||0)) { c.style.color='#4caf50'; } else { c.style.color='#ff5252'; complete = false; }
+    }
   }
-  if (complete) document.getElementById('sudokuMsg').textContent = '🎉 Gelöst!';
+  if (complete) {
+    document.getElementById('sudokuMsg').textContent = '🎉 Gelöst!';
+    SFX.chime(); setTimeout(vfxConfetti, 100);
+  }
 }
 function sudokuHint() {
   if (!_sudokuSolution) return;
@@ -852,14 +964,30 @@ function _hangmanRenderLetters() {
     b.textContent = l;
     b.disabled = _hangmanGuessed.has(l) || _hangmanWrong>=6;
     b.style.cssText = `width:36px;height:36px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:${_hangmanGuessed.has(l)?(_hangmanWord.includes(l)?'rgba(76,175,80,0.3)':'rgba(255,82,82,0.3)'):'rgba(255,255,255,0.05)'};color:#fff;cursor:pointer;font-size:0.85rem;font-weight:700;`;
-    b.onclick = () => { _hangmanGuessed.add(l); if (!_hangmanWord.includes(l)) _hangmanWrong++; _hangmanRenderWord(); _hangmanRenderLetters(); _hangmanDraw(_hangmanWrong); _hangmanCheckEnd(); };
+    b.onclick = () => {
+      _hangmanGuessed.add(l);
+      if (!_hangmanWord.includes(l)) {
+        _hangmanWrong++;
+        SFX.wrong();
+      } else {
+        SFX.correct();
+      }
+      _hangmanRenderWord(); _hangmanRenderLetters(); _hangmanDraw(_hangmanWrong); _hangmanCheckEnd();
+    };
     el.appendChild(b);
   });
 }
 function _hangmanCheckEnd() {
   const msg = document.getElementById('hangmanMsg'); if (!msg) return;
-  if (_hangmanWrong >= 6) { msg.textContent = `💀 Verloren! Das Wort war: ${_hangmanWord}`; msg.style.color='#ff5252'; return; }
-  if (_hangmanWord.split('').every(l => _hangmanGuessed.has(l))) { msg.textContent = '🎉 Gewonnen!'; msg.style.color='#4caf50'; }
+  if (_hangmanWrong >= 6) {
+    msg.textContent = `💀 Verloren! Das Wort war: ${_hangmanWord}`; msg.style.color='#ff5252';
+    SFX.lose(); vfxShake(document.getElementById('hangmanCanvas'));
+    return;
+  }
+  if (_hangmanWord.split('').every(l => _hangmanGuessed.has(l))) {
+    msg.textContent = '🎉 Gewonnen!'; msg.style.color='#4caf50';
+    SFX.win(); setTimeout(vfxConfetti, 100);
+  }
 }
 function _hangmanDraw(n) {
   const c = document.getElementById('hangmanCanvas'); if (!c) return;
@@ -914,7 +1042,7 @@ function _render2048() {
 function _slide2048(row) {
   let r = row.filter(v=>v); let changed = false;
   for (let i = 0; i < r.length-1; i++) {
-    if (r[i]===r[i+1]) { r[i]*=2; _score2048+=r[i]; r.splice(i+1,1); changed=true; }
+    if (r[i]===r[i+1]) { r[i]*=2; _score2048+=r[i]; r.splice(i+1,1); changed=true; SFX.merge(); }
   }
   while (r.length<4) r.push(0);
   return { row: r, changed: changed || r.some((v,i)=>v!==row[i]) };
@@ -932,8 +1060,16 @@ function _move2048(dir) {
     for (let c = 0; c < 4; c++) { const col=[_grid2048[12+c],_grid2048[8+c],_grid2048[4+c],_grid2048[c]]; const {row,changed:ch}=_slide2048(col); if(ch){for(let i=0;i<4;i++)_grid2048[(3-i)*4+c]=row[i]; changed=true;} }
   }
   if (changed) { _add2048(); _render2048(); }
-  if (_grid2048.includes(2048)) { document.getElementById('msg2048').textContent = '🎉 2048 erreicht!'; }
-  else if (!_grid2048.includes(0) && !_canMove2048()) { _over2048=true; document.getElementById('msg2048').textContent = 'Game Over!'; }
+  if (_grid2048.includes(2048)) {
+    document.getElementById('msg2048').textContent = '🎉 2048 erreicht!';
+    SFX.win(); setTimeout(vfxConfetti, 100);
+  } else if (!_grid2048.includes(0) && !_canMove2048()) {
+    _over2048=true;
+    document.getElementById('msg2048').textContent = 'Game Over!';
+    SFX.lose(); vfxShake(document.getElementById('grid2048'));
+  } else if (changed) {
+    SFX.click();
+  }
 }
 function _canMove2048() {
   for (let i = 0; i < 16; i++) {
@@ -979,16 +1115,19 @@ function reactionClick() {
     _rxState='wait';
     _rxRender();
     clearTimeout(_rxTimeout);
-    _rxTimeout = setTimeout(() => { _rxState='go'; _rxStart=Date.now(); _rxRender(); }, 1000+Math.random()*3000);
+    _rxTimeout = setTimeout(() => { _rxState='go'; _rxStart=Date.now(); _rxRender(); SFX.correct(); }, 1000+Math.random()*3000);
   } else if (_rxState==='wait') {
     clearTimeout(_rxTimeout); _rxState='idle';
     document.getElementById('reactionResult').textContent='⚠️ Zu früh!';
+    SFX.tooEarly();
     setTimeout(() => { _rxState='idle'; _rxRender(); }, 1200);
   } else if (_rxState==='go') {
     const ms = Date.now()-_rxStart;
     _rxHistory.push(ms);
     document.getElementById('reactionResult').textContent = `⚡ ${ms} ms`;
-    _rxState='result'; _rxRender();
+    _rxState='result';
+    SFX.pop();
+    _rxRender();
     setTimeout(() => { _rxState='idle'; _rxRender(); }, 1500);
   }
 }
@@ -1075,6 +1214,7 @@ function diceRoll() {
   const results = Array.from({length:count}, () => 1+Math.floor(Math.random()*_diceType));
   const sum = results.reduce((a,b)=>a+b,0);
   const el = document.getElementById('diceResults'); if (!el) return;
+  SFX.roll();
   el.innerHTML = results.map(r => `<div style="width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#1a2a3a,#0d1f2d);border:2px solid var(--brand);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:800;color:#fff;">${r}</div>`).join('');
   document.getElementById('diceSum').textContent = count>1 ? `Summe: ${sum}` : `Ergebnis: ${results[0]}`;
   _diceRollHistory.unshift(`W${_diceType}×${count}: ${results.join(',')} = ${sum}`);
@@ -1190,16 +1330,28 @@ function pongStart() {
     // AI
     if (p.ey+30 < p.by) p.ey = Math.min(260, p.ey+3.2); else p.ey = Math.max(0, p.ey-3.2);
     p.bx+=p.bdx; p.by+=p.bdy;
-    if (p.by<=0||p.by>=320) p.bdy*=-1;
+    if (p.by<=0||p.by>=320) { p.bdy*=-1; SFX.bounce(); }
     // player paddle
-    if (p.bx<=24 && p.by>=p.py && p.by<=p.py+60) { p.bdx=Math.abs(p.bdx)+0.1; p.bx=24; }
+    if (p.bx<=24 && p.by>=p.py && p.by<=p.py+60) { p.bdx=Math.abs(p.bdx)+0.1; p.bx=24; SFX.bounce(); }
     // enemy paddle
-    if (p.bx>=456 && p.by>=p.ey && p.by<=p.ey+60) { p.bdx=-(Math.abs(p.bdx)+0.1); p.bx=456; }
-    if (p.bx<=0) { p.es++; p.bx=240; p.by=160; p.bdx=3.5; p.bdy=2.5*Math.sign(p.bdy||1); }
-    if (p.bx>=480) { p.ps++; p.bx=240; p.by=160; p.bdx=-3.5; p.bdy=2.5*Math.sign(p.bdy||1); }
+    if (p.bx>=456 && p.by>=p.ey && p.by<=p.ey+60) { p.bdx=-(Math.abs(p.bdx)+0.1); p.bx=456; SFX.bounce(); }
+    if (p.bx<=0) { p.es++; p.bx=240; p.by=160; p.bdx=3.5; p.bdy=2.5*Math.sign(p.bdy||1); SFX.score(); }
+    if (p.bx>=480) { p.ps++; p.bx=240; p.by=160; p.bdx=-3.5; p.bdy=2.5*Math.sign(p.bdy||1); SFX.score(); }
     pongDraw();
     document.getElementById('pongScore').textContent = `Du ${p.ps} : ${p.es} Computer`;
-    if (p.ps>=7||p.es>=7) { _pongRunning=false; window.removeEventListener('keydown',kd); window.removeEventListener('keyup',ku); document.getElementById('pongScore').textContent+=` — ${p.ps>p.es?'🎉 Gewonnen!':'💀 Verloren!'}`; return; }
+    if (p.ps>=7||p.es>=7) {
+      _pongRunning=false;
+      window.removeEventListener('keydown',kd);
+      window.removeEventListener('keyup',ku);
+      if (p.ps > p.es) {
+        document.getElementById('pongScore').textContent+=` — 🎉 Gewonnen!`;
+        SFX.win(); setTimeout(vfxConfetti, 100);
+      } else {
+        document.getElementById('pongScore').textContent+=` — 💀 Verloren!`;
+        SFX.lose();
+      }
+      return;
+    }
     _pongRAF = requestAnimationFrame(loop);
   }
   _pongRAF = requestAnimationFrame(loop);
@@ -1348,6 +1500,7 @@ function wordleRenderKeyboard() {
 }
 function wordleKey(k) {
   if (_wordleOver) return;
+  SFX.click();
   if (k==='⌫') { _wordleCurrent=_wordleCurrent.slice(0,-1); }
   else if (k==='↵') { wordleSubmit(); return; }
   else if (_wordleCurrent.length<5) _wordleCurrent+=k;
@@ -1359,8 +1512,18 @@ function wordleSubmit() {
   wordleRenderGrid();
   const last = _wordleGuesses[_wordleGuesses.length-1];
   const msg = document.getElementById('wordleMsg');
-  if (last===_wordleWord) { msg.textContent='🎉 Gewonnen!'; _wordleOver=true; return; }
-  if (_wordleGuesses.length>=6) { msg.textContent=`💀 Verloren! Das Wort war: ${_wordleWord}`; _wordleOver=true; }
+  if (last===_wordleWord) {
+    msg.textContent='🎉 Gewonnen!';
+    _wordleOver=true;
+    SFX.win(); setTimeout(vfxConfetti, 100);
+    return;
+  }
+  if (last !== _wordleWord) SFX.wrong();
+  if (_wordleGuesses.length>=6) {
+    msg.textContent=`💀 Verloren! Das Wort war: ${_wordleWord}`;
+    _wordleOver=true;
+    SFX.lose();
+  }
 }
 (function(){
   document.addEventListener('keydown', e => {
@@ -1400,15 +1563,49 @@ function breakoutStart() {
     if (keys['ArrowLeft']) _bo.px=Math.max(0,_bo.px-6);
     if (keys['ArrowRight']) _bo.px=Math.min(480-_bo.pw,_bo.px+6);
     _bo.bx+=_bo.bdx; _bo.by+=_bo.bdy;
-    if (_bo.bx<=8||_bo.bx>=472) _bo.bdx*=-1;
-    if (_bo.by<=10) _bo.bdy*=-1;
-    if (_bo.by>=310 && _bo.bx>=_bo.px && _bo.bx<=_bo.px+_bo.pw) { _bo.bdy=-Math.abs(_bo.bdy); const rel=(_bo.bx-_bo.px)/_bo.pw-.5; _bo.bdx=rel*6; }
-    if (_bo.by>320) { _bo.lives--; _boUpdateHUD(); _bo.bx=240; _bo.by=280; _bo.bdx=3*Math.sign(_bo.bdx||1); _bo.bdy=-3; if(_bo.lives<=0){_boRunning=false;window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);document.getElementById('breakoutHUD').textContent+=' — Game Over!'; breakoutDraw(); return;} }
+    if (_bo.bx<=8||_bo.bx>=472) { _bo.bdx*=-1; SFX.bounce(); }
+    if (_bo.by<=10) { _bo.bdy*=-1; SFX.bounce(); }
+    if (_bo.by>=310 && _bo.bx>=_bo.px && _bo.bx<=_bo.px+_bo.pw) {
+      _bo.bdy=-Math.abs(_bo.bdy);
+      const rel=(_bo.bx-_bo.px)/_bo.pw-.5;
+      _bo.bdx=rel*6;
+      SFX.bounce();
+    }
+    if (_bo.by>320) {
+      _bo.lives--;
+      SFX.wrong();
+      _boUpdateHUD();
+      _bo.bx=240; _bo.by=280; _bo.bdx=3*Math.sign(_bo.bdx||1); _bo.bdy=-3;
+      if(_bo.lives<=0){
+        _boRunning=false;
+        window.removeEventListener('keydown',kd);
+        window.removeEventListener('keyup',ku);
+        document.getElementById('breakoutHUD').textContent+=' — Game Over!';
+        SFX.lose();
+        breakoutDraw();
+        return;
+      }
+    }
     for (const brick of _bo.bricks) {
       if (!brick.alive) continue;
-      if (_bo.bx>=brick.x&&_bo.bx<=brick.x+42&&_bo.by>=brick.y&&_bo.by<=brick.y+16) { brick.alive=false; _bo.bdy*=-1; _bo.score+=10; _boUpdateHUD(); break; }
+      if (_bo.bx>=brick.x&&_bo.bx<=brick.x+42&&_bo.by>=brick.y&&_bo.by<=brick.y+16) {
+        brick.alive=false;
+        _bo.bdy*=-1;
+        _bo.score+=10;
+        SFX.brickHit();
+        _boUpdateHUD();
+        break;
+      }
     }
-    if (_bo.bricks.every(b=>!b.alive)) { _boRunning=false; window.removeEventListener('keydown',kd); window.removeEventListener('keyup',ku); document.getElementById('breakoutHUD').textContent+=' — 🎉 Gewonnen!'; breakoutDraw(); return; }
+    if (_bo.bricks.every(b=>!b.alive)) {
+      _boRunning=false;
+      window.removeEventListener('keydown',kd);
+      window.removeEventListener('keyup',ku);
+      document.getElementById('breakoutHUD').textContent+=' — 🎉 Gewonnen!';
+      SFX.win(); setTimeout(vfxConfetti, 100);
+      breakoutDraw();
+      return;
+    }
     breakoutDraw();
     _boRAF=requestAnimationFrame(loop);
   }
@@ -1550,7 +1747,7 @@ function _msRender() {
     else{bg='rgba(0,0,0,0.2)';content=val||'';col=numColors[val]||'#fff';}
     d.style.cssText=`width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:${bg};color:${col};font-size:${val===-1||f?'1rem':'0.85rem'};font-weight:700;cursor:pointer;user-select:none;`;
     d.textContent=content;
-    d.onclick=()=>{ if(_ms.over||f) return; if(!_ms.started){_ms.started=true;_msPlace(i);_ms.timer=setInterval(()=>{_ms.seconds++;document.getElementById('mineTimer').textContent=_ms.seconds;},1000);} _msReveal(i); if(_ms.board[i]===-1){_ms.over=true;clearInterval(_ms.timer);_ms.revealed.fill(true);_msRender();document.getElementById('minesweeperMsg').textContent='💥 Mine getroffen! Game Over.';return;} const won=_ms.revealed.filter(Boolean).length===_ms.board.length-_ms.mines; if(won){_ms.over=true;clearInterval(_ms.timer);document.getElementById('minesweeperMsg').textContent='🎉 Gewonnen!';} _msRender(); };
+    d.onclick=()=>{ if(_ms.over||f) return; if(!_ms.started){_ms.started=true;_msPlace(i);_ms.timer=setInterval(()=>{_ms.seconds++;document.getElementById('mineTimer').textContent=_ms.seconds;},1000);} _msReveal(i); if(_ms.board[i]===-1){_ms.over=true;clearInterval(_ms.timer);_ms.revealed.fill(true);_msRender();document.getElementById('minesweeperMsg').textContent='💥 Mine getroffen! Game Over.';SFX.explosion();return;} const won=_ms.revealed.filter(Boolean).length===_ms.board.length-_ms.mines; if(won){_ms.over=true;clearInterval(_ms.timer);document.getElementById('minesweeperMsg').textContent='🎉 Gewonnen!';SFX.chime(); setTimeout(vfxConfetti, 100);} else SFX.tick(); _msRender(); };
     d.oncontextmenu=e=>{e.preventDefault();if(_ms.over||_ms.revealed[i])return;_ms.flagged[i]=!_ms.flagged[i];const f2=_ms.flagged.filter(Boolean).length;document.getElementById('mineCount').textContent=_ms.mines-f2;_msRender();};
     el.appendChild(d);
   });
