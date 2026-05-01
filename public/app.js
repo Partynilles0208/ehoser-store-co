@@ -563,7 +563,6 @@ function _banTermDots(el, base) {
         el.textContent = base + '.'.repeat(n);
     }, 400);
 }
-}
 
 async function handleLogin(event) {
     event.preventDefault();
