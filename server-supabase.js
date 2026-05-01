@@ -2008,50 +2008,48 @@ app.post('/api/admin/chat-reports/:id/resolve', async (req, res) => {
   }
 });
 
-// Admin: Nutzerkonto loeschen
-app.delete('/api/admin/users/:id', async (req, res) => {
-  // Admin: Nutzer entbannen
-  app.post('/api/admin/users/unban', async (req, res) => {
-    const adminKey = req.headers['x-admin-key'];
-    if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-      return res.status(401).json({ error: 'Ungültiger Admin-Key' });
-    }
-    const { username } = req.body || {};
-    if (!username || typeof username !== 'string' || !username.trim()) {
-      return res.status(400).json({ error: 'Benutzername fehlt' });
-    }
-    const uname = username.trim();
-    try {
-      const { data: user, error: findErr } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('username', uname)
-        .single();
-      if (findErr || !user) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
-
-      await supabaseAdmin
-        .from('users')
-        .update({ banned_until: null, ban_reason: null })
-        .eq('id', user.id);
-
-      await setModerationForUser(uname, { type: 'none', status: 'resolved', reason: '' });
-
-      res.json({ ok: true });
-    } catch (error) {
-      res.status(500).json({ error: error.message || 'Entbannen fehlgeschlagen' });
-    }
-  });
-
-  // Admin: Nutzerkonto loeschen
-  app.delete('/api/admin/users/:id', async (req, res) => {
+// Admin: Nutzer entbannen
+app.post('/api/admin/users/unban', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+  const { username } = req.body || {};
+  if (!username || typeof username !== 'string' || !username.trim()) {
+    return res.status(400).json({ error: 'Benutzername fehlt' });
+  }
+  const uname = username.trim();
+  try {
+    const { data: user, error: findErr } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('username', uname)
+      .single();
+    if (findErr || !user) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    await supabaseAdmin
+      .from('users')
+      .update({ banned_until: null, ban_reason: null })
+      .eq('id', user.id);
+
+    await setModerationForUser(uname, { type: 'none', status: 'resolved', reason: '' });
+
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Entbannen fehlgeschlagen' });
+  }
+});
+
+// Admin: Nutzerkonto loeschen
+app.delete('/api/admin/users/:id', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
   }
 
   const userId = Number(req.params.id);
   if (!Number.isInteger(userId) || userId <= 0) {
-    return res.status(400).json({ error: 'UngÃ¼ltige Nutzer-ID' });
+    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
   }
 
   try {
