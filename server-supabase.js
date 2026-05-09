@@ -17,6 +17,7 @@ const ADMIN_UPLOAD_KEY = '135797531lol';
 const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre â€“ Token lÃ¤uft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
+const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -3712,7 +3713,7 @@ app.post('/api/ki/premium', async (req, res) => {
         Authorization: `Bearer ${openAIKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-5.4-mini',
+        model: PREMIUM_OPENAI_MODEL,
         instructions: String(systemPrompt),
         input: toOpenAIResponsesInput(messages),
         max_output_tokens: 900
@@ -3730,7 +3731,7 @@ app.post('/api/ki/premium', async (req, res) => {
     const content = responseOutputText(data);
     res.json({
       choices: [{ message: { role: 'assistant', content: content || 'Keine Antwort erhalten.' } }],
-      model: 'gpt-5.4-mini',
+      model: PREMIUM_OPENAI_MODEL,
       premium: true
     });
   } catch (err) {
