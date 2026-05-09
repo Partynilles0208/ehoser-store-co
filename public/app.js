@@ -4,6 +4,7 @@ const EHOSER_API_ORIGIN = EHOSER_DESKTOP_MODE
     : window.location.origin;
 const API_BASE = `${EHOSER_API_ORIGIN}/api`;
 const DESKTOP_AUTH_KEY = 'ehoserDesktopActivated';
+const DESKTOP_USER_CACHE_KEY = 'ehoserDesktopUserCache';
 const DESKTOP_ONLINE_MODES = new Set(['games', 'ki', 'chat', 'map', 'youtube', 'news', 'images', 'weather', 'gameCreator', 'ps']);
 let currentUser = null;
 let currentProfile = null;
@@ -43,7 +44,26 @@ function markDesktopActivated() {
 }
 
 function clearDesktopActivated() {
-    if (isDesktopMode()) localStorage.removeItem(DESKTOP_AUTH_KEY);
+    if (isDesktopMode()) {
+        localStorage.removeItem(DESKTOP_AUTH_KEY);
+        localStorage.removeItem(DESKTOP_USER_CACHE_KEY);
+    }
+}
+
+function saveDesktopUserCache(user, profile) {
+    if (!isDesktopMode() || !user) return;
+    try {
+        localStorage.setItem(DESKTOP_USER_CACHE_KEY, JSON.stringify({ user, profile: profile || null }));
+    } catch {}
+}
+
+function readDesktopUserCache() {
+    if (!isDesktopMode()) return null;
+    try {
+        return JSON.parse(localStorage.getItem(DESKTOP_USER_CACHE_KEY) || 'null');
+    } catch {
+        return null;
+    }
 }
 
 function saveDesktopAuthToken(token) {
@@ -87,11 +107,18 @@ function showDesktopAuthGate() {
 }
 
 function startDesktopCachedSession() {
-    currentUser = { id: 'desktop-cache', username: 'Desktop', isGuest: false, isAdmin: false };
-    currentProfile = { isPro: true, isPremium: false, ps_account: false, settings: { displayName: 'Desktop' } };
+    const cached = readDesktopUserCache();
+    currentUser = cached?.user || { id: 'desktop-cache', username: 'Desktop', isGuest: false, isAdmin: false };
+    currentProfile = cached?.profile || { isPro: true, isPremium: false, ps_account: false, settings: { displayName: currentUser.username || 'Desktop' } };
     allApps = [];
     localStorage.setItem('proStatus', '1');
-    showDesktopUI();
+    if (cached?.user) {
+        syncPlanStatus();
+        applyProfileSettings();
+        showLoggedInUI();
+    } else {
+        showDesktopUI();
+    }
     showSection('mode-select');
     decorateDesktopModeCards();
 }
@@ -449,6 +476,7 @@ async function handleGoogleCredentialResponse(response) {
         markDesktopActivated();
         currentUser = { id: data.userId, username: data.username, isAdmin: false };
         currentProfile = data.profile || null;
+        saveDesktopUserCache(currentUser, currentProfile);
         syncPlanStatus();
         applyProfileSettings();
         showLoggedInUI();
@@ -709,6 +737,7 @@ async function finishDesktopWebLogin(data) {
     markDesktopActivated();
     currentUser = { id: data.userId, username: data.username, isAdmin: false };
     currentProfile = data.profile || null;
+    saveDesktopUserCache(currentUser, currentProfile);
     syncPlanStatus();
     applyProfileSettings();
     showLoggedInUI();
@@ -1010,6 +1039,7 @@ async function handleLogin(event) {
         markDesktopActivated();
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
+        saveDesktopUserCache(currentUser, currentProfile);
         syncPlanStatus();
         applyProfileSettings();
         showAlert('Erfolgreich angemeldet!', 'success');
@@ -1155,6 +1185,7 @@ async function startApp() {
 
     if (isDesktopMode()) {
         if (token) {
+            startDesktopCachedSession();
             verifyToken(token);
             return;
         }
@@ -1308,6 +1339,7 @@ async function verifyToken(token) {
         markDesktopActivated();
         currentUser = data.user;
         currentProfile = data.profile || null;
+        saveDesktopUserCache(currentUser, currentProfile);
         // ðŸ”¥ Pro-Status in localStorage speichern fÃ¼r FaceWarp/Chat
         syncPlanStatus();
         applyProfileSettings();
@@ -1370,6 +1402,7 @@ async function handleRegister(event) {
         markDesktopActivated();
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
+        saveDesktopUserCache(currentUser, currentProfile);
         syncPlanStatus();
         applyProfileSettings();
         window.alert(`Dein Login-Code: ${data.loginCode}\nDiesen Code sicher speichern. Du kannst ihn als Backup zum Anmelden nutzen.`);
