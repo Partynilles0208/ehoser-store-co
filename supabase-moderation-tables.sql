@@ -12,6 +12,18 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 );
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS premium_until TIMESTAMP NULL;
 
+CREATE TABLE IF NOT EXISTS desktop_login_requests (
+  id UUID PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  username TEXT,
+  user_id TEXT,
+  token TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP NULL
+);
+
 CREATE TABLE IF NOT EXISTS chat_reports (
   id BIGSERIAL PRIMARY KEY,
   group_id UUID NOT NULL,
