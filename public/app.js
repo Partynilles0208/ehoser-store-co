@@ -18,6 +18,9 @@ let _lastPersonalizationSearchMiss = '';
 let _chatNotifyInitialized = false;
 let _moderationLockActive = false;
 let _moderationCountdownTimer = null;
+let _desktopUpdateInfo = null;
+let _desktopUpdateStarted = false;
+let _desktopUpdateUnsubscribe = null;
 
 function isAdminGuestPreview() {
     return sessionStorage.getItem('adminGuestPreview') === '1';
@@ -55,6 +58,142 @@ function decorateDesktopModeCards() {
             card.appendChild(badge);
         }
     });
+}
+
+function formatUpdateBytes(bytes) {
+    const value = Number(bytes) || 0;
+    if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+    if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+    if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${value} B`;
+}
+
+function ensureDesktopUpdateUI() {
+    if (!isDesktopMode() || !window.ehoserDesktopUpdates) return null;
+    if (document.getElementById('desktopUpdateButton')) {
+        return document.getElementById('desktopUpdateModal');
+    }
+
+    const button = document.createElement('button');
+    button.id = 'desktopUpdateButton';
+    button.className = 'desktop-update-button';
+    button.type = 'button';
+    button.textContent = 'Update herunterladen';
+    button.style.display = 'none';
+    button.addEventListener('click', openDesktopUpdateModal);
+    document.body.appendChild(button);
+
+    const modal = document.createElement('div');
+    modal.id = 'desktopUpdateModal';
+    modal.className = 'desktop-update-modal';
+    modal.innerHTML = `
+        <div class="desktop-update-panel">
+            <button class="desktop-update-close" type="button" aria-label="Schliessen">&times;</button>
+            <div class="desktop-update-kicker">Neue Desktop-Version</div>
+            <h2>Update wird heruntergeladen</h2>
+            <div class="desktop-update-grid">
+                <span>Version</span><strong id="desktopUpdateVersion">-</strong>
+                <span>Datei</span><strong id="desktopUpdateFile">-</strong>
+                <span>Groesse</span><strong id="desktopUpdateSize">-</strong>
+                <span>Tempo</span><strong id="desktopUpdateSpeed">0 MB/s</strong>
+            </div>
+            <div class="desktop-update-progress">
+                <div id="desktopUpdateProgressBar"></div>
+            </div>
+            <div class="desktop-update-meta">
+                <span id="desktopUpdatePercent">0%</span>
+                <span id="desktopUpdateDownloaded">0 MB / 0 MB</span>
+            </div>
+            <p id="desktopUpdateStatus">Download wird vorbereitet...</p>
+        </div>
+    `;
+    modal.querySelector('.desktop-update-close').addEventListener('click', () => {
+        modal.classList.remove('show');
+    });
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) modal.classList.remove('show');
+    });
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function updateDesktopUpdateModal(info) {
+    if (!info) return;
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+    setText('desktopUpdateVersion', `${info.currentVersion || '?'} -> ${info.latestVersion || '?'}`);
+    setText('desktopUpdateFile', info.fileName || 'Installer');
+    setText('desktopUpdateSize', formatUpdateBytes(info.fileSize));
+    setText('desktopUpdateDownloaded', `0 MB / ${formatUpdateBytes(info.fileSize)}`);
+}
+
+function handleDesktopUpdateProgress(payload) {
+    const percent = Math.max(0, Math.min(100, payload?.percent || 0));
+    const total = payload?.totalBytes || _desktopUpdateInfo?.fileSize || 0;
+    const received = payload?.receivedBytes || 0;
+    const speed = payload?.bytesPerSecond || 0;
+    const bar = document.getElementById('desktopUpdateProgressBar');
+    const button = document.getElementById('desktopUpdateButton');
+    const status = document.getElementById('desktopUpdateStatus');
+
+    if (bar) bar.style.width = `${percent}%`;
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+    setText('desktopUpdatePercent', `${percent.toFixed(0)}%`);
+    setText('desktopUpdateDownloaded', `${formatUpdateBytes(received)} / ${formatUpdateBytes(total)}`);
+    setText('desktopUpdateSpeed', speed > 0 ? `${formatUpdateBytes(speed)}/s` : '0 MB/s');
+
+    if (payload?.state === 'completed') {
+        if (status) status.textContent = `Download fertig: ${payload.savePath || payload.fileName || 'Installer'}`;
+        if (button) button.textContent = 'Update heruntergeladen';
+    } else if (payload?.state === 'cancelled' || payload?.state === 'interrupted') {
+        if (status) status.textContent = 'Download wurde unterbrochen. Bitte erneut versuchen.';
+        _desktopUpdateStarted = false;
+    } else if (status) {
+        status.textContent = 'Download laeuft...';
+    }
+}
+
+async function openDesktopUpdateModal() {
+    const modal = ensureDesktopUpdateUI();
+    if (!modal || !_desktopUpdateInfo?.downloadUrl) return;
+    updateDesktopUpdateModal(_desktopUpdateInfo);
+    modal.classList.add('show');
+
+    if (_desktopUpdateStarted) return;
+    _desktopUpdateStarted = true;
+    const status = document.getElementById('desktopUpdateStatus');
+    if (status) status.textContent = 'Download wird gestartet...';
+    const result = await window.ehoserDesktopUpdates.download(_desktopUpdateInfo.downloadUrl);
+    if (!result?.ok) {
+        _desktopUpdateStarted = false;
+        if (status) status.textContent = result?.error || 'Download konnte nicht gestartet werden.';
+    }
+}
+
+async function initDesktopUpdates() {
+    if (!isDesktopMode() || !window.ehoserDesktopUpdates) return;
+    ensureDesktopUpdateUI();
+    if (!_desktopUpdateUnsubscribe) {
+        _desktopUpdateUnsubscribe = window.ehoserDesktopUpdates.onProgress(handleDesktopUpdateProgress);
+    }
+    try {
+        const info = await window.ehoserDesktopUpdates.check();
+        if (!info?.available || !info.downloadUrl) return;
+        _desktopUpdateInfo = info;
+        const button = document.getElementById('desktopUpdateButton');
+        if (button) {
+            button.textContent = 'Update herunterladen';
+            button.style.display = '';
+        }
+        updateDesktopUpdateModal(info);
+    } catch {
+        // Der Hinweis bleibt still, wenn die Update-Pruefung offline fehlschlaegt.
+    }
 }
 
 // Client-Konfiguration (API Keys sicher vom Backend laden)
@@ -858,6 +997,7 @@ function startApp() {
 document.addEventListener('DOMContentLoaded', () => {
     if (isDesktopMode()) {
         decorateDesktopModeCards();
+        initDesktopUpdates();
     }
 
     // Referral-Code aus URL lesen
