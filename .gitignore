@@ -13,6 +13,10 @@ yarn-error.log*
 *.swo
 dist/
 build/
+!build/
+build/*
+!build/icon.ico
+!build/icon.png
 *.db-journal
 .vercel
 .env*.local
