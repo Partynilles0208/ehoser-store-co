@@ -1251,9 +1251,10 @@ async function createUniqueDesktopLoginCode() {
   for (let i = 0; i < 10; i += 1) {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     const { data } = await supabaseAdmin
-      .from('desktop_login_requests')
+      .from('screen_sessions')
       .select('id')
-      .eq('code', code)
+      .eq('username', 'desktop-login')
+      .eq('offer', code)
       .maybeSingle();
     if (!data) return code;
   }
@@ -1265,11 +1266,12 @@ app.post('/api/desktop-login/start', async (req, res) => {
     const id = crypto.randomUUID();
     const code = await createUniqueDesktopLoginCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    const { error } = await supabaseAdmin.from('desktop_login_requests').insert({
+    const { error } = await supabaseAdmin.from('screen_sessions').insert({
       id,
-      code,
+      username: 'desktop-login',
       status: 'pending',
-      expires_at: expiresAt
+      offer: code,
+      answer: JSON.stringify({ type: 'desktop-login', expiresAt })
     });
     if (error) throw error;
     res.json({ sessionId: id, code, expiresAt });
@@ -1285,31 +1287,33 @@ app.get('/api/desktop-login/status/:id', async (req, res) => {
 
   try {
     const { data, error } = await supabaseAdmin
-      .from('desktop_login_requests')
+      .from('screen_sessions')
       .select('*')
       .eq('id', id)
+      .eq('username', 'desktop-login')
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Session nicht gefunden' });
 
-    if (new Date(data.expires_at).getTime() < Date.now()) {
+    const answerPayload = data.answer ? JSON.parse(data.answer) : {};
+    if (new Date(answerPayload.expiresAt).getTime() < Date.now()) {
       try {
-        await supabaseAdmin.from('desktop_login_requests').update({ status: 'expired' }).eq('id', id);
+        await supabaseAdmin.from('screen_sessions').update({ status: 'expired' }).eq('id', id);
       } catch {}
       return res.json({ status: 'expired' });
     }
 
-    if (data.status === 'approved' && data.token) {
+    if (data.status === 'approved' && answerPayload.token) {
       await supabaseAdmin
-        .from('desktop_login_requests')
-        .update({ status: 'used', used_at: new Date().toISOString(), token: null })
+        .from('screen_sessions')
+        .update({ status: 'used' })
         .eq('id', id);
-      const profile = await getProfile(data.username);
+      const profile = await getProfile(answerPayload.username);
       return res.json({
         status: 'approved',
-        token: data.token,
-        userId: data.user_id,
-        username: data.username,
+        token: answerPayload.token,
+        userId: answerPayload.userId,
+        username: answerPayload.username,
         profile
       });
     }
@@ -1330,15 +1334,17 @@ app.post('/api/desktop-login/confirm', async (req, res) => {
 
   try {
     const { data: request, error } = await supabaseAdmin
-      .from('desktop_login_requests')
+      .from('screen_sessions')
       .select('*')
-      .eq('code', code)
+      .eq('username', 'desktop-login')
+      .eq('offer', code)
       .eq('status', 'pending')
       .maybeSingle();
     if (error) throw error;
     if (!request) return res.status(404).json({ error: 'Desktop-Code nicht gefunden oder bereits benutzt' });
-    if (new Date(request.expires_at).getTime() < Date.now()) {
-      await supabaseAdmin.from('desktop_login_requests').update({ status: 'expired' }).eq('id', request.id);
+    const answerPayload = request.answer ? JSON.parse(request.answer) : {};
+    if (new Date(answerPayload.expiresAt).getTime() < Date.now()) {
+      await supabaseAdmin.from('screen_sessions').update({ status: 'expired' }).eq('id', request.id);
       return res.status(410).json({ error: 'Desktop-Code ist abgelaufen' });
     }
 
@@ -1348,12 +1354,16 @@ app.post('/api/desktop-login/confirm', async (req, res) => {
       { expiresIn: TOKEN_EXPIRES_IN }
     );
     const { error: updateError } = await supabaseAdmin
-      .from('desktop_login_requests')
+      .from('screen_sessions')
       .update({
         status: 'approved',
-        username: auth.username,
-        user_id: auth.id,
-        token
+        answer: JSON.stringify({
+          type: 'desktop-login',
+          expiresAt: answerPayload.expiresAt,
+          token,
+          userId: auth.id,
+          username: auth.username
+        })
       })
       .eq('id', request.id);
     if (updateError) throw updateError;
