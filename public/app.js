@@ -22,6 +22,8 @@ let _moderationCountdownTimer = null;
 let _desktopUpdateInfo = null;
 let _desktopUpdateStarted = false;
 let _desktopUpdateUnsubscribe = null;
+let _desktopWebLoginSessionId = null;
+let _desktopWebLoginPollInterval = null;
 
 function isAdminGuestPreview() {
     return sessionStorage.getItem('adminGuestPreview') === '1';
@@ -468,9 +470,9 @@ function updateGoogleAuthVisibility() {
         const title = gate.querySelector('.google-auth-gate-title');
         const buttonHost = document.getElementById('googleSignInButton');
         const notConfiguredMsg = document.getElementById('googleNotConfiguredMsg');
-        if (title) title.textContent = 'Desktop-App Anmeldung';
+        if (title) title.textContent = 'Weitere Anmeldeoptionen';
         if (buttonHost) {
-            buttonHost.innerHTML = '<p class="desktop-auth-gate-copy">Nutze Benutzername mit Passwort oder Login-Code. Google-Anmeldung ist nur in der Web-Version aktiv.</p>';
+            buttonHost.innerHTML = '<p class="desktop-auth-gate-copy">Du kannst dich mit Benutzername/Passwort anmelden oder unten einen Code fuer die Web-App erzeugen.</p>';
         }
         if (notConfiguredMsg) notConfiguredMsg.style.display = 'none';
         return;
@@ -644,11 +646,120 @@ function switchAuthTab(tab, btn) {
     document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     updateGoogleAuthVisibility();
+    updateMoreLoginOptionsVisibility();
+}
+
+function updateMoreLoginOptionsVisibility() {
+    const desktopBox = document.getElementById('desktopWebLoginBox');
+    if (desktopBox) desktopBox.style.display = isDesktopMode() ? 'block' : 'none';
+}
+
+function toggleMoreLoginOptions() {
+    const box = document.getElementById('moreLoginOptions');
+    if (!box) return;
+    box.style.display = box.style.display === 'none' ? '' : 'none';
+    updateMoreLoginOptionsVisibility();
 }
 
 function toggleResetHelp() {
     const form = document.getElementById('helpRequestForm');
     form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+function stopDesktopWebLoginPolling() {
+    clearInterval(_desktopWebLoginPollInterval);
+    _desktopWebLoginPollInterval = null;
+}
+
+async function finishDesktopWebLogin(data) {
+    localStorage.setItem('token', data.token);
+    markDesktopActivated();
+    currentUser = { id: data.userId, username: data.username, isAdmin: false };
+    currentProfile = data.profile || null;
+    syncPlanStatus();
+    applyProfileSettings();
+    showLoggedInUI();
+    await loadApps();
+    showSection('mode-select');
+    startOnlinePolling();
+    showAlert('Desktop-App wurde mit deinem Web-Account angemeldet.', 'success');
+}
+
+async function pollDesktopWebLoginStatus() {
+    if (!_desktopWebLoginSessionId) return;
+    const statusEl = document.getElementById('desktopWebLoginStatus');
+    try {
+        const res = await fetch(`${API_BASE}/desktop-login/status/${encodeURIComponent(_desktopWebLoginSessionId)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Status konnte nicht geladen werden');
+        if (data.status === 'approved' && data.token) {
+            stopDesktopWebLoginPolling();
+            if (statusEl) statusEl.textContent = 'Bestaetigt. Anmeldung wird abgeschlossen...';
+            await finishDesktopWebLogin(data);
+        } else if (data.status === 'expired') {
+            stopDesktopWebLoginPolling();
+            if (statusEl) statusEl.textContent = 'Code ist abgelaufen. Bitte neuen Code erstellen.';
+        } else if (statusEl) {
+            statusEl.textContent = 'Warte auf Bestaetigung in der Web-App...';
+        }
+    } catch {
+        if (statusEl) statusEl.textContent = 'Verbindung wird erneut versucht...';
+    }
+}
+
+async function startDesktopWebLogin() {
+    if (!isDesktopMode()) return;
+    const codeWrap = document.getElementById('desktopWebLoginCodeWrap');
+    const codeEl = document.getElementById('desktopWebLoginCode');
+    const statusEl = document.getElementById('desktopWebLoginStatus');
+    try {
+        stopDesktopWebLoginPolling();
+        if (statusEl) statusEl.textContent = 'Code wird erstellt...';
+        const res = await fetch(`${API_BASE}/desktop-login/start`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Code konnte nicht erstellt werden');
+        _desktopWebLoginSessionId = data.sessionId;
+        if (codeEl) codeEl.textContent = data.code || '------';
+        if (codeWrap) codeWrap.style.display = 'grid';
+        if (statusEl) statusEl.textContent = 'Code in der Web-App unter Account Einstellungen eingeben.';
+        _desktopWebLoginPollInterval = setInterval(pollDesktopWebLoginStatus, 2000);
+        pollDesktopWebLoginStatus();
+    } catch (error) {
+        if (statusEl) statusEl.textContent = error.message || 'Code konnte nicht erstellt werden.';
+        showAlert(error.message || 'Desktop-Code konnte nicht erstellt werden.', 'error');
+    }
+}
+
+async function applyDesktopLoginCode() {
+    const token = localStorage.getItem('token');
+    const input = document.getElementById('desktopLoginCodeInput');
+    const status = document.getElementById('desktopLoginSettingsStatus');
+    const code = String(input?.value || '').replace(/\D/g, '');
+    if (!token) { showAlert('Bitte zuerst anmelden.', 'error'); return; }
+    if (code.length !== 6) {
+        if (status) status.textContent = 'Bitte den 6-stelligen Code eingeben.';
+        return;
+    }
+    try {
+        if (status) status.textContent = 'Code wird angewendet...';
+        const res = await fetch(`${API_BASE}/desktop-login/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            if (status) status.textContent = data.error || 'Code konnte nicht angewendet werden.';
+            showAlert(data.error || 'Code konnte nicht angewendet werden.', 'error');
+            return;
+        }
+        if (input) input.value = '';
+        if (status) status.textContent = 'Desktop-App wurde angemeldet.';
+        showAlert('Desktop-App erfolgreich angemeldet.', 'success');
+    } catch {
+        if (status) status.textContent = 'Netzwerkfehler.';
+        showAlert('Netzwerkfehler beim Anwenden des Codes.', 'error');
+    }
 }
 
 function stopResetStatusPolling() {
@@ -1045,6 +1156,7 @@ document.addEventListener('DOMContentLoaded', () => {
         decorateDesktopModeCards();
         initDesktopUpdates();
     }
+    updateMoreLoginOptionsVisibility();
 
     // Referral-Code aus URL lesen
     const ref = new URLSearchParams(window.location.search).get('ref');

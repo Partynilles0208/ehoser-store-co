@@ -87,6 +87,17 @@ CREATE TABLE IF NOT EXISTS screen_sessions (
   answer TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS desktop_login_requests (
+  id UUID PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  username TEXT,
+  user_id TEXT,
+  token TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP NULL
+);
 CREATE TABLE IF NOT EXISTS chat_user_keys (
   username TEXT PRIMARY KEY,
   public_key TEXT NOT NULL,
@@ -212,6 +223,19 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
         offer TEXT,
         answer TEXT,
         created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS desktop_login_requests (
+        id UUID PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'pending',
+        username TEXT,
+        user_id TEXT,
+        token TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        expires_at TIMESTAMP NOT NULL,
+        used_at TIMESTAMP NULL
       );
     `);
     await pool.query(`
@@ -345,6 +369,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/request-code-reset',
   '/api/code-reset-status',
   '/api/code-reset-complete',
+  '/api/desktop-login/start',
   '/api/unlock-code',
   '/api/verify-token'
 ]);
@@ -358,6 +383,7 @@ function isPublicApiPath(pathname) {
     || pathname === '/api/games'
     || pathname === '/api/news'
     || pathname === '/api/repo/version'
+    || pathname.startsWith('/api/desktop-login/status/')
     || pathname.startsWith('/api/pixabay')
     || pathname === '/api/online-users'
     || pathname === '/api/guest-heartbeat'
@@ -1218,6 +1244,123 @@ app.post('/api/login', async (req, res) => {
     console.error('Login Error:', error);
     const msg = error?.message || JSON.stringify(error) || 'Unbekannter Fehler';
     res.status(500).json({ error: `Anmeldung fehlgeschlagen: ${msg}` });
+  }
+});
+
+async function createUniqueDesktopLoginCode() {
+  for (let i = 0; i < 10; i += 1) {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const { data } = await supabaseAdmin
+      .from('desktop_login_requests')
+      .select('id')
+      .eq('code', code)
+      .maybeSingle();
+    if (!data) return code;
+  }
+  return crypto.randomBytes(4).toString('hex').toUpperCase();
+}
+
+app.post('/api/desktop-login/start', async (req, res) => {
+  try {
+    const id = crypto.randomUUID();
+    const code = await createUniqueDesktopLoginCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const { error } = await supabaseAdmin.from('desktop_login_requests').insert({
+      id,
+      code,
+      status: 'pending',
+      expires_at: expiresAt
+    });
+    if (error) throw error;
+    res.json({ sessionId: id, code, expiresAt });
+  } catch (error) {
+    console.error('Desktop Login Start Error:', error);
+    res.status(500).json({ error: 'Desktop-Code konnte nicht erstellt werden' });
+  }
+});
+
+app.get('/api/desktop-login/status/:id', async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Session fehlt' });
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('desktop_login_requests')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Session nicht gefunden' });
+
+    if (new Date(data.expires_at).getTime() < Date.now()) {
+      try {
+        await supabaseAdmin.from('desktop_login_requests').update({ status: 'expired' }).eq('id', id);
+      } catch {}
+      return res.json({ status: 'expired' });
+    }
+
+    if (data.status === 'approved' && data.token) {
+      await supabaseAdmin
+        .from('desktop_login_requests')
+        .update({ status: 'used', used_at: new Date().toISOString(), token: null })
+        .eq('id', id);
+      const profile = await getProfile(data.username);
+      return res.json({
+        status: 'approved',
+        token: data.token,
+        userId: data.user_id,
+        username: data.username,
+        profile
+      });
+    }
+
+    res.json({ status: data.status || 'pending' });
+  } catch (error) {
+    console.error('Desktop Login Status Error:', error);
+    res.status(500).json({ error: 'Desktop-Login Status konnte nicht geladen werden' });
+  }
+});
+
+app.post('/api/desktop-login/confirm', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const code = String(req.body?.code || '').replace(/\D/g, '');
+  if (code.length < 6) return res.status(400).json({ error: 'Code ist ungueltig' });
+
+  try {
+    const { data: request, error } = await supabaseAdmin
+      .from('desktop_login_requests')
+      .select('*')
+      .eq('code', code)
+      .eq('status', 'pending')
+      .maybeSingle();
+    if (error) throw error;
+    if (!request) return res.status(404).json({ error: 'Desktop-Code nicht gefunden oder bereits benutzt' });
+    if (new Date(request.expires_at).getTime() < Date.now()) {
+      await supabaseAdmin.from('desktop_login_requests').update({ status: 'expired' }).eq('id', request.id);
+      return res.status(410).json({ error: 'Desktop-Code ist abgelaufen' });
+    }
+
+    const token = jwt.sign(
+      { id: auth.id, username: auth.username, isAdmin: Boolean(auth.isAdmin) },
+      JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRES_IN }
+    );
+    const { error: updateError } = await supabaseAdmin
+      .from('desktop_login_requests')
+      .update({
+        status: 'approved',
+        username: auth.username,
+        user_id: auth.id,
+        token
+      })
+      .eq('id', request.id);
+    if (updateError) throw updateError;
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Desktop Login Confirm Error:', error);
+    res.status(500).json({ error: 'Desktop-Login konnte nicht bestaetigt werden' });
   }
 });
 
