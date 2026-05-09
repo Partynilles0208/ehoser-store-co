@@ -14,3 +14,9 @@ contextBridge.exposeInMainWorld('ehoserDesktopUpdates', {
     return () => ipcRenderer.removeListener('updates:progress', listener);
   }
 });
+
+contextBridge.exposeInMainWorld('ehoserDesktopAuth', {
+  get: () => ipcRenderer.invoke('auth:get'),
+  set: (token) => ipcRenderer.invoke('auth:set', { token }),
+  clear: () => ipcRenderer.invoke('auth:clear')
+});

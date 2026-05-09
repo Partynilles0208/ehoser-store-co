@@ -24,6 +24,7 @@ let _desktopUpdateStarted = false;
 let _desktopUpdateUnsubscribe = null;
 let _desktopWebLoginSessionId = null;
 let _desktopWebLoginPollInterval = null;
+let _desktopNativeAuthLoaded = false;
 
 function isAdminGuestPreview() {
     return sessionStorage.getItem('adminGuestPreview') === '1';
@@ -43,6 +44,36 @@ function markDesktopActivated() {
 
 function clearDesktopActivated() {
     if (isDesktopMode()) localStorage.removeItem(DESKTOP_AUTH_KEY);
+}
+
+function saveDesktopAuthToken(token) {
+    if (isDesktopMode() && token && window.ehoserDesktopAuth?.set) {
+        window.ehoserDesktopAuth.set(token).catch(() => {});
+    }
+}
+
+function clearDesktopAuthToken() {
+    if (isDesktopMode() && window.ehoserDesktopAuth?.clear) {
+        window.ehoserDesktopAuth.clear().catch(() => {});
+    }
+}
+
+async function loadDesktopAuthToken() {
+    if (!isDesktopMode() || _desktopNativeAuthLoaded) return;
+    _desktopNativeAuthLoaded = true;
+    const existing = localStorage.getItem('token');
+    if (existing) {
+        saveDesktopAuthToken(existing);
+        return;
+    }
+    try {
+        const stored = await window.ehoserDesktopAuth?.get?.();
+        if (stored?.token) {
+            localStorage.setItem('token', stored.token);
+            saveDesktopAuthToken(stored.token);
+            markDesktopActivated();
+        }
+    } catch {}
 }
 
 function showDesktopAuthGate() {
@@ -414,6 +445,7 @@ async function handleGoogleCredentialResponse(response) {
         if (!res.ok) throw new Error(data.error || 'Google-Anmeldung fehlgeschlagen');
 
         localStorage.setItem('token', data.token);
+        saveDesktopAuthToken(data.token);
         markDesktopActivated();
         currentUser = { id: data.userId, username: data.username, isAdmin: false };
         currentProfile = data.profile || null;
@@ -673,6 +705,7 @@ function stopDesktopWebLoginPolling() {
 
 async function finishDesktopWebLogin(data) {
     localStorage.setItem('token', data.token);
+    saveDesktopAuthToken(data.token);
     markDesktopActivated();
     currentUser = { id: data.userId, username: data.username, isAdmin: false };
     currentProfile = data.profile || null;
@@ -973,6 +1006,7 @@ async function handleLogin(event) {
         }
 
         localStorage.setItem('token', data.token);
+        saveDesktopAuthToken(data.token);
         markDesktopActivated();
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
@@ -1113,7 +1147,8 @@ function skipVote() {
     startApp();
 }
 
-function startApp() {
+async function startApp() {
+    await loadDesktopAuthToken();
     const token = localStorage.getItem('token');
     stopOnlinePolling();
     stopResetStatusPolling();
@@ -1244,6 +1279,7 @@ async function verifyToken(token) {
             localStorage.removeItem('token');
             localStorage.removeItem('proStatus');
             clearDesktopActivated();
+            clearDesktopAuthToken();
             showSection('auth');
             return;
         }
@@ -1265,7 +1301,10 @@ async function verifyToken(token) {
         }
 
         const data = await response.json();
-        if (data.token) localStorage.setItem('token', data.token);
+        if (data.token) {
+            localStorage.setItem('token', data.token);
+            saveDesktopAuthToken(data.token);
+        }
         markDesktopActivated();
         currentUser = data.user;
         currentProfile = data.profile || null;
@@ -1327,6 +1366,7 @@ async function handleRegister(event) {
         }
 
         localStorage.setItem('token', data.token);
+        saveDesktopAuthToken(data.token);
         markDesktopActivated();
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
@@ -2834,6 +2874,7 @@ function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('proStatus');
     clearDesktopActivated();
+    clearDesktopAuthToken();
     sessionStorage.removeItem('adminGuestPreview');
     sessionStorage.removeItem('intro_shown');
     currentUser = null;
