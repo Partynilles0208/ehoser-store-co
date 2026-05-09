@@ -236,6 +236,7 @@ fetch(`${API_BASE}/config`).then(r => r.json()).then(cfg => {
     updateGoogleAuthVisibility();
 }).catch(() => {
     window.__ENV__ = { __loaded: true };
+    updateGoogleAuthVisibility();
 });
 
 let _googleAuthInitialized = false;
@@ -428,6 +429,7 @@ async function handleGoogleCredentialResponse(response) {
 }
 
 function initGoogleAuth() {
+    if (isDesktopMode()) return;
     if (_googleAuthInitialized) return;
     const clientId = window.__ENV__?.googleClientId;
     const buttonHost = document.getElementById('googleSignInButton');
@@ -459,6 +461,10 @@ function initGoogleAuth() {
 function updateGoogleAuthVisibility() {
     const gate = document.getElementById('googleAuthGate');
     if (!gate) return;
+    if (isDesktopMode()) {
+        gate.style.display = 'none';
+        return;
+    }
     const codeOk = getActiveAuthUnlockCode() === '020818';
     gate.style.display = codeOk ? 'block' : 'none';
     if (!codeOk) return;
