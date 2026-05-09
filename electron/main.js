@@ -1,8 +1,35 @@
 const path = require('path');
+const fs = require('fs');
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 
 const UPDATE_REPO = 'Partynilles0208/ehoser-store-co';
 let mainWindow = null;
+
+function getAuthStorePath() {
+  return path.join(app.getPath('userData'), 'desktop-auth.json');
+}
+
+function readDesktopAuth() {
+  try {
+    const raw = fs.readFileSync(getAuthStorePath(), 'utf8');
+    const data = JSON.parse(raw);
+    return { token: typeof data.token === 'string' ? data.token : '' };
+  } catch {
+    return { token: '' };
+  }
+}
+
+function writeDesktopAuth(token) {
+  const filePath = getAuthStorePath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify({ token, savedAt: new Date().toISOString() }), 'utf8');
+}
+
+function clearDesktopAuth() {
+  try {
+    fs.rmSync(getAuthStorePath(), { force: true });
+  } catch {}
+}
 
 function parseVersion(version) {
   return String(version || '')
@@ -107,6 +134,20 @@ ipcMain.handle('updates:download', async (_event, payload) => {
     return { ok: false, error: 'Download nicht moeglich' };
   }
   mainWindow.webContents.downloadURL(payload.url);
+  return { ok: true };
+});
+
+ipcMain.handle('auth:get', async () => readDesktopAuth());
+
+ipcMain.handle('auth:set', async (_event, payload) => {
+  const token = typeof payload?.token === 'string' ? payload.token : '';
+  if (!token) return { ok: false };
+  writeDesktopAuth(token);
+  return { ok: true };
+});
+
+ipcMain.handle('auth:clear', async () => {
+  clearDesktopAuth();
   return { ok: true };
 });
 
