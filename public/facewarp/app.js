@@ -48,6 +48,8 @@ const removeBgBtn = document.getElementById("removeBgBtn");
 
 const EHOSER_API_ORIGIN = window.location.protocol === "file:" ? "https://ehoser.de" : window.location.origin;
 const API_BASE = `${EHOSER_API_ORIGIN}/api`;
+const MAX_EDIT_DIMENSION = 1800;
+const MAX_HISTORY_STATES = 12;
 
 let strength = parseFloat(strengthInput.value);
 let radius = parseInt(sizeInput.value, 10);
@@ -95,9 +97,10 @@ function setHasImage(value) {
 }
 
 function saveHistory() {
+  if (!hasImage) return;
   const snapshot = imgCtx.getImageData(0, 0, imgCanvas.width, imgCanvas.height);
   historyStack.push(snapshot);
-  if (historyStack.length > 30) historyStack.shift();
+  if (historyStack.length > MAX_HISTORY_STATES) historyStack.shift();
   redoStack = [];
   syncHistoryButtons();
 }
@@ -181,8 +184,11 @@ function setCanvasSize(width, height) {
 }
 
 function drawLoadedImage(img) {
-  const targetWidth = img.naturalWidth || img.width;
-  const targetHeight = img.naturalHeight || img.height;
+  const sourceWidth = img.naturalWidth || img.width;
+  const sourceHeight = img.naturalHeight || img.height;
+  const scale = Math.min(1, MAX_EDIT_DIMENSION / Math.max(sourceWidth, sourceHeight));
+  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
   setCanvasSize(targetWidth, targetHeight);
   originalCtx.clearRect(0, 0, targetWidth, targetHeight);
   imgCtx.clearRect(0, 0, targetWidth, targetHeight);
@@ -527,6 +533,14 @@ function sampleBicubic(data, w, h, sx, sy) {
   return [r, g, b, a];
 }
 
+function sampleBicubicLocal(data, localW, localH, offsetX, offsetY, imageW, imageH, sx, sy) {
+  const clampedX = Math.max(0, Math.min(imageW - 1, sx));
+  const clampedY = Math.max(0, Math.min(imageH - 1, sy));
+  const localX = clampedX - offsetX;
+  const localY = clampedY - offsetY;
+  return sampleBicubic(data, localW, localH, localX, localY);
+}
+
 function applyStroke(from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -538,11 +552,12 @@ function applyStroke(from, to) {
   for (let i = 1; i <= steps; i += 1) {
     const x = from.x + stepX * i;
     const y = from.y + stepY * i;
-    warpAt(x, y, stepX, stepY);
+    warpAt(x, y, stepX, stepY, false);
   }
+  drawToScreen();
 }
 
-function warpAt(centerX, centerY, deltaX, deltaY) {
+function warpAt(centerX, centerY, deltaX, deltaY, shouldDraw = true) {
   const width = imgCanvas.width;
   const height = imgCanvas.height;
   if (width === 0 || height === 0) return;
@@ -555,7 +570,15 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
   const boxHeight = bottom - top;
   if (boxWidth <= 0 || boxHeight <= 0) return;
 
-  const src = imgCtx.getImageData(0, 0, width, height);
+  const pinchPad = mode === "pinch" ? radius * Math.min(0.7, strength * 0.55) : 0;
+  const pad = Math.ceil(Math.max(8, pinchPad, Math.abs(deltaX) + 4, Math.abs(deltaY) + 4));
+  const srcLeft = Math.max(0, left - pad);
+  const srcTop = Math.max(0, top - pad);
+  const srcRight = Math.min(width, right + pad);
+  const srcBottom = Math.min(height, bottom + pad);
+  const srcWidth = srcRight - srcLeft;
+  const srcHeight = srcBottom - srcTop;
+  const src = imgCtx.getImageData(srcLeft, srcTop, srcWidth, srcHeight);
   const srcData = src.data;
   const out = imgCtx.createImageData(boxWidth, boxHeight);
   const outData = out.data;
@@ -572,7 +595,10 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
       const dy = gy - centerY;
       const distSquared = dx * dx + dy * dy;
       const outIndex = (y * boxWidth + x) * 4;
-      const srcIdx = (gy * width + gx) * 4;
+      const localX = gx - srcLeft;
+      const localY = gy - srcTop;
+      const srcIdx = (localY * srcWidth + localX) * 4;
+      const origIdx = (gy * width + gx) * 4;
 
       // smooth and reconstruct modes bypass the sample-position approach
       if (distSquared < radiusSquared && (mode === "smooth" || mode === "reconstruct")) {
@@ -589,7 +615,9 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
             for (let kx = -kr; kx <= kr; kx += 1) {
               const nx = Math.max(0, Math.min(width - 1, gx + kx));
               const ny = Math.max(0, Math.min(height - 1, gy + ky));
-              const ni = (ny * width + nx) * 4;
+              const nLocalX = Math.max(0, Math.min(srcWidth - 1, nx - srcLeft));
+              const nLocalY = Math.max(0, Math.min(srcHeight - 1, ny - srcTop));
+              const ni = (nLocalY * srcWidth + nLocalX) * 4;
               rs += srcData[ni]; gs += srcData[ni + 1]; bs += srcData[ni + 2]; as_ += srcData[ni + 3];
               cnt += 1;
             }
@@ -599,10 +627,10 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
           outData[outIndex + 2] = srcData[srcIdx + 2] * (1 - t) + (bs / cnt) * t;
           outData[outIndex + 3] = srcData[srcIdx + 3] * (1 - t) + (as_ / cnt) * t;
         } else {
-          outData[outIndex]     = srcData[srcIdx]     * (1 - t) + origData[srcIdx]     * t;
-          outData[outIndex + 1] = srcData[srcIdx + 1] * (1 - t) + origData[srcIdx + 1] * t;
-          outData[outIndex + 2] = srcData[srcIdx + 2] * (1 - t) + origData[srcIdx + 2] * t;
-          outData[outIndex + 3] = srcData[srcIdx + 3] * (1 - t) + origData[srcIdx + 3] * t;
+          outData[outIndex]     = srcData[srcIdx]     * (1 - t) + origData[origIdx]     * t;
+          outData[outIndex + 1] = srcData[srcIdx + 1] * (1 - t) + origData[origIdx + 1] * t;
+          outData[outIndex + 2] = srcData[srcIdx + 2] * (1 - t) + origData[origIdx + 2] * t;
+          outData[outIndex + 3] = srcData[srcIdx + 3] * (1 - t) + origData[origIdx + 3] * t;
         }
         continue;
       }
@@ -643,7 +671,7 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
         if (sampleY > height - 1) sampleY = height - 1;
       }
 
-      const [cr, cg, cb, ca] = sampleBicubic(srcData, width, height, sampleX, sampleY);
+      const [cr, cg, cb, ca] = sampleBicubicLocal(srcData, srcWidth, srcHeight, srcLeft, srcTop, width, height, sampleX, sampleY);
       outData[outIndex]     = Math.max(0, Math.min(255, cr));
       outData[outIndex + 1] = Math.max(0, Math.min(255, cg));
       outData[outIndex + 2] = Math.max(0, Math.min(255, cb));
@@ -652,7 +680,7 @@ function warpAt(centerX, centerY, deltaX, deltaY) {
   }
 
   imgCtx.putImageData(out, left, top);
-  drawToScreen();
+  if (shouldDraw) drawToScreen();
 }
 
 strengthInput.addEventListener("input", () => {
