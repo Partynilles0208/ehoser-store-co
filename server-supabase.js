@@ -16,6 +16,7 @@ const UNLOCK_CODE = '020818';
 const ADMIN_UPLOAD_KEY = '135797531lol';
 const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre â€“ Token lÃ¤uft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
+const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -61,9 +62,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT NULL;
 CREATE TABLE IF NOT EXISTS user_profiles (
   username TEXT PRIMARY KEY,
   settings JSONB DEFAULT '{}'::jsonb,
-  pro_until TIMESTAMP NULL
+  pro_until TIMESTAMP NULL,
+  premium_until TIMESTAMP NULL
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMP NULL;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_vote BOOLEAN DEFAULT FALSE;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS premium_until TIMESTAMP NULL;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_unlocked BOOLEAN DEFAULT FALSE;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS chat_token TEXT NULL;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ps_account BOOLEAN DEFAULT FALSE;
@@ -159,6 +163,9 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
       ALTER TABLE users ADD COLUMN IF NOT EXISTS pro_until TIMESTAMP NULL;
     `);
     await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMP NULL;
+    `);
+    await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMP NULL;
     `);
     await pool.query(`
@@ -168,8 +175,12 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
       CREATE TABLE IF NOT EXISTS user_profiles (
         username TEXT PRIMARY KEY,
         settings JSONB DEFAULT '{}'::jsonb,
-        pro_until TIMESTAMP NULL
+        pro_until TIMESTAMP NULL,
+        premium_until TIMESTAMP NULL
       );
+    `);
+    await pool.query(`
+      ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS premium_until TIMESTAMP NULL;
     `);
     await pool.query(`
       ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS update_vote BOOLEAN DEFAULT FALSE;
@@ -463,6 +474,7 @@ function normalizeSettings(raw) {
     energySaver: Boolean(src.energySaver),
     displayName: typeof src.displayName === 'string' ? src.displayName.trim().slice(0, 40) : '',
     avatarUrl: typeof src.avatarUrl === 'string' ? src.avatarUrl.trim().slice(0, 2048) : '',
+    premiumUntil: typeof src.premiumUntil === 'string' ? src.premiumUntil : null,
     personalizationEnabled: src.personalizationEnabled !== false,
     personalization: normalizePersonalization(src.personalization),
     moderation: normalizeModerationSettings(src.moderation)
@@ -608,41 +620,72 @@ async function personalizeFromInteraction(groqKey, username, source, content, fa
 function normalizeProfileRow(username, row) {
   const profile = row || memoryProfiles.get(username) || {};
   const proUntil = profile.pro_until || profile.proUntil || null;
+  const premiumUntil = profile.premium_until || profile.premiumUntil || profile.settings?.premiumUntil || null;
   const ms = proUntil ? Date.parse(proUntil) : 0;
+  const premiumMs = premiumUntil ? Date.parse(premiumUntil) : 0;
+  const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
   return {
     username,
     settings: normalizeSettings(profile.settings || profile.user_settings),
     proUntil: proUntil || null,
-    isPro: Number.isFinite(ms) && ms > Date.now()
+    premiumUntil: premiumUntil || null,
+    isPremium,
+    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now())
   };
 }
 
 async function getProfile(username) {
   // PrimÃ¤r: users Tabelle (existiert immer), optional: user_profiles fÃ¼r Settings
   let proUntil = null;
+  let premiumUntil = null;
   let settings = null;
   let psAccount = false;
 
   // Pro-Status aus users Tabelle holen (primary storage)
   try {
-    const { data } = await supabase
+    let { data, error } = await supabase
       .from('users')
-      .select('pro_until')
+      .select('pro_until, premium_until')
       .eq('username', username)
       .single();
+    if (error) {
+      const fallback = await supabase.from('users').select('pro_until').eq('username', username).single();
+      data = fallback.data;
+    }
     if (data?.pro_until) proUntil = data.pro_until;
+    if (data?.premium_until) premiumUntil = data.premium_until;
   } catch {}
 
   // Settings aus user_profiles holen (optional)
   try {
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('user_profiles')
-      .select('settings, pro_until, ps_account')
+      .select('settings, pro_until, premium_until, ps_account')
       .eq('username', username)
       .single();
+    if (error) {
+      const fallback = await supabaseAdmin
+        .from('user_profiles')
+        .select('settings, pro_until, ps_account')
+        .eq('username', username)
+        .single();
+      data = fallback.data;
+      error = fallback.error;
+    }
     if (!error && data) {
       settings = data.settings;
       psAccount = data.ps_account === true;
+      const settingsPremiumUntil = settings?.premiumUntil || null;
+      if (settingsPremiumUntil) {
+        const a = premiumUntil ? Date.parse(premiumUntil) : 0;
+        const b = Date.parse(settingsPremiumUntil);
+        if (b > a) premiumUntil = settingsPremiumUntil;
+      }
+      if (data.premium_until) {
+        const a = premiumUntil ? Date.parse(premiumUntil) : 0;
+        const b = Date.parse(data.premium_until);
+        if (b > a) premiumUntil = data.premium_until;
+      }
       // Wenn user_profiles einen spÃ¤teren pro_until hat, nutze den
       if (data.pro_until) {
         const a = proUntil ? Date.parse(proUntil) : 0;
@@ -659,13 +702,22 @@ async function getProfile(username) {
     const b = Date.parse(mem.proUntil);
     if (b > a) proUntil = mem.proUntil;
   }
+  if (mem?.premiumUntil) {
+    const a = premiumUntil ? Date.parse(premiumUntil) : 0;
+    const b = Date.parse(mem.premiumUntil);
+    if (b > a) premiumUntil = mem.premiumUntil;
+  }
 
   const ms = proUntil ? Date.parse(proUntil) : 0;
+  const premiumMs = premiumUntil ? Date.parse(premiumUntil) : 0;
+  const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
   return {
     username,
-    settings: normalizeSettings(settings || mem?.settings),
+    settings: normalizeSettings({ ...(settings || mem?.settings || {}), premiumUntil: premiumUntil || null }),
     proUntil: proUntil || null,
-    isPro: Number.isFinite(ms) && ms > Date.now(),
+    premiumUntil: premiumUntil || null,
+    isPremium,
+    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
     ps_account: psAccount || false
   };
 }
@@ -673,17 +725,27 @@ async function getProfile(username) {
 async function upsertProfile(username, patch) {
   const current = await getProfile(username);
   const newProUntil = Object.prototype.hasOwnProperty.call(patch, 'proUntil') ? patch.proUntil : current.proUntil;
-  const newSettings = patch.settings ? normalizeSettings(patch.settings) : current.settings;
+  const newPremiumUntil = Object.prototype.hasOwnProperty.call(patch, 'premiumUntil') ? patch.premiumUntil : current.premiumUntil;
+  const newSettings = normalizeSettings({ ...(patch.settings ? patch.settings : current.settings), premiumUntil: newPremiumUntil || null });
 
   // Pro-Status in users Tabelle schreiben (primary â€“ existiert garantiert)
   let savedToUsers = false;
   try {
     const { error } = await supabase
       .from('users')
-      .update({ pro_until: newProUntil })
+      .update({ pro_until: newProUntil, premium_until: newPremiumUntil })
       .eq('username', username);
     if (!error) savedToUsers = true;
   } catch {}
+  if (!savedToUsers) {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ pro_until: newProUntil })
+        .eq('username', username);
+      if (!error) savedToUsers = true;
+    } catch {}
+  }
 
   // Wenn users.pro_until Spalte fehlt â†’ Auto-Spalte anlegen versuchen
   if (!savedToUsers) {
@@ -692,25 +754,34 @@ async function upsertProfile(username, patch) {
       await supabaseAdmin.from('user_profiles').upsert({
         username,
         settings: newSettings,
-        pro_until: newProUntil
+        pro_until: newProUntil,
+        premium_until: newPremiumUntil
       });
     } catch {
       // Letzter Fallback: Memory
-      memoryProfiles.set(username, { settings: newSettings, proUntil: newProUntil, pro_until: newProUntil });
+      memoryProfiles.set(username, { settings: newSettings, proUntil: newProUntil, pro_until: newProUntil, premiumUntil: newPremiumUntil, premium_until: newPremiumUntil });
     }
   }
 
   // Settings immer in user_profiles speichern (Fehler ignorieren)
   try {
-    await supabaseAdmin.from('user_profiles').upsert({ username, settings: newSettings, pro_until: newProUntil });
-  } catch {}
+    await supabaseAdmin.from('user_profiles').upsert({ username, settings: newSettings, pro_until: newProUntil, premium_until: newPremiumUntil });
+  } catch {
+    try {
+      await supabaseAdmin.from('user_profiles').upsert({ username, settings: newSettings, pro_until: newProUntil });
+    } catch {}
+  }
 
   const ms = newProUntil ? Date.parse(newProUntil) : 0;
+  const premiumMs = newPremiumUntil ? Date.parse(newPremiumUntil) : 0;
+  const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
   return {
     username,
     settings: newSettings,
     proUntil: newProUntil || null,
-    isPro: Number.isFinite(ms) && ms > Date.now()
+    premiumUntil: newPremiumUntil || null,
+    isPremium,
+    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now())
   };
 }
 
@@ -1712,7 +1783,10 @@ app.get('/api/admin/users', async (req, res) => {
       users.push({
         ...userRow,
         pro_until: profile.proUntil,
+        premium_until: profile.premiumUntil,
+        has_pro: profile.proUntil ? Date.parse(profile.proUntil) > Date.now() : false,
         is_pro: profile.isPro,
+        is_premium: profile.isPremium,
         update_unlocked: up?.update_unlocked === true,
         ps_account: up?.ps_account === true
       });
@@ -1759,6 +1833,43 @@ app.post('/api/admin/users/:id/pro', async (req, res) => {
   } catch (error) {
     console.error('Admin Pro Toggle Error:', error);
     return res.status(500).json({ error: 'Pro-Status konnte nicht geÃ¤ndert werden' });
+  }
+});
+
+// Admin: Premium aktivieren/deaktivieren
+app.post('/api/admin/users/:id/premium', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  const enabled = Boolean(req.body?.enabled);
+  const days = Math.max(1, Math.min(365, Number(req.body?.days) || 30));
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'UngÃ¼ltige Nutzer-ID' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('username')
+      .eq('id', userId)
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const username = data.username;
+    if (enabled) {
+      const profile = await extendPremiumFor(username, days * 24 * 60 * 60 * 1000);
+      return res.json({ ok: true, username, profile });
+    }
+
+    const profile = await upsertProfile(username, { premiumUntil: null });
+    return res.json({ ok: true, username, profile });
+  } catch (error) {
+    console.error('Admin Premium Toggle Error:', error);
+    return res.status(500).json({ error: 'Premium-Status konnte nicht geÃ¤ndert werden' });
   }
 });
 
@@ -3544,6 +3655,14 @@ function responseOutputText(data) {
   return chunks.join('\n').trim();
 }
 
+async function extendPremiumFor(username, ms = PREMIUM_BONUS_MS) {
+  const profile = await getProfile(username);
+  const from = profile.premiumUntil ? Date.parse(profile.premiumUntil) : 0;
+  const base = Number.isFinite(from) && from > Date.now() ? from : Date.now();
+  const next = new Date(base + ms).toISOString();
+  return upsertProfile(username, { premiumUntil: next });
+}
+
 function toOpenAIResponsesInput(messages) {
   const input = [];
   for (const msg of messages) {
@@ -3567,6 +3686,13 @@ function toOpenAIResponsesInput(messages) {
 
 // â”€â”€â”€ KI Proxy (Groq) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post('/api/ki/premium', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const profile = await getProfile(auth.username);
+  if (!profile.isPremium) {
+    return res.status(403).json({ error: 'Premium Ehoser ist nur mit Premium freigeschaltet.' });
+  }
+
   const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
   if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
 

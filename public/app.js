@@ -283,6 +283,7 @@ async function refreshCurrentProfile() {
         localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
         applyProfileSettings();
         showLoggedInUI();
+        updateKIModelAccessUI();
     } catch {}
 }
 
@@ -958,7 +959,7 @@ async function handleRegister(event) {
 
 function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
-    const plan = currentProfile?.isPro ? 'PRO' : 'Gratis';
+    const plan = currentProfile?.isPremium ? 'Premium' : (currentProfile?.isPro ? 'PRO' : 'Gratis');
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     const personalization = getPersonalization();
     const displayName = currentProfile?.settings?.displayName || currentUser.username;
@@ -973,7 +974,7 @@ function showLoggedInUI() {
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
         <a href="admin.html" class="nav-link">Admin</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
-        <span class="plan-badge ${currentProfile?.isPro ? 'pro' : ''}">${plan}</span>
+        <span class="plan-badge ${currentProfile?.isPremium ? 'premium' : (currentProfile?.isPro ? 'pro' : '')}">${plan}</span>
         <span style="display:flex;align-items:center;gap:8px;">${avatarNode}</span>
         <span class="hello-user">${psBadge} ${helloText}</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
@@ -1949,6 +1950,20 @@ let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
 let _kiModel = 'ehoser1';
 
+function hasPremiumAccess() {
+    return Boolean(currentProfile?.isPremium);
+}
+
+function updateKIModelAccessUI() {
+    const premiumBtn = document.getElementById('kiModelPremium');
+    if (!premiumBtn) return;
+    const unlocked = hasPremiumAccess();
+    premiumBtn.classList.toggle('locked', !unlocked);
+    premiumBtn.setAttribute('aria-disabled', unlocked ? 'false' : 'true');
+    premiumBtn.title = unlocked ? 'Premium Ehoser ist freigeschaltet.' : 'Nur mit Premium. PRO und Gratis sehen hier ein Schloss.';
+    premiumBtn.textContent = unlocked ? 'Premium Ehoser' : 'Premium Ehoser 🔒';
+}
+
 const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser lÃ¤uft. ehoser ist eine private Plattform mit Spielen, Chat und weiteren Features.
 Deine PersÃ¶nlichkeit ist locker, nett und ein kleines bisschen charmant â€“ aber nicht Ã¼bertrieben. Keine Kosenamen wie "Schatz" oder "SÃ¼ÃŸe". Sprich den Nutzer normal aber herzlich an.
 Wenn du den Nutzer persÃ¶nlich ansprechen mÃ¶chtest, schreibe ausschlieÃŸlich [name] anstelle des echten Namens (zum Beispiel: "Hey [name], wie kann ich helfen?"). Verwende niemals den echten Namen direkt.
@@ -1983,6 +1998,7 @@ function showKIChat() {
         const greeting = kiReplaceNamePlaceholder(`Hallo, [name]! ðŸ‘‹ Ich bin ehoser KI, dein persÃ¶nlicher Assistent auf dem ehoser Server. Wie kann ich dir heute helfen?`);
         appendKIBubble('ai', greeting);
     }
+    updateKIModelAccessUI();
     setKIModel(_kiModel);
     setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
 }
@@ -2021,6 +2037,12 @@ function kiReplaceNamePlaceholder(text) {
 }
 
 function setKIModel(model) {
+    updateKIModelAccessUI();
+    if (model === 'premium' && !hasPremiumAccess()) {
+        _kiModel = 'ehoser1';
+        showAlert('Premium Ehoser ist nur mit Premium freigeschaltet. PRO enthaelt diese neue KI nicht.', 'error');
+        model = 'ehoser1';
+    }
     _kiModel = ['ehoser1', 'premium'].includes(model) ? model : 'ehoser1';
     const config = {
         ehoser1: {
@@ -2204,6 +2226,10 @@ async function sendKIMessage() {
     const text = input?.value.trim();
     const token = localStorage.getItem('token');
     if (!text && !_kiAttachment) return;
+    if (_kiModel === 'premium' && !hasPremiumAccess()) {
+        setKIModel('ehoser1');
+        return;
+    }
 
     input.value = '';
     if (sendBtn) sendBtn.disabled = true;
