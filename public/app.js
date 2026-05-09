@@ -3,6 +3,7 @@ const EHOSER_API_ORIGIN = EHOSER_DESKTOP_MODE
     ? (window.__EHOSER_API_ORIGIN__ || 'https://ehoser.de')
     : window.location.origin;
 const API_BASE = `${EHOSER_API_ORIGIN}/api`;
+const DESKTOP_AUTH_KEY = 'ehoserDesktopActivated';
 const DESKTOP_ONLINE_MODES = new Set(['games', 'ki', 'chat', 'map', 'youtube', 'news', 'images', 'weather', 'gameCreator', 'ps']);
 let currentUser = null;
 let currentProfile = null;
@@ -28,6 +29,38 @@ function isAdminGuestPreview() {
 
 function isDesktopMode() {
     return EHOSER_DESKTOP_MODE;
+}
+
+function isDesktopActivated() {
+    return isDesktopMode() && localStorage.getItem(DESKTOP_AUTH_KEY) === '1';
+}
+
+function markDesktopActivated() {
+    if (isDesktopMode()) localStorage.setItem(DESKTOP_AUTH_KEY, '1');
+}
+
+function clearDesktopActivated() {
+    if (isDesktopMode()) localStorage.removeItem(DESKTOP_AUTH_KEY);
+}
+
+function showDesktopAuthGate() {
+    currentUser = null;
+    currentProfile = null;
+    allApps = [];
+    localStorage.removeItem('proStatus');
+    showLoggedOutUI();
+    showSection('auth');
+    showAlert('Bitte einmal anmelden, bevor du die Desktop-App nutzen kannst.', 'error');
+}
+
+function startDesktopCachedSession() {
+    currentUser = { id: 'desktop-cache', username: 'Desktop', isGuest: false, isAdmin: false };
+    currentProfile = { isPro: true, isPremium: false, ps_account: false, settings: { displayName: 'Desktop' } };
+    allApps = [];
+    localStorage.setItem('proStatus', '1');
+    showDesktopUI();
+    showSection('mode-select');
+    decorateDesktopModeCards();
 }
 
 function desktopRequiresInternet(featureName = 'Diese Funktion') {
@@ -378,6 +411,7 @@ async function handleGoogleCredentialResponse(response) {
         if (!res.ok) throw new Error(data.error || 'Google-Anmeldung fehlgeschlagen');
 
         localStorage.setItem('token', data.token);
+        markDesktopActivated();
         currentUser = { id: data.userId, username: data.username, isAdmin: false };
         currentProfile = data.profile || null;
         syncPlanStatus();
@@ -811,6 +845,7 @@ async function handleLogin(event) {
         }
 
         localStorage.setItem('token', data.token);
+        markDesktopActivated();
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
         syncPlanStatus();
@@ -960,13 +995,7 @@ function startApp() {
             verifyToken(token);
             return;
         }
-        currentUser = { id: 'desktop', username: 'Desktop', isGuest: true, isAdmin: false };
-        currentProfile = { isPro: true, isPremium: false, ps_account: false, settings: { displayName: 'Desktop' } };
-        allApps = [];
-        localStorage.setItem('proStatus', '1');
-        showDesktopUI();
-        showSection('mode-select');
-        decorateDesktopModeCards();
+        showDesktopAuthGate();
         return;
     }
 
@@ -1085,6 +1114,7 @@ async function verifyToken(token) {
         if (response.status === 401) {
             localStorage.removeItem('token');
             localStorage.removeItem('proStatus');
+            clearDesktopActivated();
             showSection('auth');
             return;
         }
@@ -1096,12 +1126,18 @@ async function verifyToken(token) {
         }
 
         if (!response.ok) {
+            if (isDesktopActivated()) {
+                startDesktopCachedSession();
+                showAlert('Offline gestartet. Online-Funktionen brauchen Internet.', 'error');
+                return;
+            }
             showSection('auth');
             return;
         }
 
         const data = await response.json();
         if (data.token) localStorage.setItem('token', data.token);
+        markDesktopActivated();
         currentUser = data.user;
         currentProfile = data.profile || null;
         // ðŸ”¥ Pro-Status in localStorage speichern fÃ¼r FaceWarp/Chat
@@ -1120,6 +1156,11 @@ async function verifyToken(token) {
             }).catch(() => {});
         }
     } catch (err) {
+        if (isDesktopActivated() && localStorage.getItem('token')) {
+            startDesktopCachedSession();
+            showAlert('Offline gestartet. Online-Funktionen brauchen Internet.', 'error');
+            return;
+        }
         showSection('auth');
     }
 }
@@ -1157,6 +1198,7 @@ async function handleRegister(event) {
         }
 
         localStorage.setItem('token', data.token);
+        markDesktopActivated();
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
         syncPlanStatus();
@@ -1497,7 +1539,7 @@ async function loadMyApps() {
 
 function showSection(sectionId) {
     const token = localStorage.getItem('token');
-    if (sectionId !== 'auth' && !token && !isAdminGuestPreview() && !isDesktopMode()) {
+    if (sectionId !== 'auth' && !token && !isAdminGuestPreview()) {
         sectionId = 'auth';
     }
 
@@ -2662,6 +2704,7 @@ async function runImageSearch() {
 function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('proStatus');
+    clearDesktopActivated();
     sessionStorage.removeItem('adminGuestPreview');
     sessionStorage.removeItem('intro_shown');
     currentUser = null;
