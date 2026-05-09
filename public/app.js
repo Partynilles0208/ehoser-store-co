@@ -2328,7 +2328,7 @@ async function sendKIMessage() {
 
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            const msg = err?.error?.message || `Fehler ${res.status}`;
+            const msg = err?.error?.message || err?.error || `Fehler ${res.status}`;
             appendKIBubble('error', 'âš ï¸ ' + msg);
             _kiHistory.pop();
             return;
