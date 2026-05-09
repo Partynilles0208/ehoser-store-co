@@ -6916,11 +6916,153 @@ body.desktop-mode .mode-hero::after {
     color: #ffd992;
 }
 
+.desktop-update-button {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 2500;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid rgba(34, 224, 191, 0.35);
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(14, 240, 208, 0.22), rgba(122, 173, 202, 0.16));
+    color: #f8fbff;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+    font-size: 0.86rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.desktop-update-button:hover {
+    border-color: rgba(34, 224, 191, 0.62);
+    transform: translateY(-1px);
+}
+
+.desktop-update-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2600;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(2, 8, 14, 0.62);
+    backdrop-filter: blur(16px);
+}
+
+.desktop-update-modal.show {
+    display: flex;
+}
+
+.desktop-update-panel {
+    position: relative;
+    width: min(520px, 100%);
+    padding: 24px;
+    border: 1px solid rgba(34, 224, 191, 0.22);
+    border-radius: 14px;
+    background: #071624;
+    color: #f8fbff;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+}
+
+.desktop-update-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #f8fbff;
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.desktop-update-kicker {
+    color: #22e0bf;
+    font-size: 0.76rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.desktop-update-panel h2 {
+    margin: 8px 44px 18px 0;
+    font-size: 1.35rem;
+    letter-spacing: 0;
+}
+
+.desktop-update-grid {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 9px 14px;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+}
+
+.desktop-update-grid span {
+    color: rgba(248, 251, 255, 0.62);
+}
+
+.desktop-update-grid strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.desktop-update-progress {
+    height: 12px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.desktop-update-progress > div {
+    width: 0%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #22e0bf, #7aacca);
+    transition: width 0.18s ease;
+}
+
+.desktop-update-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 9px;
+    color: rgba(248, 251, 255, 0.76);
+    font-size: 0.84rem;
+}
+
+#desktopUpdateStatus {
+    margin: 16px 0 0;
+    color: rgba(248, 251, 255, 0.78);
+    line-height: 1.45;
+}
+
 @media (max-width: 640px) {
     body.desktop-mode .mode-hero::after {
         position: static;
         display: block;
         margin-top: 16px;
         font-size: 0.86rem;
+    }
+
+    .desktop-update-button {
+        top: 10px;
+        right: 10px;
+        max-width: calc(100vw - 20px);
+        min-height: 36px;
+        padding: 0 11px;
+        font-size: 0.78rem;
+    }
+
+    .desktop-update-panel {
+        padding: 20px;
+    }
+
+    .desktop-update-grid {
+        grid-template-columns: 74px 1fr;
     }
 }
