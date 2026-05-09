@@ -462,9 +462,20 @@ function updateGoogleAuthVisibility() {
     const gate = document.getElementById('googleAuthGate');
     if (!gate) return;
     if (isDesktopMode()) {
-        gate.style.display = 'none';
+        const codeOk = getActiveAuthUnlockCode() === '020818';
+        gate.style.display = codeOk ? 'block' : 'none';
+        gate.classList.add('desktop-auth-gate');
+        const title = gate.querySelector('.google-auth-gate-title');
+        const buttonHost = document.getElementById('googleSignInButton');
+        const notConfiguredMsg = document.getElementById('googleNotConfiguredMsg');
+        if (title) title.textContent = 'Desktop-App Anmeldung';
+        if (buttonHost) {
+            buttonHost.innerHTML = '<p class="desktop-auth-gate-copy">Nutze Benutzername mit Passwort oder Login-Code. Google-Anmeldung ist nur in der Web-Version aktiv.</p>';
+        }
+        if (notConfiguredMsg) notConfiguredMsg.style.display = 'none';
         return;
     }
+    gate.classList.remove('desktop-auth-gate');
     const codeOk = getActiveAuthUnlockCode() === '020818';
     gate.style.display = codeOk ? 'block' : 'none';
     if (!codeOk) return;
