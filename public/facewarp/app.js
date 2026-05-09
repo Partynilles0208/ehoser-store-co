@@ -46,6 +46,9 @@ const stickerInput = document.getElementById("stickerInput");
 const removeStickerBtn = document.getElementById("removeStickerBtn");
 const removeBgBtn = document.getElementById("removeBgBtn");
 
+const EHOSER_API_ORIGIN = window.location.protocol === "file:" ? "https://ehoser.de" : window.location.origin;
+const API_BASE = `${EHOSER_API_ORIGIN}/api`;
+
 let strength = parseFloat(strengthInput.value);
 let radius = parseInt(sizeInput.value, 10);
 let softness = parseFloat(softnessInput.value);
@@ -287,7 +290,7 @@ async function resolveTierFromServer() {
   }
   
   try {
-    const res = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
     const proByAccount = Boolean(data?.profile?.isPro);
     // 🔥 Ergebnis in localStorage speichern
@@ -439,7 +442,7 @@ function renderPixabayResults(hits) {
     img.alt = hit.tags || "Pixabay Bild";
     img.loading = "lazy";
     const previewSrc = hit.previewURL || hit.webformatURL;
-    img.src = `${window.location.origin}/api/pixabay/image?url=${encodeURIComponent(previewSrc)}`;
+    img.src = `${API_BASE}/pixabay/image?url=${encodeURIComponent(previewSrc)}`;
     img.onerror = () => { img.src = previewSrc; }; // Fallback direkt
 
     button.appendChild(img);
@@ -481,7 +484,7 @@ async function searchPixabay(query) {
   try {
     const token = localStorage.getItem('token') || '';
     const params = new URLSearchParams({ q: query });
-    const response = await fetch(`${window.location.origin}/api/pixabay?${params.toString()}`, {
+    const response = await fetch(`${API_BASE}/pixabay?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!response.ok) {
@@ -718,7 +721,7 @@ if (saveToChatBtn) {
     saveToChatBtn.textContent = '⏳ Speichern…';
     saveToChatBtn.disabled = true;
     try {
-      const res = await fetch('/api/chat/upload', {
+      const res = await fetch(`${API_BASE}/chat/upload`, {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + token },
         body: formData
@@ -754,7 +757,7 @@ pixabayQuery.addEventListener("keydown", (event) => {
 pixabayUseBtn.addEventListener("click", () => {
   if (!selectedPixabay) return;
   const rawUrl = selectedPixabay.webformatURL || selectedPixabay.previewURL;
-  const proxyUrl = `${window.location.origin}/api/pixabay/image?url=${encodeURIComponent(rawUrl)}`;
+  const proxyUrl = `${API_BASE}/pixabay/image?url=${encodeURIComponent(rawUrl)}`;
   setPixabayStatus("Bild wird geladen...");
   if (editorMode === "sticker") {
     setStickerImageFromUrl(proxyUrl);
@@ -871,7 +874,7 @@ tierProBtn.addEventListener("click", async () => {
   }
   tierProBtn.disabled = true;
   try {
-    const res = await fetch("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
     if (data?.profile?.isPro) {
       setTier("pro");

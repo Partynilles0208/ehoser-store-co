@@ -1,5 +1,6 @@
 ﻿'use strict';
-const API = window.location.origin + '/api';
+const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : window.location.origin;
+const API = API_ORIGIN + '/api';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let _token = null, _me = null, _myKeys = null;
