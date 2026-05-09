@@ -6869,3 +6869,58 @@ textarea::placeholder {
         animation: final-flash 0.24s ease-out 2.52s forwards;
     }
 }
+
+/* -- Desktop offline app --------------------------------------------------- */
+body.desktop-mode .navbar {
+    border-color: rgba(34, 224, 191, 0.3);
+}
+
+body.desktop-mode .mode-hero::after {
+    content: "Desktop-App: Lokale Tools funktionieren ohne Internet. Online-Features nutzen ehoser.de/Vercel.";
+    position: absolute;
+    left: clamp(18px, 4vw, 54px);
+    right: clamp(18px, 4vw, 54px);
+    bottom: clamp(18px, 4vw, 42px);
+    padding: 12px 14px;
+    border: 1px solid rgba(34, 224, 191, 0.22);
+    border-radius: 10px;
+    background: rgba(34, 224, 191, 0.08);
+    color: rgba(248, 245, 238, 0.82);
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+
+.mode-card-online-only {
+    opacity: 0.62;
+}
+
+.mode-card-online-only:hover {
+    opacity: 0.86;
+}
+
+.desktop-online-badge {
+    grid-column: 1 / -1;
+    width: fit-content;
+    margin-top: auto;
+    padding: 5px 9px;
+    border: 1px solid rgba(247, 184, 75, 0.35);
+    border-radius: 999px;
+    background: rgba(247, 184, 75, 0.11);
+    color: #ffd992;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.desktop-online-link {
+    border-color: rgba(247, 184, 75, 0.24);
+    color: #ffd992;
+}
+
+@media (max-width: 640px) {
+    body.desktop-mode .mode-hero::after {
+        position: static;
+        display: block;
+        margin-top: 16px;
+        font-size: 0.86rem;
+    }
+}

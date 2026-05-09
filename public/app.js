@@ -1,4 +1,9 @@
-﻿const API_BASE = `${window.location.origin}/api`;
+﻿const EHOSER_DESKTOP_MODE = Boolean(window.__EHOSER_DESKTOP__) || new URLSearchParams(window.location.search).get('desktop') === '1';
+const EHOSER_API_ORIGIN = EHOSER_DESKTOP_MODE
+    ? (window.__EHOSER_API_ORIGIN__ || 'https://ehoser.de')
+    : window.location.origin;
+const API_BASE = `${EHOSER_API_ORIGIN}/api`;
+const DESKTOP_ONLINE_MODES = new Set(['games', 'ki', 'chat', 'map', 'youtube', 'news', 'images', 'weather', 'gameCreator', 'ps']);
 let currentUser = null;
 let currentProfile = null;
 let allApps = [];
@@ -18,9 +23,43 @@ function isAdminGuestPreview() {
     return sessionStorage.getItem('adminGuestPreview') === '1';
 }
 
+function isDesktopMode() {
+    return EHOSER_DESKTOP_MODE;
+}
+
+function desktopRequiresInternet(featureName = 'Diese Funktion') {
+    showAlert(`${featureName}: Internetverbindung erforderlich. Diese EXE verbindet sich online mit ehoser.de, damit die Vercel Environment Variables genutzt werden.`, 'error');
+    showSection('mode-select');
+}
+
+function desktopNetworkUnavailable(featureName) {
+    if (!isDesktopMode()) return false;
+    if (navigator.onLine !== false) return false;
+    desktopRequiresInternet(featureName);
+    return true;
+}
+
+function decorateDesktopModeCards() {
+    if (!isDesktopMode()) return;
+    document.body.classList.add('desktop-mode');
+    document.querySelectorAll('.mode-card').forEach((card) => {
+        const onclick = card.getAttribute('onclick') || '';
+        const match = onclick.match(/selectMode\('([^']+)'\)/);
+        const mode = match ? match[1] : '';
+        if (!DESKTOP_ONLINE_MODES.has(mode)) return;
+        card.classList.add('mode-card-online-only');
+        if (!card.querySelector('.desktop-online-badge')) {
+            const badge = document.createElement('span');
+            badge.className = 'desktop-online-badge';
+            badge.textContent = 'Internet erforderlich';
+            card.appendChild(badge);
+        }
+    });
+}
+
 // Client-Konfiguration (API Keys sicher vom Backend laden)
 window.__ENV__ = { __loaded: false };
-fetch('/api/config').then(r => r.json()).then(cfg => {
+fetch(`${API_BASE}/config`).then(r => r.json()).then(cfg => {
     window.__ENV__ = { ...cfg, __loaded: true };
     updateGoogleAuthVisibility();
 }).catch(() => {
@@ -777,6 +816,21 @@ function startApp() {
     stopOnlinePolling();
     stopResetStatusPolling();
 
+    if (isDesktopMode()) {
+        if (token) {
+            verifyToken(token);
+            return;
+        }
+        currentUser = { id: 'desktop', username: 'Desktop', isGuest: true, isAdmin: false };
+        currentProfile = { isPro: true, isPremium: false, ps_account: false, settings: { displayName: 'Desktop' } };
+        allApps = [];
+        localStorage.setItem('proStatus', '1');
+        showDesktopUI();
+        showSection('mode-select');
+        decorateDesktopModeCards();
+        return;
+    }
+
     if (token) {
         verifyToken(token);
         return;
@@ -802,6 +856,10 @@ function startApp() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    if (isDesktopMode()) {
+        decorateDesktopModeCards();
+    }
+
     // Referral-Code aus URL lesen
     const ref = new URLSearchParams(window.location.search).get('ref');
     pendingReferral = ref || localStorage.getItem('pendingReferralCode') || null;
@@ -1299,7 +1357,7 @@ async function loadMyApps() {
 
 function showSection(sectionId) {
     const token = localStorage.getItem('token');
-    if (sectionId !== 'auth' && !token && !isAdminGuestPreview()) {
+    if (sectionId !== 'auth' && !token && !isAdminGuestPreview() && !isDesktopMode()) {
         sectionId = 'auth';
     }
 
@@ -1326,6 +1384,16 @@ function showSection(sectionId) {
     if (sectionId === 'games') {
         if (!gamesAllLoaded.length) loadGames();
     }
+}
+
+function showDesktopUI() {
+    const navLinks = document.getElementById('navLinks');
+    if (!navLinks) return;
+    navLinks.innerHTML = `
+        <span class="hello-user">Desktop-App - ehoser.de</span>
+        <a href="#" onclick="showSection('mode-select')" class="nav-link">Tools</a>
+        <a href="#" onclick="showSection('auth')" class="nav-link desktop-online-link">Online-Konto</a>
+    `;
 }
 
 let _unlockCode = null;
@@ -1370,6 +1438,22 @@ async function copyUnlockCode() {
 }
 
 function selectMode(mode) {
+    if (isDesktopMode() && DESKTOP_ONLINE_MODES.has(mode)) {
+        const names = {
+            games: 'Online Spiele',
+            ki: 'KI',
+            chat: 'Chat',
+            map: 'Karte',
+            youtube: 'YouTube',
+            news: 'Nachrichten',
+            images: 'Bildersuche',
+            weather: 'Wetter',
+            gameCreator: 'Game Creator',
+            ps: 'PS'
+        };
+        if (desktopNetworkUnavailable(names[mode] || 'Diese Funktion')) return;
+    }
+
     if (mode === 'store') {
         showSection('mode-select');
     } else if (mode === 'games') {
@@ -1793,7 +1877,7 @@ async function newsLoad(cat) {
     if (status) status.textContent = 'Nachrichten werden geladen...';
     if (grid)   grid.innerHTML = '';
     try {
-        const res  = await fetch(`/api/news?cat=${encodeURIComponent(_newsCat)}`);
+        const res  = await fetch(`${API_BASE}/news?cat=${encodeURIComponent(_newsCat)}`);
         if (!res.ok) { const err = await res.json().catch(()=>({})); if (status) status.textContent = 'Fehler: ' + (err.error || res.statusText); return; }
         const data = await res.json();
         if (!data.articles?.length) { if (status) status.textContent = 'Keine Artikel gefunden.'; return; }
@@ -1812,7 +1896,7 @@ async function newsSearch() {
     if (status) status.textContent = 'Suche laeuft...';
     if (grid)   grid.innerHTML = '';
     try {
-        const res  = await fetch(`/api/news?q=${encodeURIComponent(q)}`);
+        const res  = await fetch(`${API_BASE}/news?q=${encodeURIComponent(q)}`);
         if (!res.ok) { const err = await res.json().catch(()=>({})); if (status) status.textContent = 'Fehler: ' + (err.error || res.statusText); return; }
         const data = await res.json();
         if (!data.articles?.length) { if (status) status.textContent = 'Keine Artikel gefunden.'; return; }
@@ -2180,7 +2264,7 @@ async function kiStartVideoGeneration(prompt) {
     const { div, status } = bubble;
     const messages = document.getElementById('kiMessages');
     try {
-        const res = await fetch('/api/ki/video/create', {
+        const res = await fetch(`${API_BASE}/ki/video/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt })
@@ -2318,7 +2402,7 @@ async function sendKIMessage() {
     const typing = showKITyping();
 
     try {
-        const res = await fetch(_kiModel === 'premium' ? '/api/ki/premium' : '/api/ki', {
+        const res = await fetch(_kiModel === 'premium' ? `${API_BASE}/ki/premium` : `${API_BASE}/ki`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -3583,7 +3667,9 @@ function closeFacewarpModeModal() {
 
 function openFacewarpWithTier(tier) {
     const safeTier = tier === 'pro' ? 'pro' : 'basic';
-    window.location.href = `/facewarp/?tier=${safeTier}`;
+    window.location.href = isDesktopMode()
+        ? `facewarp/index.html?tier=${safeTier}`
+        : `/facewarp/?tier=${safeTier}`;
 }
 
 function showAlert(message, type) {
@@ -4060,7 +4146,7 @@ async function sendGamePrompt() {
 
     try {
         const token = localStorage.getItem('token');
-        const res = await fetch('/api/game/create', {
+        const res = await fetch(`${API_BASE}/game/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
             body: JSON.stringify({ prompt, currentCode: _gameCurrentCode || undefined })
