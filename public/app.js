@@ -202,7 +202,7 @@ async function handleGoogleCredentialResponse(response) {
         localStorage.setItem('token', data.token);
         currentUser = { id: data.userId, username: data.username, isAdmin: false };
         currentProfile = data.profile || null;
-        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+        syncPlanStatus();
         applyProfileSettings();
         showLoggedInUI();
         await loadApps();
@@ -272,6 +272,24 @@ function getPersonalization() {
     return currentProfile?.settings?.personalization || null;
 }
 
+function hasPremiumAccess() {
+    const until = currentProfile?.premiumUntil || currentProfile?.settings?.premiumUntil || null;
+    const untilMs = until ? Date.parse(until) : 0;
+    return currentProfile?.isPremium === true || (Number.isFinite(untilMs) && untilMs > Date.now());
+}
+
+function hasProAccess() {
+    return hasPremiumAccess() || currentProfile?.isPro === true;
+}
+
+function syncPlanStatus() {
+    if (!currentProfile) return;
+    currentProfile.isPremium = hasPremiumAccess();
+    currentProfile.isPro = hasProAccess();
+    localStorage.setItem('proStatus', currentProfile.isPro ? '1' : '0');
+    localStorage.setItem('premiumStatus', currentProfile.isPremium ? '1' : '0');
+}
+
 async function refreshCurrentProfile() {
     const token = localStorage.getItem('token');
     if (!token) return;
@@ -280,12 +298,21 @@ async function refreshCurrentProfile() {
         const data = await res.json();
         if (!res.ok || !data?.profile) return;
         currentProfile = data.profile;
-        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+        syncPlanStatus();
         applyProfileSettings();
         showLoggedInUI();
         updateKIModelAccessUI();
     } catch {}
 }
+
+let _lastProfileFocusRefresh = 0;
+window.addEventListener('focus', () => {
+    if (!localStorage.getItem('token') || isAdminGuestPreview()) return;
+    const now = Date.now();
+    if (now - _lastProfileFocusRefresh < 5000) return;
+    _lastProfileFocusRefresh = now;
+    refreshCurrentProfile();
+});
 
 async function trackPersonalizationEvent(type, payload) {
     if (currentProfile?.settings?.personalizationEnabled === false) return;
@@ -608,7 +635,7 @@ async function handleLogin(event) {
         localStorage.setItem('token', data.token);
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
-        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+        syncPlanStatus();
         applyProfileSettings();
         showAlert('Erfolgreich angemeldet!', 'success');
 
@@ -877,7 +904,7 @@ async function verifyToken(token) {
         currentUser = data.user;
         currentProfile = data.profile || null;
         // ðŸ”¥ Pro-Status in localStorage speichern fÃ¼r FaceWarp/Chat
-        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+        syncPlanStatus();
         applyProfileSettings();
         showLoggedInUI();
         await loadApps();
@@ -931,7 +958,7 @@ async function handleRegister(event) {
         localStorage.setItem('token', data.token);
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
-        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+        syncPlanStatus();
         applyProfileSettings();
         window.alert(`Dein Login-Code: ${data.loginCode}\nDiesen Code sicher speichern. Du kannst ihn als Backup zum Anmelden nutzen.`);
         if (data.referralApplied) {
@@ -959,7 +986,8 @@ async function handleRegister(event) {
 
 function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
-    const plan = currentProfile?.isPremium ? 'Premium' : (currentProfile?.isPro ? 'PRO' : 'Gratis');
+    syncPlanStatus();
+    const plan = hasPremiumAccess() ? 'Premium' : (hasProAccess() ? 'PRO' : 'Gratis');
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     const personalization = getPersonalization();
     const displayName = currentProfile?.settings?.displayName || currentUser.username;
@@ -974,7 +1002,7 @@ function showLoggedInUI() {
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
         <a href="admin.html" class="nav-link">Admin</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
-        <span class="plan-badge ${currentProfile?.isPremium ? 'premium' : (currentProfile?.isPro ? 'pro' : '')}">${plan}</span>
+        <span class="plan-badge ${hasPremiumAccess() ? 'premium' : (hasProAccess() ? 'pro' : '')}">${plan}</span>
         <span style="display:flex;align-items:center;gap:8px;">${avatarNode}</span>
         <span class="hello-user">${psBadge} ${helloText}</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
@@ -986,7 +1014,7 @@ function showLoggedInUI() {
 
     // Spiel-erstellen-Karte zeigen/verstecken (nur Pro)
     const gameCard = document.getElementById('gameCreatorCard');
-    if (gameCard) gameCard.style.display = currentProfile?.isPro ? '' : 'none';
+    if (gameCard) gameCard.style.display = hasProAccess() ? '' : 'none';
 
     applyPersonalizationUI();
 }
@@ -1143,7 +1171,7 @@ async function installApp(appId, button) {
     }
 
     const app = allApps.find((item) => item.id === appId);
-    const isPro = Boolean(currentProfile?.isPro);
+    const isPro = hasProAccess();
     const token = localStorage.getItem('token');
 
     try {
@@ -1950,10 +1978,6 @@ let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
 let _kiModel = 'ehoser1';
 
-function hasPremiumAccess() {
-    return Boolean(currentProfile?.isPremium);
-}
-
 function updateKIModelAccessUI() {
     const premiumBtn = document.getElementById('kiModelPremium');
     if (!premiumBtn) return;
@@ -2505,13 +2529,19 @@ function updatePlanBadge() {
     const el = document.getElementById('planBadge');
     if (!el) return;
 
-    if (currentProfile?.isPro) {
+    if (hasPremiumAccess()) {
+        const premiumUntil = currentProfile?.premiumUntil || currentProfile?.settings?.premiumUntil || '';
+        const until = premiumUntil ? new Date(premiumUntil).toLocaleDateString('de-DE') : '';
+        el.textContent = until ? `Plan: Premium bis ${until}` : 'Plan: Premium';
+        el.classList.add('pro', 'premium');
+    } else if (hasProAccess()) {
         const until = currentProfile.proUntil ? new Date(currentProfile.proUntil).toLocaleDateString('de-DE') : '';
         el.textContent = until ? `Plan: PRO bis ${until}` : 'Plan: PRO';
         el.classList.add('pro');
+        el.classList.remove('premium');
     } else {
         el.textContent = 'Plan: Gratis';
-        el.classList.remove('pro');
+        el.classList.remove('pro', 'premium');
     }
 }
 
@@ -2677,7 +2707,7 @@ async function uploadAccountAvatar() {
         }
         currentProfile = saveData.profile || currentProfile;
         if (currentProfile) {
-            localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+            syncPlanStatus();
             applyProfileSettings();
             showLoggedInUI();
         }
@@ -3497,7 +3527,7 @@ async function saveAccountSettings() {
             return;
         }
         currentProfile = data.profile;
-        localStorage.setItem('proStatus', currentProfile?.isPro ? '1' : '0');
+        syncPlanStatus();
         applyProfileSettings();
         showLoggedInUI();
         closeSettingsModal();
@@ -3766,7 +3796,7 @@ function openGame(url, title) {
     if (!url) return;
     
     // Wenn kein Pro â†’ Timer starten (15 Min)
-    if (currentProfile && !currentProfile.isPro) {
+    if (currentProfile && !hasProAccess()) {
         _startGameTimer();
     } else {
         _stopGameTimer();
@@ -3956,7 +3986,7 @@ async function endShareSession() {
 let _gameCurrentCode = '';
 
 function openGameCreator() {
-    if (!currentProfile?.isPro) {
+    if (!hasProAccess()) {
         showAlert('Spiele erstellen ist nur für PRO-Nutzer verfügbar.', 'error');
         return;
     }
