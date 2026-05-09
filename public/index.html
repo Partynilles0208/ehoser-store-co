@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ehoser – Offizielle Website</title>
-    <meta name="description" content="Ehoser – Projekte, Tools, Spiele, KI und mehr.">
+    <title>Ehoser Control Center</title>
+    <meta name="description" content="Ehoser Control Center – Browser-Workspace für Spiele, KI, Karten, Medien und schnelle Tools.">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=14">
+    <link rel="stylesheet" href="styles.css?v=15">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
@@ -27,25 +27,25 @@
     <div id="introSplash" class="intro-splash">
         <!-- Phase 1: Blaues Logo + ehoser Text -->
         <div class="intro-logo-blue" id="introLogoBlue">E</div>
-        <div class="intro-ehoser-text" id="introEhoserText">ehoser</div>
+        <div class="intro-ehoser-text" id="introEhoserText">ehoser labs</div>
 
         <!-- Phase 2: Pinkes Logo + by Nils Becker -->
         <div class="intro-logo-pink" id="introLogoPink">E</div>
         <div class="intro-nils-text" id="introNilsText">
-            <span class="intro-by">by</span>
-            <span class="intro-nils">Nils Becker</span>
+            <span class="intro-by">Browser Suite</span>
+            <span class="intro-nils">Tools. Games. KI.</span>
         </div>
 
         <!-- Phase 3: Blauer Badge + KI & Kreativität -->
         <div class="intro-badge-row" id="introBadgeBlue">
             <div class="intro-badge-icon intro-badge-icon-blue">E</div>
-            <span class="intro-badge-label">KI &amp; Kreativit&#228;t</span>
+            <span class="intro-badge-label">Alles neu aufgebaut</span>
         </div>
 
         <!-- Phase 4: Grüner Badge + Kostenlos & Community -->
         <div class="intro-badge-row" id="introBadgeGreen">
             <div class="intro-badge-icon intro-badge-icon-green">E</div>
-            <span class="intro-badge-label">Kostenlos &amp; Community</span>
+            <span class="intro-badge-label">Schnell. Klar. Direkt.</span>
         </div>
 
         <!-- Blitz nach Phase 4 -->
@@ -58,7 +58,7 @@
         </div>
 
         <!-- Phase 6: Tagline von rechts -->
-        <div class="intro-tagline" id="introTagline">Spa&#223; in der Schule</div>
+        <div class="intro-tagline" id="introTagline">Dein neuer Startpunkt</div>
 
         <!-- Finaler Blitz -->
         <div class="intro-flash-final" id="introFlashFinal"></div>
@@ -139,8 +139,8 @@
                 <div class="mode-select-container">
                     <div class="mode-hero">
                         <span class="logo-icon mode-logo">E</span>
-                        <h1 id="modeTitle" class="mode-title">Ehoser – Offizielle Website</h1>
-                        <p id="modeSubtitle" class="mode-subtitle">Deine All-in-One Toolbox im Browser – Spiele, KI, Karte, Kreativtools, Entwickler-Utilities und vieles mehr. Alles kostenlos, alles sofort, entwickelt von Nils Becker.</p>
+                        <h1 id="modeTitle" class="mode-title">Ehoser Control Center</h1>
+                        <p id="modeSubtitle" class="mode-subtitle">Ein neu sortierter Workspace f&#252;r Spiele, KI, Karten, Medien und schnelle Tools. Alles startet direkt im Browser.</p>
                         <div id="personalizationBanner" class="personalization-banner" style="display:none;"></div>
                         <div class="mode-search-bar">
                             <input type="text" id="modeSearchInput" class="mode-search-input" placeholder="Feature suchen…" oninput="filterModeCards(this.value)" autocomplete="off">
@@ -784,18 +784,36 @@
             <section id="auth" class="section active">
                 <div class="auth-container">
                     <div class="hero-copy">
-                        <p class="eyebrow">Geschlossener Mitgliederbereich</p>
-                        <h2>Sicher anmelden und direkt loslegen.</h2>
-                        <p>Nur Mitglieder mit Entsperrcode sehen ehoser. Nach dem Beitritt nutzt du die Plattform direkt im Browser.</p>
+                        <p class="eyebrow">Private Browser-Suite</p>
+                        <h2>Eintritt ins Control Center.</h2>
+                        <p>Mit Zugangscode öffnest du deinen Workspace für Tools, Spiele, KI und Medien direkt im Browser.</p>
                         <div class="hero-pills">
-                            <span>Sicherer Zugang</span>
-                            <span>Privater Bereich</span>
-                            <span>Admin-Verwaltung</span>
+                            <span>Access Gate</span>
+                            <span>Direkt startklar</span>
+                            <span>Workspace-Modus</span>
+                        </div>
+                        <div class="auth-dashboard-preview" aria-hidden="true">
+                            <div class="auth-preview-top">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <div class="auth-preview-row is-wide">
+                                <strong>Control Center</strong>
+                                <small>online</small>
+                            </div>
+                            <div class="auth-preview-grid">
+                                <span>KI</span>
+                                <span>Games</span>
+                                <span>Tools</span>
+                                <span>Media</span>
+                            </div>
+                            <div class="auth-preview-meter"><span></span></div>
                         </div>
                     </div>
                     <div class="auth-card">
-                        <h2>Willkommen bei ehoser</h2>
-                        <p class="auth-subtitle">Exklusiver Bereich für Mitglieder</p>
+                        <h2>Account öffnen</h2>
+                        <p class="auth-subtitle">Code eingeben, Profil erstellen und loslegen.</p>
 
                         <div class="auth-tabs">
                             <button class="auth-tab active" onclick="switchAuthTab('register', this)">Registrieren</button>
@@ -936,7 +954,7 @@
 
                         <div class="auth-info">
                             <h3>Warum ein Zugangscode?</h3>
-                            <p>Du steuerst exakt, wer ehoser nutzen darf. Nur freigegebene Nutzer sehen die Inhalte.</p>
+                            <p>Der Code hält den Workspace privat. Nur freigegebene Nutzer bekommen Zugriff auf die Inhalte.</p>
                         </div>
                     </div>
                 </div>

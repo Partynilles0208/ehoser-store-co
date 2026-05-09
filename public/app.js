@@ -342,8 +342,8 @@ function applyPersonalizationUI() {
     const searchInput = document.getElementById('searchInput');
     const cardsWrap = document.querySelector('.mode-cards');
     const personalization = getPersonalization();
-    const defaultTitle = 'Ehoser – Offizielle Website';
-    const defaultSubtitle = 'Willkommen auf der offiziellen Website von Ehoser. Hier findest du Online-Spiele, KI-Tools, Face Warp, Karte, Wetter, Chat und viele weitere Funktionen – alles an einem Ort, entwickelt von Nils Becker.';
+    const defaultTitle = 'Ehoser Control Center';
+    const defaultSubtitle = 'Ein neu sortierter Workspace für Spiele, KI, Karten, Medien und schnelle Tools. Alles startet direkt im Browser.';
 
     document.body.dataset.personalizationTone = personalization?.tone || 'neutral';
     document.body.dataset.personalizationLayout = personalization?.layout || 'standard';
@@ -373,7 +373,7 @@ function applyPersonalizationUI() {
         searchInput.setAttribute(
             'placeholder',
             personalization?.simplifySearch
-                ? 'Beschreibe kurz, was du suchst - ehoser macht es einfacher'
+                ? 'Beschreibe kurz, was du starten willst'
                 : searchInput.dataset.defaultPlaceholder
         );
     }
@@ -830,21 +830,24 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.style.overflow = '';
             showCaptcha();
         } else {
-            // 13.8s: Big Logo erscheint mit Bounce
+            // Neues Intro: kompaktes Reveal statt langer Splash-Sequenz
+            const compactIntro = window.matchMedia?.('(max-width: 640px)').matches;
+            const bigLogoDelay = compactIntro ? 1200 : 3000;
+            const splashEndDelay = compactIntro ? 2800 : 5200;
             const bigLogo = document.getElementById('introBigLogo');
             if (bigLogo) {
                 setTimeout(() => {
                     bigLogo.style.opacity = '1';
-                    bigLogo.style.transition = 'opacity 0.12s ease, transform 0.5s cubic-bezier(.2,1.4,.3,1)';
-                    bigLogo.style.transform = 'scale(1.1)';
+                    bigLogo.style.transition = 'opacity 0.18s ease, transform 0.65s cubic-bezier(.2,1.3,.3,1)';
+                    bigLogo.style.transform = 'translateY(0) scale(1)';
                     setTimeout(() => {
-                        bigLogo.style.transition = 'transform 0.25s ease-out';
-                        bigLogo.style.transform = 'scale(1)';
-                    }, 500);
-                }, 13800);
+                        bigLogo.style.transition = 'transform 0.28s ease-out';
+                        bigLogo.style.transform = 'translateY(0) scale(0.98)';
+                    }, 650);
+                }, bigLogoDelay);
             }
 
-            // 15.6s: Finaler Blitz ist am Peak → Splash weg, Seite erscheint sofort
+            // Finaler Übergang auf die neue Oberfläche, auf Mobile schneller
             setTimeout(() => {
                 splash.remove();
                 document.body.classList.remove('splash-active');
@@ -861,7 +864,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (bodyFlash.parentNode) bodyFlash.remove();
                 }, 500);
                 showCaptcha();
-            }, 15600);
+            }, splashEndDelay);
         }
     } else {
         document.body.classList.remove('splash-active');
