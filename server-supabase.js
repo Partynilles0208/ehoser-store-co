@@ -338,7 +338,18 @@ const PUBLIC_API_PATHS = new Set([
 ]);
 
 function isPublicApiPath(pathname) {
-  return PUBLIC_API_PATHS.has(pathname) || pathname.startsWith('/api/admin/');
+  return PUBLIC_API_PATHS.has(pathname)
+    || pathname.startsWith('/api/admin/')
+    || pathname.startsWith('/api/ki')
+    || pathname === '/api/apps'
+    || pathname.startsWith('/api/apps/')
+    || pathname === '/api/games'
+    || pathname === '/api/news'
+    || pathname === '/api/repo/version'
+    || pathname.startsWith('/api/pixabay')
+    || pathname === '/api/online-users'
+    || pathname === '/api/guest-heartbeat'
+    || pathname === '/api/vote/status';
 }
 
 const createLoginCode = () => {
@@ -1709,7 +1720,8 @@ app.get('/api/admin/users', async (req, res) => {
     res.json(users);
   } catch (error) {
     console.error('Admin Users Error:', error);
-    res.status(500).json({ error: 'Nutzer konnten nicht geladen werden' });
+    res.setHeader('x-admin-offline', '1');
+    res.json([]);
   }
 });
 
@@ -1826,7 +1838,8 @@ app.get('/api/admin/reset-requests', async (req, res) => {
     res.json(data || []);
   } catch (error) {
     console.error('Admin Reset Requests Error:', error);
-    res.status(500).json({ error: 'Reset-Anfragen konnten nicht geladen werden' });
+    res.setHeader('x-admin-offline', '1');
+    res.json([]);
   }
 });
 
@@ -1904,7 +1917,8 @@ app.get('/api/admin/chat-reports', async (req, res) => {
     if (error) throw error;
     res.json({ reports: data || [] });
   } catch (error) {
-    res.status(500).json({ error: 'Meldungen konnten nicht geladen werden' });
+    res.setHeader('x-admin-offline', '1');
+    res.json({ reports: [] });
   }
 });
 
@@ -3303,8 +3317,13 @@ app.get('/api/admin/votes', async (req, res) => {
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
     return res.status(401).json({ error: 'UngÃ¼ltiger Admin-Key' });
   }
-  const status = await getVoteStatus();
-  res.json({ ...status, threshold: VOTE_THRESHOLD, remaining: Math.max(0, VOTE_THRESHOLD - status.count) });
+  try {
+    const status = await getVoteStatus();
+    res.json({ ...status, threshold: VOTE_THRESHOLD, remaining: Math.max(0, VOTE_THRESHOLD - status.count) });
+  } catch {
+    res.setHeader('x-admin-offline', '1');
+    res.json({ count: 0, unlocked: false, voters: [], threshold: VOTE_THRESHOLD, remaining: VOTE_THRESHOLD });
+  }
 });
 
 // â”€â”€â”€ Psychologischer Support (PS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -3513,7 +3532,87 @@ WICHTIG: Antworte NUR mit dem kompletten HTML-Code. Kein erklÃ¤render Text dav
 // In-Memory Safeguard Violations: username -> { count, blockedUntil }
 const kiSafeguardViolations = new Map();
 
+function responseOutputText(data) {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) return data.output_text;
+  const chunks = [];
+  for (const item of data?.output || []) {
+    for (const content of item?.content || []) {
+      if (typeof content?.text === 'string') chunks.push(content.text);
+      if (typeof content?.output_text === 'string') chunks.push(content.output_text);
+    }
+  }
+  return chunks.join('\n').trim();
+}
+
+function toOpenAIResponsesInput(messages) {
+  const input = [];
+  for (const msg of messages) {
+    if (msg.role === 'system') continue;
+    const role = msg.role === 'assistant' ? 'assistant' : 'user';
+    if (typeof msg.content === 'string') {
+      input.push({ role, content: msg.content });
+      continue;
+    }
+    if (Array.isArray(msg.content)) {
+      const content = msg.content.map((part) => {
+        if (part?.type === 'text') return { type: 'input_text', text: String(part.text || '') };
+        if (part?.type === 'image_url') return { type: 'input_image', image_url: part.image_url?.url || part.image_url || '', detail: 'auto' };
+        return { type: 'input_text', text: String(part?.text || '') };
+      }).filter((part) => part.type !== 'input_image' || part.image_url);
+      input.push({ role, content });
+    }
+  }
+  return input;
+}
+
 // â”€â”€â”€ KI Proxy (Groq) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+app.post('/api/ki/premium', async (req, res) => {
+  const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
+  if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
+
+  const { messages } = req.body;
+  if (!Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'messages fehlt' });
+  }
+
+  try {
+    const systemPrompt = messages.find((msg) => msg.role === 'system')?.content
+      || 'Du bist Premium Ehoser, ein hilfreicher, klarer KI-Assistent. Antworte auf Deutsch, wenn der Nutzer Deutsch schreibt.';
+
+    const aiRes = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAIKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.4-mini',
+        instructions: String(systemPrompt),
+        input: toOpenAIResponsesInput(messages),
+        max_output_tokens: 900
+      })
+    });
+
+    const data = await aiRes.json().catch(() => ({}));
+    if (!aiRes.ok) {
+      const message = typeof data?.error === 'object'
+        ? (data.error?.message || JSON.stringify(data.error))
+        : (data?.error || 'Premium-KI-Fehler');
+      return res.status(aiRes.status).json({ error: message });
+    }
+
+    const content = responseOutputText(data);
+    res.json({
+      choices: [{ message: { role: 'assistant', content: content || 'Keine Antwort erhalten.' } }],
+      model: 'gpt-5.4-mini',
+      premium: true
+    });
+  } catch (err) {
+    console.error('Premium KI Error:', err);
+    res.status(502).json({ error: 'Premium-KI-Verbindungsfehler' });
+  }
+});
+
 app.post('/api/ki', async (req, res) => {
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY nicht konfiguriert' });

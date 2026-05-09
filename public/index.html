@@ -127,6 +127,7 @@
                 </div>
                 <div class="nav-links" id="navLinks">
                     <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
+                    <a href="admin.html" class="nav-link">Admin</a>
                 </div>
             </div>
         </nav>
@@ -617,6 +618,14 @@
                     <div class="ki-header">
                         <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
                         <h2 class="ki-title">🤖 ehoser KI</h2>
+                        <div class="ki-title-wrap">
+                            <span class="ki-title-kicker">Modell</span>
+                            <h2 class="ki-title" id="kiModelTitle">Ehoser 1</h2>
+                        </div>
+                        <div class="ki-model-switch" role="tablist" aria-label="KI Modell">
+                            <button class="ki-model-btn active" id="kiModelEhoser1" onclick="setKIModel('ehoser1')">Ehoser 1</button>
+                            <button class="ki-model-btn premium" id="kiModelPremium" onclick="setKIModel('premium')">Premium Ehoser</button>
+                        </div>
                         <button class="ki-clear-btn" onclick="clearKIChat()">Verlauf leeren</button>
                     </div>
                     <div id="kiMessages" class="ki-messages"></div>

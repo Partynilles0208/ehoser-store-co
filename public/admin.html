@@ -21,7 +21,7 @@
                     <h1>ehoser admin</h1>
                 </div>
                 <div class="nav-links">
-                    <a class="nav-link" href="index.html">Zur Anmeldung</a>
+                    <a class="nav-link" href="index.html">Startseite</a>
                 </div>
             </div>
         </nav>
@@ -29,17 +29,22 @@
         <main class="admin-wrapper">
             <section class="admin-card">
                 <h2>Admin Bereich</h2>
-                <p class="admin-help">Zum Beitreten Code auswaehlen. Erst danach sind Upload und Nutzerliste sichtbar.</p>
+                <div id="adminNoLoginNotice" class="admin-no-login-notice">
+                    <strong>Als Gast fortfahren</strong>
+                    <span>Testet die normale ehoser Oberflaeche ohne Account, bevor du hochlaedst. Der echte Admin-Bereich braucht weiter den Admin-Code.</span>
+                </div>
+                <p class="admin-help">Zum Testen kannst du als Gast in die App. Fuer Upload, Nutzerliste und Moderation gibst du unten den Admin-Code ein.</p>
 
                 <form id="adminAccessForm">
                     <div class="form-group">
-                        <label for="adminJoinCode">Zum Beitreten Code auswaehlen*</label>
+                        <label for="adminJoinCode">Admin-Code*</label>
                         <input id="adminJoinCode" name="adminJoinCode" type="password" placeholder="Admin-Code eingeben" required>
-                        <small>Nur mit diesem Code ist der Admin-Bereich freigeschaltet.</small>
+                        <small>Keine Nutzer-Anmeldung noetig. Nur dieser Code ist Pflicht.</small>
                     </div>
                     <div class="admin-actions">
-                        <button class="btn-primary" type="submit">Admin-Bereich oeffnen</button>
-                        <a href="index.html" class="btn-secondary">Zurueck zur Anmeldung</a>
+                        <button class="btn-primary" type="button" onclick="openMainAsGuest()">Als Gast fortfahren</button>
+                        <button class="btn-secondary" type="submit">Admin-Code pruefen</button>
+                        <a href="index.html" class="btn-secondary">Zur Startseite</a>
                     </div>
                 </form>
 
