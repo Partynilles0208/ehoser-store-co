@@ -14,6 +14,10 @@ let _chatNotifyInitialized = false;
 let _moderationLockActive = false;
 let _moderationCountdownTimer = null;
 
+function isAdminGuestPreview() {
+    return sessionStorage.getItem('adminGuestPreview') === '1';
+}
+
 // Client-Konfiguration (API Keys sicher vom Backend laden)
 window.__ENV__ = { __loaded: false };
 fetch('/api/config').then(r => r.json()).then(cfg => {
@@ -750,6 +754,17 @@ function startApp() {
         return;
     }
 
+    if (isAdminGuestPreview()) {
+        currentUser = { id: null, username: 'Gast-Test', isGuest: true, isAdmin: false };
+        currentProfile = { isPro: false, ps_account: false, settings: { displayName: 'Gast-Test' } };
+        allApps = [];
+        localStorage.removeItem('proStatus');
+        showAdminGuestPreviewUI();
+        showSection('mode-select');
+        startOnlinePolling();
+        return;
+    }
+
     currentUser = null;
     currentProfile = null;
     allApps = [];
@@ -978,25 +993,49 @@ function showLoggedInUI() {
 function showLoggedOutUI() {
     const navLinks = document.getElementById('navLinks');
     if (!navLinks) return;
-    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a>';
+    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a><a href="admin.html" class="nav-link">Admin</a>';
+}
+
+function showAdminGuestPreviewUI() {
+    const navLinks = document.getElementById('navLinks');
+    if (!navLinks) return;
+    navLinks.innerHTML = `
+        <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
+        <a href="admin.html" class="nav-link">Admin</a>
+        <span class="plan-badge">Gast-Test</span>
+        <button onclick="exitAdminGuestPreview()" class="logout-btn">Test verlassen</button>
+    `;
+}
+
+function exitAdminGuestPreview() {
+    sessionStorage.removeItem('adminGuestPreview');
+    currentUser = null;
+    currentProfile = null;
+    allApps = [];
+    showLoggedOutUI();
+    showSection('auth');
 }
 
 async function loadApps() {
     try {
         const token = localStorage.getItem('token');
-        if (!token) {
+        if (!token && !isAdminGuestPreview()) {
             showLoggedOutUI();
             showSection('auth');
             return;
         }
 
         const response = await fetch(`${API_BASE}/apps`, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         const apps = await response.json();
         if (!response.ok) {
-            showLoggedOutUI();
-            showSection('auth');
+            if (!isAdminGuestPreview()) {
+                showLoggedOutUI();
+                showSection('auth');
+            } else {
+                displayApps([], { searchText: '', category: 'all', adminGuestPreview: true });
+            }
             return;
         }
         allApps = Array.isArray(apps) ? apps : [];
@@ -1014,8 +1053,8 @@ function displayApps(apps, meta) {
     if (!apps.length) {
         appsList.innerHTML = `
             <div class="empty-state" style="grid-column: 1/-1;">
-                <h3>Keine Apps gefunden</h3>
-                <p>${personalization?.simplifySearch ? 'Ich habe die Suche bereits vereinfacht. Versuche einen kuerzeren Begriff oder lass dir von ehoser KI etwas Passendes vorschlagen.' : 'Versuche eine andere Suche oder Kategorie.'}</p>
+                <h3>${meta?.adminGuestPreview ? 'Gast-Test aktiv' : 'Keine Apps gefunden'}</h3>
+                <p>${meta?.adminGuestPreview ? 'Du bist aus dem Admin-Bereich ohne Account in der App. So kannst du die Oberflaeche vor GitHub testen.' : (personalization?.simplifySearch ? 'Ich habe die Suche bereits vereinfacht. Versuche einen kuerzeren Begriff oder lass dir von ehoser KI etwas Passendes vorschlagen.' : 'Versuche eine andere Suche oder Kategorie.')}</p>
                 ${searchText ? `<button class="btn-small" onclick="selectMode('ki')" style="margin-top:12px;">KI nach ${escapeHtml(searchText)} fragen</button>` : ''}
             </div>
         `;
@@ -1097,7 +1136,7 @@ function applyFilters(searchText, category) {
 }
 
 async function installApp(appId, button) {
-    if (!currentUser) {
+    if (!currentUser || currentUser.isGuest || !localStorage.getItem('token')) {
         showAlert('Bitte zuerst anmelden.', 'error');
         return;
     }
@@ -1228,7 +1267,7 @@ async function loadMyApps() {
 
 function showSection(sectionId) {
     const token = localStorage.getItem('token');
-    if (sectionId !== 'auth' && !token) {
+    if (sectionId !== 'auth' && !token && !isAdminGuestPreview()) {
         sectionId = 'auth';
     }
 
@@ -1325,7 +1364,7 @@ function selectMode(mode) {
     } else if (mode === 'ki') {
         // Registrierung nÃ¶tig
         const token = localStorage.getItem('token');
-        if (!token) {
+        if (!token && !isAdminGuestPreview()) {
             showAlert('Bitte zuerst anmelden, um ehoser KI zu nutzen.', 'error');
             showSection('auth');
             return;
@@ -1343,9 +1382,14 @@ function selectMode(mode) {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
         const token = localStorage.getItem('token');
-        if (!token) {
+        if (!token && !isAdminGuestPreview()) {
             showAlert('Bitte zuerst anmelden, um den Chat zu nutzen.', 'error');
             showSection('auth');
+            return;
+        }
+        if (!token && isAdminGuestPreview()) {
+            showSection('chat');
+            showAlert('Chat ist im Gast-Test sichtbar, Nachrichten brauchen spaeter ein Konto.', 'info');
             return;
         }
         showSection('chat');
@@ -1903,6 +1947,7 @@ function closeYTPlayer() {
 // API Key liegt serverseitig in GROQ_API_KEY (Vercel Environment Variable)
 let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
+let _kiModel = 'ehoser1';
 
 const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser lÃ¤uft. ehoser ist eine private Plattform mit Spielen, Chat und weiteren Features.
 Deine PersÃ¶nlichkeit ist locker, nett und ein kleines bisschen charmant â€“ aber nicht Ã¼bertrieben. Keine Kosenamen wie "Schatz" oder "SÃ¼ÃŸe". Sprich den Nutzer normal aber herzlich an.
@@ -1938,6 +1983,7 @@ function showKIChat() {
         const greeting = kiReplaceNamePlaceholder(`Hallo, [name]! ðŸ‘‹ Ich bin ehoser KI, dein persÃ¶nlicher Assistent auf dem ehoser Server. Wie kann ich dir heute helfen?`);
         appendKIBubble('ai', greeting);
     }
+    setKIModel(_kiModel);
     setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
 }
 
@@ -1972,6 +2018,32 @@ function kiClearAttachment() {
 function kiReplaceNamePlaceholder(text) {
     const name = sessionStorage.getItem('kiUserName') || '';
     return name ? text.replace(/\[name\]/gi, name) : text;
+}
+
+function setKIModel(model) {
+    _kiModel = ['ehoser1', 'premium'].includes(model) ? model : 'ehoser1';
+    const config = {
+        ehoser1: {
+            title: 'Ehoser 1',
+            placeholder: 'Stell eine Frage...',
+            label: 'Schnell und direkt'
+        },
+        premium: {
+            title: 'Premium Ehoser',
+            placeholder: 'Frag Premium Ehoser alles, was du wissen, planen oder erstellen willst...',
+            label: 'GPT-5.4 Mini'
+        }
+    }[_kiModel];
+
+    document.querySelectorAll('.ki-model-btn').forEach(btn => btn.classList.remove('active'));
+    const activeId = _kiModel === 'ehoser1' ? 'kiModelEhoser1' : 'kiModelPremium';
+    document.getElementById(activeId)?.classList.add('active');
+    const title = document.getElementById('kiModelTitle');
+    if (title) title.textContent = config.title;
+    const input = document.getElementById('kiInput');
+    if (input) input.placeholder = config.placeholder;
+    const messages = document.getElementById('kiMessages');
+    if (messages) messages.style.display = 'flex';
 }
 
 function appendKIBubble(type, text) {
@@ -2193,7 +2265,7 @@ async function sendKIMessage() {
     const typing = showKITyping();
 
     try {
-        const res = await fetch('/api/ki', {
+        const res = await fetch(_kiModel === 'premium' ? '/api/ki/premium' : '/api/ki', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2236,6 +2308,7 @@ function clearKIChat() {
     const messages = document.getElementById('kiMessages');
     if (messages) messages.innerHTML = '';
     appendKIBubble('ai', kiReplaceNamePlaceholder('Verlauf geleert. ðŸ‘‹ Womit kann ich dir helfen, [name]?'));
+    setKIModel(_kiModel);
 }
 function renderImageSearchResults(hits) {
     const grid = document.getElementById('imageSearchResults');
@@ -2271,7 +2344,7 @@ async function runImageSearch() {
     const grid = document.getElementById('imageSearchResults');
     const token = localStorage.getItem('token');
 
-    if (!token) {
+    if (!token && !isAdminGuestPreview()) {
         showAlert('Bitte zuerst anmelden, um die Bildersuche zu nutzen.', 'error');
         showSection('auth');
         return;
@@ -2290,7 +2363,7 @@ async function runImageSearch() {
     try {
         const params = new URLSearchParams({ q });
         const response = await fetch(`${API_BASE}/pixabay?${params.toString()}`, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         const data = await response.json();
 
@@ -2312,6 +2385,7 @@ async function runImageSearch() {
 function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('proStatus');
+    sessionStorage.removeItem('adminGuestPreview');
     sessionStorage.removeItem('intro_shown');
     currentUser = null;
     currentProfile = null;

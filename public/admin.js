@@ -11,6 +11,15 @@ const reportMessageContext = document.getElementById('reportMessageContext');
 let adminRefreshInterval = null;
 let _reportContextPayload = null;
 
+setStatus('Als Gast fortfahren oeffnet die normale App zum Testen. Admin-Code ist nur fuer Verwaltung noetig.', 'info');
+
+function openMainAsGuest() {
+    sessionStorage.setItem('adminGuestPreview', '1');
+    localStorage.removeItem('token');
+    localStorage.removeItem('proStatus');
+    window.location.href = 'index.html?guest=admin';
+}
+
 accessForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const code = document.getElementById('adminJoinCode').value.trim();
@@ -28,7 +37,8 @@ accessForm.addEventListener('submit', async (event) => {
 
         activeAdminCode = code;
         secureArea.style.display = '';
-        setStatus('Admin-Bereich freigeschaltet.', 'success');
+        setStatus('Als Gast im Admin-Bereich. Admin-Code wurde akzeptiert.', 'success');
+        setAdminEmptyStates('Lade Admin-Daten...');
         await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadAdminApps(), loadVotes(), loadChatReports()]);
         clearInterval(adminRefreshInterval);
         adminRefreshInterval = setInterval(() => {
@@ -39,9 +49,28 @@ accessForm.addEventListener('submit', async (event) => {
             loadChatReports();
         }, 8000);
     } catch (err) {
-        setStatus('Verbindungsfehler.', 'error');
+        secureArea.style.display = '';
+        setAdminEmptyStates('Ohne Anmeldung: keine Verbindung zu den Admin-Daten.');
+        setStatus('Admin-Oberflaeche offen, aber Daten konnten nicht geladen werden.', 'error');
     }
 });
+
+function setAdminEmptyStates(message) {
+    const text = escapeHtml(message || 'Ohne Anmeldung: keine Daten geladen.');
+    [
+        usersList,
+        resetRequestsList,
+        chatReportsList,
+        document.getElementById('adminAppsList'),
+        document.getElementById('votesAdminList')
+    ].forEach((list) => {
+        if (list) list.innerHTML = `<li>${text}</li>`;
+    });
+}
+
+function setListFallback(list, message) {
+    if (list) list.innerHTML = `<li>${escapeHtml(message || 'Ohne Anmeldung: keine Daten vorhanden.')}</li>`;
+}
 
 form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -154,12 +183,13 @@ async function loadRegisteredUsers() {
 
         const users = await response.json();
         if (!response.ok) {
+            setListFallback(usersList, 'Ohne Anmeldung: Nutzer konnten nicht geladen werden.');
             setStatus(users.error || 'Nutzer konnten nicht geladen werden.', 'error');
             return;
         }
 
         if (!users.length) {
-            usersList.innerHTML = '<li>Noch keine Nutzer registriert.</li>';
+            usersList.innerHTML = '<li>Ohne Anmeldung: noch keine Nutzer geladen oder registriert.</li>';
             return;
         }
 
@@ -179,6 +209,7 @@ async function loadRegisteredUsers() {
             )
             .join('');
     } catch (error) {
+        setListFallback(usersList, 'Ohne Anmeldung: Nutzerliste leer, Supabase nicht erreichbar.');
         setStatus(`Fehler beim Laden der Nutzer: ${error.message}`, 'error');
     }
 }
@@ -192,7 +223,7 @@ async function loadVotes() {
             headers: { 'x-admin-key': activeAdminCode }
         });
         const data = await res.json();
-        if (!res.ok) { el.innerHTML = '<li>Fehler beim Laden.</li>'; return; }
+        if (!res.ok) { el.innerHTML = '<li>Ohne Anmeldung: Abstimmung konnte nicht geladen werden.</li>'; return; }
         const { count, threshold, remaining, voters, unlocked } = data;
         el.innerHTML = `
             <li style="margin-bottom:12px;">
@@ -204,7 +235,7 @@ async function loadVotes() {
             ${voters.length ? voters.map(v => `<li style="color:#8ab4c9;padding:3px 0;">✔ ${escapeHtml(v)}</li>`).join('') : '<li style="color:#8ab4c9;">Noch keine Stimmen.</li>'}
         `;
     } catch {
-        el.innerHTML = '<li>Verbindungsfehler.</li>';
+        el.innerHTML = '<li>Ohne Anmeldung: keine Verbindung zu den Abstimmungsdaten.</li>';
     }
 }
 
@@ -281,12 +312,13 @@ async function loadResetRequests() {
 
         const requests = await response.json();
         if (!response.ok) {
+            setListFallback(resetRequestsList, 'Ohne Anmeldung: Reset-Anfragen konnten nicht geladen werden.');
             setStatus(requests.error || 'Reset-Anfragen konnten nicht geladen werden.', 'error');
             return;
         }
 
         if (!requests.length) {
-            resetRequestsList.innerHTML = '<li>Keine offenen Anfragen.</li>';
+            resetRequestsList.innerHTML = '<li>Ohne Anmeldung: keine offenen Anfragen.</li>';
             return;
         }
 
@@ -303,6 +335,7 @@ async function loadResetRequests() {
             )
             .join('');
     } catch (error) {
+        setListFallback(resetRequestsList, 'Ohne Anmeldung: Reset-Anfragen leer, Supabase nicht erreichbar.');
         setStatus(`Fehler beim Laden der Anfragen: ${error.message}`, 'error');
     }
 }
@@ -315,13 +348,14 @@ async function loadChatReports() {
         });
         const payload = await response.json();
         if (!response.ok) {
+            setListFallback(chatReportsList, 'Ohne Anmeldung: Chat-Meldungen konnten nicht geladen werden.');
             setStatus(payload.error || 'Chat-Meldungen konnten nicht geladen werden.', 'error');
             return;
         }
 
         const reports = Array.isArray(payload.reports) ? payload.reports : [];
         if (!reports.length) {
-            chatReportsList.innerHTML = '<li>Keine offenen Meldungen.</li>';
+            chatReportsList.innerHTML = '<li>Ohne Anmeldung: keine offenen Meldungen.</li>';
             return;
         }
 
@@ -347,6 +381,7 @@ async function loadChatReports() {
             `;
         }).join('');
     } catch (error) {
+        setListFallback(chatReportsList, 'Ohne Anmeldung: Meldungen leer, Supabase nicht erreichbar.');
         setStatus(`Fehler bei Meldungen: ${error.message}`, 'error');
     }
 }
