@@ -5770,6 +5770,7 @@ let _supportReason = '';
 let _supportHistory = [];
 let _supportConnectingTimer = null;
 let _supportIsSending = false;
+let _supportChatKitMounted = false;
 
 function supportShowStage(stage) {
     ['supportLoading', 'supportReasons', 'supportConnecting', 'supportChat'].forEach(id => {
@@ -5819,13 +5820,90 @@ function selectSupportReason(reason) {
 
 function startSupportChat() {
     supportShowStage('supportChat');
-    if (_supportHistory.length === 0) {
-        _supportHistory = [{ role: 'system', content: SUPPORT_SYSTEM_PROMPT }];
-        const greeting = `Hallo, hier ist der Ehoser Support. Ich sehe, es geht um ${_supportReason || 'Support'}. Beschreiben Sie kurz, was genau passiert ist, dann schauen wir das Schritt fuer Schritt an.`;
-        appendSupportBubble('agent', greeting);
-        _supportHistory.push({ role: 'assistant', content: greeting });
+    mountSupportChatKit();
+}
+
+function getSupportClientId() {
+    const key = 'ehoserSupportClientId';
+    let id = localStorage.getItem(key);
+    if (!id) {
+        id = `support-${cryptoRandom()}`;
+        localStorage.setItem(key, id);
     }
-    setTimeout(() => document.getElementById('supportInput')?.focus(), 80);
+    return id;
+}
+
+function waitForChatKit() {
+    return new Promise((resolve, reject) => {
+        let tries = 0;
+        const tick = () => {
+            if (customElements.get('openai-chatkit')) {
+                resolve();
+                return;
+            }
+            tries += 1;
+            if (tries > 80) {
+                reject(new Error('ChatKit konnte nicht geladen werden'));
+                return;
+            }
+            setTimeout(tick, 150);
+        };
+        tick();
+    });
+}
+
+async function mountSupportChatKit() {
+    const mount = document.getElementById('supportChatKitMount');
+    if (!mount || _supportChatKitMounted) return;
+    mount.innerHTML = '<div class="support-chatkit-loading">Ehoser Support wird verbunden...</div>';
+    try {
+        await waitForChatKit();
+        const chatkit = document.createElement('openai-chatkit');
+        chatkit.className = 'support-chatkit';
+        chatkit.setOptions({
+            api: {
+                async getClientSecret(currentClientSecret) {
+                    if (currentClientSecret) return currentClientSecret;
+                    const token = localStorage.getItem('token');
+                    const res = await fetch(`${API_BASE}/support/session`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                            userId: getSupportClientId(),
+                            reason: _supportReason || 'Sonstiges',
+                            desktop: isDesktopMode()
+                        })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || !data.client_secret) {
+                        throw new Error(data.error || 'Support konnte nicht gestartet werden');
+                    }
+                    return data.client_secret;
+                }
+            },
+            theme: {
+                colorScheme: 'dark',
+                accentColor: '#22e0bf'
+            },
+            header: {
+                title: 'Ehoser Support'
+            },
+            composer: {
+                placeholder: 'Nachricht an Ehoser Support...'
+            },
+            startScreen: {
+                greeting: `Hallo, hier ist der Ehoser Support. Ich sehe, es geht um ${_supportReason || 'Support'}. Beschreiben Sie kurz, was genau passiert ist.`
+            }
+        });
+        mount.innerHTML = '';
+        mount.appendChild(chatkit);
+        _supportChatKitMounted = true;
+    } catch (error) {
+        mount.innerHTML = `<div class="support-chatkit-error">${escapeHtml(error?.message || 'Support konnte nicht geladen werden.')}</div>`;
+    }
 }
 
 function appendSupportBubble(type, text) {

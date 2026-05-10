@@ -18,6 +18,7 @@ const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre â€“ Token lÃ¤uft praktisch 
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
+const SUPPORT_WORKFLOW_ID = process.env.SUPPORT_WORKFLOW_ID || 'wf_6a0021ed65808190bf7165b1e8113aa60d45c6a2bfe6257f';
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -370,6 +371,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/code-reset-status',
   '/api/code-reset-complete',
   '/api/desktop-login/start',
+  '/api/support/session',
   '/api/unlock-code',
   '/api/verify-token'
 ]);
@@ -3890,6 +3892,53 @@ app.post('/api/ki/premium', async (req, res) => {
   } catch (err) {
     console.error('Premium KI Error:', err);
     res.status(502).json({ error: 'Premium-KI-Verbindungsfehler' });
+  }
+});
+
+app.post('/api/support/session', async (req, res) => {
+  const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
+  if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
+
+  let username = null;
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (token) username = jwt.verify(token, JWT_SECRET)?.username || null;
+  } catch {}
+
+  const rawUserId = String(req.body?.userId || '').trim();
+  const fallbackUser = crypto
+    .createHash('sha256')
+    .update(`${req.ip || 'unknown'}:${rawUserId || 'guest'}`)
+    .digest('hex')
+    .slice(0, 32);
+  const user = username ? `ehoser-${username}` : `ehoser-guest-${fallbackUser}`;
+
+  try {
+    const aiRes = await fetch('https://api.openai.com/v1/chatkit/sessions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'OpenAI-Beta': 'chatkit_beta=v1',
+        Authorization: `Bearer ${openAIKey}`
+      },
+      body: JSON.stringify({
+        workflow: { id: SUPPORT_WORKFLOW_ID },
+        user
+      })
+    });
+
+    const data = await aiRes.json().catch(() => ({}));
+    if (!aiRes.ok) {
+      const message = typeof data?.error === 'object'
+        ? (data.error?.message || JSON.stringify(data.error))
+        : (data?.error || 'Support-Workflow konnte nicht gestartet werden');
+      return res.status(aiRes.status).json({ error: message });
+    }
+
+    res.json({ client_secret: data.client_secret });
+  } catch (err) {
+    console.error('Support ChatKit Error:', err);
+    res.status(502).json({ error: 'Support-Workflow nicht erreichbar' });
   }
 });
 

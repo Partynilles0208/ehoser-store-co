@@ -2393,20 +2393,16 @@ Ramen</textarea>
             </div>
 
             <div id="supportChat" class="support-chat" style="display:none">
-                <div id="supportMessages" class="support-messages"></div>
-                <div id="supportTyping" class="support-typing" style="display:none">
-                    <span></span><span></span><span></span>
-                </div>
-                <div class="support-input-row">
-                    <textarea id="supportInput" rows="1" placeholder="Nachricht an Ehoser Support..." onkeydown="supportInputKey(event)"></textarea>
-                    <button id="supportSendBtn" type="button" onclick="sendSupportMessage()">Senden</button>
+                <div id="supportChatKitMount" class="support-chatkit-mount">
+                    <div class="support-chatkit-loading">Ehoser Support wird verbunden...</div>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=18"></script>
+    <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
+    <script src="app.js?v=19"></script>
     <script src="tools.js?v=3"></script>
 </body>
 </html>
