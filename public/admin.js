@@ -236,7 +236,7 @@ async function loadPlanRequests() {
             return;
         }
         planRequestsList.innerHTML = requests.map((req) => `
-            <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+            <li data-plan-request-id="${req.id}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
                 <span><strong>${escapeHtml(req.real_name || '')}</strong> möchte für ${Number(req.price_eur || 0)} Euro ${escapeHtml(String(req.plan || '').toUpperCase())} kaufen <small style="color:#8ab4c9;">(${escapeHtml(req.username || '')})</small></span>
                 <button class="btn-small" onclick="confirmPlanPayment(${req.id})">Zahlung bestätigen</button>
             </li>
@@ -248,6 +248,12 @@ async function loadPlanRequests() {
 
 async function confirmPlanPayment(requestId) {
     if (!activeAdminCode) return;
+    const row = planRequestsList?.querySelector(`[data-plan-request-id="${requestId}"]`);
+    const oldHtml = row?.outerHTML || '';
+    row?.remove();
+    if (planRequestsList && !planRequestsList.querySelector('[data-plan-request-id]')) {
+        planRequestsList.innerHTML = '<li>Keine offenen Tarif-Anfragen.</li>';
+    }
     try {
         const response = await fetch(`${window.location.origin}/api/admin/plan-requests/${requestId}/confirm`, {
             method: 'POST',
@@ -255,6 +261,7 @@ async function confirmPlanPayment(requestId) {
         });
         const data = await response.json();
         if (!response.ok) {
+            if (oldHtml && planRequestsList) planRequestsList.insertAdjacentHTML('afterbegin', oldHtml);
             setStatus(data.error || 'Zahlung konnte nicht bestaetigt werden.', 'error');
             return;
         }
