@@ -19,6 +19,8 @@ const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
 const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
+const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -206,6 +208,18 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
     `);
     await pool.query(`
       ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS ps_account BOOLEAN DEFAULT FALSE;
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS plan_requests (
+        id BIGSERIAL PRIMARY KEY,
+        username TEXT NOT NULL,
+        real_name TEXT NOT NULL,
+        plan TEXT NOT NULL,
+        price_eur INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT NOW(),
+        confirmed_at TIMESTAMP NULL
+      );
     `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS referral_invites (
@@ -426,6 +440,7 @@ async function createAvailableGoogleUsername(email, name) {
 // Fallback fÃ¼r Serverless/fehlende Tabellen
 const memoryProfiles = new Map();
 const memoryReferralCodes = new Map();
+const memoryPlanRequests = [];
 
 function readAuthUser(req, res) {
   if (req.authUser) {
@@ -506,7 +521,11 @@ function normalizeSettings(raw) {
     premiumUntil: typeof src.premiumUntil === 'string' ? src.premiumUntil : null,
     personalizationEnabled: src.personalizationEnabled !== false,
     personalization: normalizePersonalization(src.personalization),
-    moderation: normalizeModerationSettings(src.moderation)
+    moderation: normalizeModerationSettings(src.moderation),
+    credits: (src.credits && typeof src.credits === 'object' && !Array.isArray(src.credits)) ? src.credits : undefined,
+    planRequests: Array.isArray(src.planRequests) ? src.planRequests.slice(-10) : undefined,
+    passwordHash: typeof src.passwordHash === 'string' ? src.passwordHash : undefined,
+    _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined
   };
 }
 
@@ -663,6 +682,75 @@ function normalizeProfileRow(username, row) {
   };
 }
 
+function getPlanKey(profile) {
+  if (profile?.isPremium) return 'premium';
+  if (profile?.isPro) return 'pro';
+  return 'free';
+}
+
+function currentCreditPeriod() {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+async function ensurePlanCredits(username, profile = null) {
+  const current = profile || await getProfile(username);
+  const plan = getPlanKey(current);
+  const settings = { ...(current.settings || {}) };
+  const credits = settings.credits || {};
+  const period = currentCreditPeriod();
+  let balance = Number(credits.balance);
+  if (!Number.isFinite(balance)) balance = 0;
+
+  if (plan === 'free') {
+    if (!credits.freeGranted) {
+      balance += PLAN_CREDIT_GRANTS.free;
+      settings.credits = { ...credits, balance, freeGranted: true, plan, period };
+      return upsertProfile(username, { settings });
+    }
+    return { ...current, settings: { ...settings, credits: { ...credits, balance, plan, period } }, credits: balance };
+  }
+
+  if (credits.plan !== plan || credits.period !== period) {
+    balance += PLAN_CREDIT_GRANTS[plan];
+    settings.credits = { ...credits, balance, plan, period, freeGranted: true };
+    return upsertProfile(username, { settings });
+  }
+  return { ...current, settings: { ...settings, credits: { ...credits, balance, plan, period } }, credits: balance };
+}
+
+function countTextCredits(messages) {
+  const last = [...messages].reverse().find((msg) => msg.role === 'user');
+  const text = typeof last?.content === 'string'
+    ? last.content
+    : Array.isArray(last?.content)
+      ? last.content.map((part) => part?.text || '').join(' ')
+      : '';
+  const letters = (String(text).match(/\p{L}/gu) || []).length;
+  return Math.max(1, Math.ceil(letters / 5));
+}
+
+async function changeCredits(username, delta) {
+  const profile = await ensurePlanCredits(username);
+  const settings = { ...(profile.settings || {}) };
+  const credits = { ...(settings.credits || {}) };
+  const balance = Math.max(0, (Number(credits.balance) || 0) + delta);
+  settings.credits = { ...credits, balance, updatedAt: new Date().toISOString() };
+  return upsertProfile(username, { settings });
+}
+
+async function chargeCredits(username, amount) {
+  const profile = await ensurePlanCredits(username);
+  const balance = Number(profile.settings?.credits?.balance || 0);
+  if (balance < amount) {
+    const err = new Error('Keine Credits mehr verfügbar. Bitte upgrade deinen Plan.');
+    err.status = 402;
+    err.credits = balance;
+    throw err;
+  }
+  return changeCredits(username, -amount);
+}
+
 async function getProfile(username) {
   // PrimÃ¤r: users Tabelle (existiert immer), optional: user_profiles fÃ¼r Settings
   let proUntil = null;
@@ -747,7 +835,8 @@ async function getProfile(username) {
     premiumUntil: premiumUntil || null,
     isPremium,
     isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
-    ps_account: psAccount || false
+    ps_account: psAccount || false,
+    credits: Number((settings || mem?.settings || {})?.credits?.balance || 0)
   };
 }
 
@@ -755,7 +844,7 @@ async function upsertProfile(username, patch) {
   const current = await getProfile(username);
   const newProUntil = Object.prototype.hasOwnProperty.call(patch, 'proUntil') ? patch.proUntil : current.proUntil;
   const newPremiumUntil = Object.prototype.hasOwnProperty.call(patch, 'premiumUntil') ? patch.premiumUntil : current.premiumUntil;
-  const newSettings = normalizeSettings({ ...(patch.settings ? patch.settings : current.settings), premiumUntil: newPremiumUntil || null });
+  const newSettings = normalizeSettings({ ...(current.settings || {}), ...(patch.settings || {}), premiumUntil: newPremiumUntil || null });
 
   // Pro-Status in users Tabelle schreiben (primary â€“ existiert garantiert)
   let savedToUsers = false;
@@ -810,7 +899,8 @@ async function upsertProfile(username, patch) {
     proUntil: newProUntil || null,
     premiumUntil: newPremiumUntil || null,
     isPremium,
-    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now())
+    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
+    credits: Number(newSettings?.credits?.balance || 0)
   };
 }
 
@@ -1578,7 +1668,7 @@ app.get('/api/me/login-code', async (req, res) => {
 app.get('/api/me', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
-  const profile = await getProfile(auth.username);
+  const profile = await ensurePlanCredits(auth.username);
   // email aus users-Tabelle lesen
   let email = null;
   let userRow = null;
@@ -1607,10 +1697,56 @@ app.put('/api/me/settings', async (req, res) => {
   const settings = normalizeSettings({
     ...(req.body || {}),
     personalization: current.settings?.personalization,
-    moderation: current.settings?.moderation
+    moderation: current.settings?.moderation,
+    credits: current.settings?.credits,
+    planRequests: current.settings?.planRequests
   });
   const profile = await upsertProfile(auth.username, { settings });
   res.json({ ok: true, profile });
+});
+
+app.post('/api/me/plan-request', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const plan = String(req.body?.plan || '').trim().toLowerCase();
+  const realName = String(req.body?.realName || '').trim().slice(0, 80);
+  const meta = {
+    pro: { price: 10, label: 'Pro' },
+    premium: { price: 20, label: 'Premium' }
+  }[plan];
+  if (!meta) return res.status(400).json({ error: 'Tarif ist ungueltig' });
+  if (realName.length < 3) return res.status(400).json({ error: 'Bitte echten Namen eingeben' });
+
+  const request = {
+    id: Date.now(),
+    username: auth.username,
+    real_name: realName,
+    plan,
+    price_eur: meta.price,
+    status: 'pending',
+    created_at: new Date().toISOString()
+  };
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('plan_requests')
+      .insert({
+        username: auth.username,
+        real_name: realName,
+        plan,
+        price_eur: meta.price
+      })
+      .select('id,username,real_name,plan,price_eur,status,created_at')
+      .single();
+    if (error) throw error;
+    return res.json({ ok: true, request: data });
+  } catch {
+    memoryPlanRequests.push(request);
+    const profile = await getProfile(auth.username);
+    const settings = { ...(profile.settings || {}) };
+    settings.planRequests = [...(settings.planRequests || []), request].slice(-10);
+    await upsertProfile(auth.username, { settings }).catch(() => {});
+    return res.json({ ok: true, request });
+  }
 });
 
 app.post('/api/me/personalization/event', async (req, res) => {
@@ -1952,6 +2088,117 @@ app.get('/api/admin/users', async (req, res) => {
     console.error('Admin Users Error:', error);
     res.setHeader('x-admin-offline', '1');
     res.json([]);
+  }
+});
+
+app.get('/api/admin/plan-requests', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungueltiger Admin-Key' });
+  }
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('plan_requests')
+      .select('id,username,real_name,plan,price_eur,status,created_at,confirmed_at')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json({ requests: data || [] });
+  } catch {
+    try {
+      const { data } = await supabaseAdmin.from('user_profiles').select('username,settings');
+      const requests = [];
+      for (const row of (data || [])) {
+        for (const req of (row.settings?.planRequests || [])) {
+          if (req.status === 'pending') requests.push({ ...req, username: req.username || row.username });
+        }
+      }
+      return res.json({ requests: [...requests, ...memoryPlanRequests.filter((r) => r.status === 'pending')] });
+    } catch {
+      res.json({ requests: memoryPlanRequests.filter((r) => r.status === 'pending') });
+    }
+  }
+});
+
+app.post('/api/admin/plan-requests/:id/confirm', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungueltiger Admin-Key' });
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'Ungueltige Anfrage-ID' });
+  let request = null;
+  try {
+    const { data } = await supabaseAdmin
+      .from('plan_requests')
+      .select('id,username,real_name,plan,price_eur,status')
+      .eq('id', id)
+      .maybeSingle();
+    request = data || null;
+  } catch {}
+  if (!request) request = memoryPlanRequests.find((r) => Number(r.id) === id);
+  if (!request) {
+    try {
+      const { data: profiles } = await supabaseAdmin.from('user_profiles').select('username,settings');
+      for (const row of (profiles || [])) {
+        const found = (row.settings?.planRequests || []).find((r) => Number(r.id) === id);
+        if (found) {
+          request = { ...found, username: found.username || row.username };
+          break;
+        }
+      }
+    } catch {}
+  }
+  if (!request || request.status !== 'pending') return res.status(404).json({ error: 'Anfrage nicht gefunden' });
+
+  const until = new Date(Date.now() + PLAN_MONTH_MS).toISOString();
+  const profile = request.plan === 'premium'
+    ? await upsertProfile(request.username, { proUntil: until, premiumUntil: until })
+    : await upsertProfile(request.username, { proUntil: until });
+  await ensurePlanCredits(request.username, profile);
+
+  try {
+    await supabaseAdmin
+      .from('plan_requests')
+      .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+      .eq('id', id);
+  } catch {
+    request.status = 'confirmed';
+    request.confirmed_at = new Date().toISOString();
+  }
+  try {
+    const requestProfile = await getProfile(request.username);
+    const settings = { ...(requestProfile.settings || {}) };
+    settings.planRequests = (settings.planRequests || []).map((r) => Number(r.id) === id
+      ? { ...r, status: 'confirmed', confirmed_at: new Date().toISOString() }
+      : r);
+    await upsertProfile(request.username, { settings });
+  } catch {}
+  res.json({ ok: true, username: request.username, plan: request.plan });
+});
+
+app.post('/api/admin/users/:id/add-month', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungueltiger Admin-Key' });
+  }
+  const userId = Number(req.params.id);
+  const plan = String(req.body?.plan || 'pro').toLowerCase();
+  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Ungueltige Nutzer-ID' });
+  try {
+    const { data, error } = await supabase.from('users').select('username').eq('id', userId).single();
+    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+    const profile = await getProfile(data.username);
+    const proBase = profile.proUntil && Date.parse(profile.proUntil) > Date.now() ? Date.parse(profile.proUntil) : Date.now();
+    const patch = { proUntil: new Date(proBase + PLAN_MONTH_MS).toISOString() };
+    if (plan === 'premium') {
+      const premiumBase = profile.premiumUntil && Date.parse(profile.premiumUntil) > Date.now() ? Date.parse(profile.premiumUntil) : Date.now();
+      patch.premiumUntil = new Date(premiumBase + PLAN_MONTH_MS).toISOString();
+    }
+    const updated = await upsertProfile(data.username, patch);
+    res.json({ ok: true, username: data.username, profile: updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Monat konnte nicht hinzugefuegt werden' });
   }
 });
 
@@ -3628,7 +3875,10 @@ app.post('/api/ps/analyze', async (req, res) => {
     });
 
     const data = await groqRes.json();
-    if (!groqRes.ok) return res.status(groqRes.status).json(data);
+    if (!groqRes.ok) {
+      await changeCredits(username, creditCost).catch(() => {});
+      return res.status(groqRes.status).json(data);
+    }
 
     const text = data.choices?.[0]?.message?.content || '[]';
     let questions;
@@ -3844,7 +4094,7 @@ function toOpenAIResponsesInput(messages) {
 app.post('/api/ki/premium', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
-  const profile = await getProfile(auth.username);
+  const profile = await ensurePlanCredits(auth.username);
   if (!profile.isPremium) {
     return res.status(403).json({ error: 'Premium Ehoser ist nur mit Premium freigeschaltet.' });
   }
@@ -3855,6 +4105,13 @@ app.post('/api/ki/premium', async (req, res) => {
   const { messages } = req.body;
   if (!Array.isArray(messages) || !messages.length) {
     return res.status(400).json({ error: 'messages fehlt' });
+  }
+
+  const creditCost = countTextCredits(messages);
+  try {
+    await chargeCredits(auth.username, creditCost);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message, credits: err.credits || 0 });
   }
 
   try {
@@ -3877,6 +4134,7 @@ app.post('/api/ki/premium', async (req, res) => {
 
     const data = await aiRes.json().catch(() => ({}));
     if (!aiRes.ok) {
+      await changeCredits(auth.username, creditCost).catch(() => {});
       const message = typeof data?.error === 'object'
         ? (data.error?.message || JSON.stringify(data.error))
         : (data?.error || 'Premium-KI-Fehler');
@@ -3887,9 +4145,11 @@ app.post('/api/ki/premium', async (req, res) => {
     res.json({
       choices: [{ message: { role: 'assistant', content: content || 'Keine Antwort erhalten.' } }],
       model: PREMIUM_OPENAI_MODEL,
-      premium: true
+      premium: true,
+      creditsUsed: creditCost
     });
   } catch (err) {
+    await changeCredits(auth.username, creditCost).catch(() => {});
     console.error('Premium KI Error:', err);
     res.status(502).json({ error: 'Premium-KI-Verbindungsfehler' });
   }
@@ -3963,12 +4223,23 @@ app.post('/api/ki', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (token) username = jwt.verify(token, JWT_SECRET)?.username || null;
   } catch {}
+  if (!username) {
+    return res.status(401).json({ error: 'Login erforderlich, damit Credits abgezogen werden koennen.' });
+  }
+
+  const creditCost = countTextCredits(messages);
+  try {
+    await chargeCredits(username, creditCost);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message, credits: err.credits || 0 });
+  }
 
   // Gesperrt?
   if (username) {
     const v = kiSafeguardViolations.get(username);
     if (v?.blockedUntil && v.blockedUntil > Date.now()) {
       const days = Math.ceil((v.blockedUntil - Date.now()) / 86400000);
+      await changeCredits(username, creditCost).catch(() => {});
       return res.status(200).json({ choices: [{ message: { role: 'assistant',
         content: `ðŸš« Dein Zugang zur KI ist wegen mehrfacher VerstÃ¶ÃŸe fÃ¼r noch ${days} Tag(e) gesperrt.`
       }}]});
@@ -4075,100 +4346,102 @@ app.post('/api/ki', async (req, res) => {
     }
     res.json(data);
   } catch (err) {
+    await changeCredits(username, creditCost).catch(() => {});
     res.status(502).json({ error: 'Verbindungsfehler zur Groq API' });
   }
 });
 
-  // Video-KI: Komplett kostenlose HF ZeroGPU Space (hysts/zeroscope-v2) â€” kein API-Key nÃ¶tig
+function normalizeVideoOptions(body = {}) {
+  const quality = ['low', 'medium', 'high'].includes(String(body.quality)) ? String(body.quality) : 'medium';
+  const secondsRaw = Number(body.seconds) || 4;
+  const seconds = secondsRaw <= 4 ? 4 : secondsRaw <= 8 ? 8 : 12;
+  const multipliers = { low: 1, medium: 2, high: 3 };
+  const sizes = { low: '1280x720', medium: '1280x720', high: '1920x1080' };
+  const model = quality === 'low' ? 'sora-2' : 'sora-2-pro';
+  return {
+    quality,
+    seconds,
+    model,
+    size: sizes[quality],
+    cost: seconds * 10 * multipliers[quality]
+  };
+}
+
 app.post('/api/ki/video/create', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
+  if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
+
   const { prompt } = req.body;
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
-
-  const SPACE_BASE = 'https://hysts-zeroscope-v2.hf.space';
-  const hfKey = process.env.HUGGINGFACE_API_KEY;
-  const authHeaders = hfKey ? { 'Authorization': `Bearer ${hfKey}` } : {};
-
-  // ZufÃ¤llige session_hash fÃ¼r Gradio-Queue
-  const sessionHash = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const profile = await ensurePlanCredits(auth.username);
+  if (!profile.isPremium) {
+    return res.status(403).json({ error: 'Es tut mir leid, Video KI ist ab 20 Euro im Shop erhaeltlich.' });
+  }
+  const opts = normalizeVideoOptions(req.body);
+  try {
+    await chargeCredits(auth.username, opts.cost);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message, credits: err.credits || 0, cost: opts.cost });
+  }
 
   try {
-    // 1. Job in Gradio-Queue einreihen
-    const joinRes = await fetch(`${SPACE_BASE}/gradio_api/queue/join`, {
+    const createRes = await fetch('https://api.openai.com/v1/videos', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAIKey}`
+      },
       body: JSON.stringify({
-        data: [prompt.slice(0, 400), 0, 24, 25],
-        fn_index: 0,
-        session_hash: sessionHash
+        model: opts.model,
+        prompt: String(prompt).slice(0, 1000),
+        seconds: String(opts.seconds),
+        size: opts.size
       })
     });
-    if (!joinRes.ok) {
-      const txt = await joinRes.text().catch(() => '');
-      return res.status(502).json({ error: `Gradio Queue-Beitritt fehlgeschlagen (${joinRes.status}): ${txt.slice(0, 200)}` });
+    const created = await createRes.json().catch(() => ({}));
+    if (!createRes.ok || !created.id) {
+      await changeCredits(auth.username, opts.cost).catch(() => {});
+      const message = created?.error?.message || created?.error || 'Sora konnte nicht gestartet werden';
+      return res.status(createRes.status || 502).json({ error: message, refunded: opts.cost });
     }
 
-    // 2. SSE-Stream lesen bis das Video fertig ist (max. 240 Sekunden)
-    const sseRes = await fetch(`${SPACE_BASE}/gradio_api/queue/data?session_hash=${sessionHash}`, {
-      headers: { Accept: 'text/event-stream', ...authHeaders }
-    });
-    if (!sseRes.ok || !sseRes.body) {
-      return res.status(502).json({ error: 'SSE-Stream konnte nicht geÃ¶ffnet werden' });
-    }
-
-    const reader = sseRes.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    let videoFileUrl = null;
-    const deadline = Date.now() + 240_000;
-
-    outer: while (Date.now() < deadline) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const blocks = buf.split('\n\n');
-      buf = blocks.pop() ?? '';
-      for (const block of blocks) {
-        let payload = null;
-        for (const line of block.split('\n')) {
-          if (line.startsWith('data: ')) {
-            try { payload = JSON.parse(line.slice(6)); } catch {}
-          }
-        }
-        if (!payload) continue;
-        if (payload.msg === 'process_completed') {
-          // Ausgabe: {video: {url, path, ...}}
-          const out = payload.output?.data?.[0];
-          const rawUrl = out?.video?.url || out?.url || out?.path;
-          if (rawUrl) {
-            videoFileUrl = rawUrl.startsWith('http') ? rawUrl : `${SPACE_BASE}${rawUrl}`;
-          }
-          reader.cancel();
-          break outer;
-        }
-        if (payload.msg === 'process_errored') {
-          reader.cancel();
-          return res.status(502).json({ error: payload.output?.error || 'Video-Generierung in Space fehlgeschlagen' });
-        }
+    let job = created;
+    const deadline = Date.now() + 300_000;
+    while (Date.now() < deadline && !['completed', 'failed', 'cancelled'].includes(job.status)) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      const statusRes = await fetch(`https://api.openai.com/v1/videos/${created.id}`, {
+        headers: { Authorization: `Bearer ${openAIKey}` }
+      });
+      job = await statusRes.json().catch(() => job);
+      if (!statusRes.ok) {
+        await changeCredits(auth.username, opts.cost).catch(() => {});
+        return res.status(statusRes.status).json({ error: job?.error?.message || 'Video-Status konnte nicht geladen werden', refunded: opts.cost });
       }
     }
-    reader.cancel();
 
-    if (!videoFileUrl) {
-      return res.status(504).json({ error: 'Timeout: Video-Generierung hat zu lange gedauert (>240s)' });
+    if (job.status !== 'completed') {
+      await changeCredits(auth.username, opts.cost).catch(() => {});
+      return res.status(502).json({ error: job?.error?.message || 'Video-Generierung fehlgeschlagen oder abgelaufen', refunded: opts.cost });
     }
 
-    // 3. Videodatei herunterladen und an Frontend weiterleiten
-    const videoRes = await fetch(videoFileUrl, { headers: authHeaders });
-    if (!videoRes.ok) {
-      return res.status(502).json({ error: 'Generiertes Video konnte nicht geladen werden' });
+    const contentRes = await fetch(`https://api.openai.com/v1/videos/${created.id}/content`, {
+      headers: { Authorization: `Bearer ${openAIKey}` }
+    });
+    if (!contentRes.ok) {
+      await changeCredits(auth.username, opts.cost).catch(() => {});
+      return res.status(contentRes.status).json({ error: 'Video konnte nicht heruntergeladen werden', refunded: opts.cost });
     }
-    const contentType = videoRes.headers.get('content-type') || 'video/mp4';
-    const buffer = await videoRes.arrayBuffer();
+    const contentType = contentRes.headers.get('content-type') || 'video/mp4';
+    const buffer = await contentRes.arrayBuffer();
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('x-credits-used', String(opts.cost));
     res.send(Buffer.from(buffer));
   } catch (err) {
-    res.status(502).json({ error: `Fehler bei Video-Generierung: ${err.message || err}` });
+    await changeCredits(auth.username, opts.cost).catch(() => {});
+    res.status(502).json({ error: `Fehler bei Video-Generierung: ${err.message || err}`, refunded: opts.cost });
   }
 });
 
