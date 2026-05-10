@@ -66,16 +66,21 @@ function readDesktopUserCache() {
     }
 }
 
-function saveDesktopAuthToken(token) {
-    if (isDesktopMode() && token && window.ehoserDesktopAuth?.set) {
-        window.ehoserDesktopAuth.set(token).catch(() => {});
+async function saveDesktopAuthToken(token) {
+    if (!isDesktopMode() || !token || !window.ehoserDesktopAuth?.set) return false;
+    try {
+        const result = await window.ehoserDesktopAuth.set(token);
+        return result?.ok !== false;
+    } catch {
+        return false;
     }
 }
 
-function clearDesktopAuthToken() {
-    if (isDesktopMode() && window.ehoserDesktopAuth?.clear) {
-        window.ehoserDesktopAuth.clear().catch(() => {});
-    }
+async function clearDesktopAuthToken() {
+    if (!isDesktopMode() || !window.ehoserDesktopAuth?.clear) return;
+    try {
+        await window.ehoserDesktopAuth.clear();
+    } catch {}
 }
 
 async function loadDesktopAuthToken() {
@@ -83,14 +88,14 @@ async function loadDesktopAuthToken() {
     _desktopNativeAuthLoaded = true;
     const existing = localStorage.getItem('token');
     if (existing) {
-        saveDesktopAuthToken(existing);
+        await saveDesktopAuthToken(existing);
         return;
     }
     try {
         const stored = await window.ehoserDesktopAuth?.get?.();
         if (stored?.token) {
             localStorage.setItem('token', stored.token);
-            saveDesktopAuthToken(stored.token);
+            await saveDesktopAuthToken(stored.token);
             markDesktopActivated();
         }
     } catch {}
@@ -472,7 +477,7 @@ async function handleGoogleCredentialResponse(response) {
         if (!res.ok) throw new Error(data.error || 'Google-Anmeldung fehlgeschlagen');
 
         localStorage.setItem('token', data.token);
-        saveDesktopAuthToken(data.token);
+        await saveDesktopAuthToken(data.token);
         markDesktopActivated();
         currentUser = { id: data.userId, username: data.username, isAdmin: false };
         currentProfile = data.profile || null;
@@ -733,7 +738,7 @@ function stopDesktopWebLoginPolling() {
 
 async function finishDesktopWebLogin(data) {
     localStorage.setItem('token', data.token);
-    saveDesktopAuthToken(data.token);
+    await saveDesktopAuthToken(data.token);
     markDesktopActivated();
     currentUser = { id: data.userId, username: data.username, isAdmin: false };
     currentProfile = data.profile || null;
@@ -1035,7 +1040,7 @@ async function handleLogin(event) {
         }
 
         localStorage.setItem('token', data.token);
-        saveDesktopAuthToken(data.token);
+        await saveDesktopAuthToken(data.token);
         markDesktopActivated();
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
@@ -1310,7 +1315,7 @@ async function verifyToken(token) {
             localStorage.removeItem('token');
             localStorage.removeItem('proStatus');
             clearDesktopActivated();
-            clearDesktopAuthToken();
+            await clearDesktopAuthToken();
             showSection('auth');
             return;
         }
@@ -1334,7 +1339,7 @@ async function verifyToken(token) {
         const data = await response.json();
         if (data.token) {
             localStorage.setItem('token', data.token);
-            saveDesktopAuthToken(data.token);
+            await saveDesktopAuthToken(data.token);
         }
         markDesktopActivated();
         currentUser = data.user;
@@ -1398,7 +1403,7 @@ async function handleRegister(event) {
         }
 
         localStorage.setItem('token', data.token);
-        saveDesktopAuthToken(data.token);
+        await saveDesktopAuthToken(data.token);
         markDesktopActivated();
         currentUser = { id: data.userId, username, isAdmin: !!data.redirectToAdmin };
         currentProfile = data.profile || null;
@@ -2903,11 +2908,11 @@ async function runImageSearch() {
     }
 }
 
-function logout() {
+async function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('proStatus');
     clearDesktopActivated();
-    clearDesktopAuthToken();
+    await clearDesktopAuthToken();
     sessionStorage.removeItem('adminGuestPreview');
     sessionStorage.removeItem('intro_shown');
     currentUser = null;
