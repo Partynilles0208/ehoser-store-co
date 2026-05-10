@@ -5898,7 +5898,20 @@ async function mountSupportChatKit() {
             },
             theme: {
                 colorScheme: 'dark',
-                accentColor: '#22e0bf'
+                color: {
+                    accent: {
+                        primary: '#22e0bf',
+                        level: 2
+                    }
+                },
+                radius: 'round',
+                density: 'compact',
+                typography: {
+                    fontFamily: '"Outfit", "Segoe UI", sans-serif'
+                }
+            },
+            history: {
+                enabled: false
             },
             header: {
                 title: 'Ehoser Support'
@@ -5906,6 +5919,7 @@ async function mountSupportChatKit() {
             composer: {
                 placeholder: 'Nachricht an Ehoser Support...'
             },
+            locale: 'de-DE',
             startScreen: {
                 greeting: `Hallo, hier ist der Ehoser Support. Ich sehe, es geht um ${_supportReason || 'Support'}. Beschreiben Sie kurz, was genau passiert ist.`
             }
