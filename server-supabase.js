@@ -4107,7 +4107,7 @@ app.post('/api/ki/premium', async (req, res) => {
     return res.status(400).json({ error: 'messages fehlt' });
   }
 
-  const creditCost = countTextCredits(messages);
+  const creditCost = 5;
   try {
     await chargeCredits(auth.username, creditCost);
   } catch (err) {
