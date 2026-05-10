@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=18">
+    <link rel="stylesheet" href="styles.css?v=19">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="vendor/qrcode-generator.js"></script>
@@ -2388,20 +2388,25 @@ Ramen</textarea>
             <div id="supportConnecting" class="support-stage support-connecting" style="display:none">
                 <div class="support-avatar">E</div>
                 <strong>Bitte warten Sie.</strong>
-                <span>Sie werden mit einem unserer Ehoser Mitarbeiter verbunden.</span>
+                <span>Sie werden mit dem digitalen Ehoser Support verbunden.</span>
                 <div class="support-progress"><div id="supportConnectBar"></div></div>
             </div>
 
             <div id="supportChat" class="support-chat" style="display:none">
-                <div id="supportChatKitMount" class="support-chatkit-mount">
-                    <div class="support-chatkit-loading">Ehoser Support wird verbunden...</div>
+                <div id="supportMessages" class="support-messages"></div>
+                <div id="supportTyping" class="support-typing" style="display:none" aria-label="Support schreibt">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="support-input-row">
+                    <textarea id="supportInput" rows="1" placeholder="Nachricht schreiben..." onkeydown="supportInputKey(event)"></textarea>
+                    <button id="supportSendBtn" type="button" onclick="sendSupportMessage()">Senden</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=22"></script>
+    <script src="app.js?v=23"></script>
     <script src="tools.js?v=3"></script>
 </body>
 </html>
