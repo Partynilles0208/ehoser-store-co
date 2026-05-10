@@ -5,30 +5,40 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const UPDATE_REPO = 'Partynilles0208/ehoser-store-co';
 let mainWindow = null;
 
-function getAuthStorePath() {
-  return path.join(app.getPath('userData'), 'desktop-auth.json');
+function getAuthStorePaths() {
+  const paths = [path.join(app.getPath('userData'), 'desktop-auth.json')];
+  if (process.env.APPDATA) {
+    paths.push(path.join(process.env.APPDATA, 'Ehoser Control Center', 'desktop-auth.json'));
+  }
+  return [...new Set(paths)];
 }
 
 function readDesktopAuth() {
-  try {
-    const raw = fs.readFileSync(getAuthStorePath(), 'utf8');
-    const data = JSON.parse(raw);
-    return { token: typeof data.token === 'string' ? data.token : '' };
-  } catch {
-    return { token: '' };
+  for (const filePath of getAuthStorePaths()) {
+    try {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const data = JSON.parse(raw);
+      const token = typeof data.token === 'string' ? data.token : '';
+      if (token) return { token };
+    } catch {}
   }
+  return { token: '' };
 }
 
 function writeDesktopAuth(token) {
-  const filePath = getAuthStorePath();
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify({ token, savedAt: new Date().toISOString() }), 'utf8');
+  const payload = JSON.stringify({ token, savedAt: new Date().toISOString() });
+  for (const filePath of getAuthStorePaths()) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, payload, 'utf8');
+  }
 }
 
 function clearDesktopAuth() {
-  try {
-    fs.rmSync(getAuthStorePath(), { force: true });
-  } catch {}
+  for (const filePath of getAuthStorePaths()) {
+    try {
+      fs.rmSync(filePath, { force: true });
+    } catch {}
+  }
 }
 
 function parseVersion(version) {
