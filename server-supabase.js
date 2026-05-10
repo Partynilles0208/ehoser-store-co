@@ -2159,21 +2159,32 @@ app.post('/api/admin/plan-requests/:id/confirm', async (req, res) => {
     : await upsertProfile(request.username, { proUntil: until });
   await ensurePlanCredits(request.username, profile);
 
+  const confirmedAt = new Date().toISOString();
   try {
-    await supabaseAdmin
+    const { data: updatedRows, error: updateError } = await supabaseAdmin
       .from('plan_requests')
-      .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
-      .eq('id', id);
-  } catch {
-    request.status = 'confirmed';
-    request.confirmed_at = new Date().toISOString();
+      .update({ status: 'confirmed', confirmed_at: confirmedAt })
+      .eq('id', id)
+      .select('id');
+    if (updateError) throw updateError;
+    if (!updatedRows?.length) {
+      try {
+        await supabaseAdmin.from('plan_requests').delete().eq('id', id);
+      } catch {}
+    }
+  } catch (error) {
+    try {
+      await supabaseAdmin.from('plan_requests').delete().eq('id', id);
+    } catch {}
   }
+  request.status = 'confirmed';
+  request.confirmed_at = confirmedAt;
   try {
     const requestProfile = await getProfile(request.username);
     const settings = { ...(requestProfile.settings || {}) };
-    settings.planRequests = (settings.planRequests || []).map((r) => Number(r.id) === id
-      ? { ...r, status: 'confirmed', confirmed_at: new Date().toISOString() }
-      : r);
+    settings.planRequests = (settings.planRequests || [])
+      .map((r) => Number(r.id) === id ? { ...r, status: 'confirmed', confirmed_at: confirmedAt } : r)
+      .filter((r) => !(Number(r.id) === id && r.status === 'confirmed'));
     await upsertProfile(request.username, { settings });
   } catch {}
   res.json({ ok: true, username: request.username, plan: request.plan });
