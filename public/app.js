@@ -27,6 +27,55 @@ let _desktopWebLoginSessionId = null;
 let _desktopWebLoginPollInterval = null;
 let _desktopNativeAuthLoaded = false;
 
+function decodeMojibakeText(value) {
+    const text = String(value ?? '');
+    if (!/[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(text)) return text;
+    try {
+        const chars = Array.from(text);
+        if (!chars.every(ch => ch.charCodeAt(0) <= 255)) return text;
+        const bytes = Uint8Array.from(chars.map(ch => ch.charCodeAt(0)));
+        const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        return decoded.includes('\uFFFD') ? text : decoded;
+    } catch {
+        return text;
+    }
+}
+
+function fixVisibleMojibake(root = document.body) {
+    if (!root) return;
+    const skipTags = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT']);
+    const visitText = (node) => {
+        if (!node?.nodeValue || !/[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(node.nodeValue)) return;
+        node.nodeValue = decodeMojibakeText(node.nodeValue);
+    };
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            const parent = node.parentElement;
+            if (!parent || skipTags.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
+            return /[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(node.nodeValue || '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        }
+    });
+    while (walker.nextNode()) visitText(walker.currentNode);
+}
+
+function startMojibakeFixer() {
+    fixVisibleMojibake();
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    if (node.parentElement?.tagName !== 'SCRIPT') {
+                        node.nodeValue = decodeMojibakeText(node.nodeValue);
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    fixVisibleMojibake(node);
+                }
+            }
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
 function isAdminGuestPreview() {
     return sessionStorage.getItem('adminGuestPreview') === '1';
 }
@@ -2041,35 +2090,35 @@ function selectMode(mode) {
 
 
 
-// WMO Wetter-Code â†’ Emoji + Beschreibung (Open-Meteo)
+// WMO weather code -> icon + description (Open-Meteo)
 function weatherCodeInfo(code) {
     const map = {
-        0:  ['â˜€ï¸', 'Klarer Himmel'],
-        1:  ['ðŸŒ¤ï¸', 'Ãœberwiegend klar'],
-        2:  ['â›…', 'Teilweise bewÃ¶lkt'],
-        3:  ['â˜ï¸', 'Bedeckt'],
-        45: ['ðŸŒ«ï¸', 'Nebel'],
-        48: ['ðŸŒ«ï¸', 'Gefrierender Nebel'],
-        51: ['ðŸŒ¦ï¸', 'Leichter Nieselregen'],
-        53: ['ðŸŒ¦ï¸', 'Nieselregen'],
-        55: ['ðŸŒ§ï¸', 'Starker Nieselregen'],
-        61: ['ðŸŒ§ï¸', 'Leichter Regen'],
-        63: ['ðŸŒ§ï¸', 'Regen'],
-        65: ['ðŸŒ§ï¸', 'Starker Regen'],
-        71: ['ðŸŒ¨ï¸', 'Leichter Schneefall'],
-        73: ['ðŸŒ¨ï¸', 'Schneefall'],
-        75: ['â„ï¸', 'Starker Schneefall'],
-        77: ['ðŸŒ¨ï¸', 'SchneekÃ¶rner'],
-        80: ['ðŸŒ¦ï¸', 'Leichte Schauer'],
-        81: ['ðŸŒ§ï¸', 'Schauer'],
-        82: ['â›ˆï¸', 'Starke Schauer'],
-        85: ['ðŸŒ¨ï¸', 'Schneeschauer'],
-        86: ['â„ï¸', 'Starke Schneeschauer'],
-        95: ['â›ˆï¸', 'Gewitter'],
-        96: ['â›ˆï¸', 'Gewitter mit Hagel'],
-        99: ['â›ˆï¸', 'Gewitter mit starkem Hagel'],
+        0:  ['&#9728;&#65039;', 'Klarer Himmel'],
+        1:  ['&#127780;&#65039;', '\u00dcberwiegend klar'],
+        2:  ['&#9925;', 'Teilweise bew\u00f6lkt'],
+        3:  ['&#9729;&#65039;', 'Bedeckt'],
+        45: ['&#127787;&#65039;', 'Nebel'],
+        48: ['&#127787;&#65039;', 'Gefrierender Nebel'],
+        51: ['&#127782;&#65039;', 'Leichter Nieselregen'],
+        53: ['&#127782;&#65039;', 'Nieselregen'],
+        55: ['&#127783;&#65039;', 'Starker Nieselregen'],
+        61: ['&#127783;&#65039;', 'Leichter Regen'],
+        63: ['&#127783;&#65039;', 'Regen'],
+        65: ['&#127783;&#65039;', 'Starker Regen'],
+        71: ['&#127784;&#65039;', 'Leichter Schneefall'],
+        73: ['&#127784;&#65039;', 'Schneefall'],
+        75: ['&#10052;&#65039;', 'Starker Schneefall'],
+        77: ['&#127784;&#65039;', 'Schneek\u00f6rner'],
+        80: ['&#127782;&#65039;', 'Leichte Schauer'],
+        81: ['&#127783;&#65039;', 'Schauer'],
+        82: ['&#9928;&#65039;', 'Starke Schauer'],
+        85: ['&#127784;&#65039;', 'Schneeschauer'],
+        86: ['&#10052;&#65039;', 'Starke Schneeschauer'],
+        95: ['&#9928;&#65039;', 'Gewitter'],
+        96: ['&#9928;&#65039;', 'Gewitter mit Hagel'],
+        99: ['&#9928;&#65039;', 'Gewitter mit starkem Hagel'],
     };
-    return map[code] || ['ðŸŒ¡ï¸', `Wetter-Code ${code}`];
+    return map[code] || ['&#127777;&#65039;', `Wetter-Code ${code}`];
 }
 
 async function runWeatherSearch() {
@@ -2083,23 +2132,23 @@ async function runWeatherSearch() {
         return;
     }
 
-    status.textContent = 'Suche Ortâ€¦';
+    status.textContent = 'Suche Ort...';
     result.innerHTML = '';
 
     try {
-        // 1. Geocoding (kein API Key nÃ¶tig)
+        // 1. Geocoding (kein API key needed)
         const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=de&format=json`);
         const geoData = await geoRes.json();
 
         if (!geoData.results?.length) {
-            status.textContent = `Ort â€ž${city}" nicht gefunden.`;
+            status.textContent = `Ort "${city}" nicht gefunden.`;
             return;
         }
 
         const { latitude, longitude, name, country, admin1 } = geoData.results[0];
-        status.textContent = 'Lade Wetterdatenâ€¦';
+        status.textContent = 'Lade Wetterdaten...';
 
-        // 2. Wetterdaten (kein API Key nÃ¶tig)
+        // 2. Weather data (no API key needed)
         const weatherRes = await fetch(
             `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
             `&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,visibility` +
@@ -2114,7 +2163,7 @@ async function runWeatherSearch() {
         const feels     = Math.round(cur.apparent_temperature);
         const humidity  = cur.relative_humidity_2m;
         const wind      = Math.round(cur.wind_speed_10m);
-        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : 'â€“';
+        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : '-';
         const [icon, desc] = weatherCodeInfo(cur.weather_code);
         const location  = [name, admin1, country].filter(Boolean).join(', ');
 
@@ -2124,19 +2173,19 @@ async function runWeatherSearch() {
                 <div class="weather-card-country">${escapeHtml([admin1, country].filter(Boolean).join(', '))}</div>
                 <div class="weather-card-icon" style="font-size:5rem;line-height:1">${icon}</div>
                 <div class="weather-card-desc">${escapeHtml(desc)}</div>
-                <div class="weather-card-temp">${temp}Â°C</div>
-                <div class="weather-card-feels">GefÃ¼hlt wie ${feels}Â°C</div>
+                <div class="weather-card-temp">${temp}&deg;C</div>
+                <div class="weather-card-feels">Gef&uuml;hlt wie ${feels}&deg;C</div>
                 <div class="weather-card-stats">
                     <div class="weather-stat">
-                        <span class="weather-stat-label">ðŸ’§ Luftfeucht.</span>
+                        <span class="weather-stat-label">Luftfeucht.</span>
                         <span class="weather-stat-value">${humidity}%</span>
                     </div>
                     <div class="weather-stat">
-                        <span class="weather-stat-label">ðŸ’¨ Wind</span>
+                        <span class="weather-stat-label">Wind</span>
                         <span class="weather-stat-value">${wind} km/h</span>
                     </div>
                     <div class="weather-stat">
-                        <span class="weather-stat-label">ðŸ‘ï¸ Sichtweite</span>
+                        <span class="weather-stat-label">Sichtweite</span>
                         <span class="weather-stat-value">${visKm}</span>
                     </div>
                 </div>
@@ -5916,6 +5965,7 @@ async function sendSupportMessage() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+    startMojibakeFixer();
     const modal = document.getElementById('supportModal');
     if (modal) {
         modal.addEventListener('click', (event) => {
