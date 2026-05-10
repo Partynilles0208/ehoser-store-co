@@ -5727,3 +5727,197 @@ async function chatReportCurrentGroup() {
         showAlert(err?.message || 'Meldung konnte nicht gesendet werden.', 'error');
     }
 }
+
+const SUPPORT_SYSTEM_PROMPT = `Du bist Ehoser Support, der hilfreiche Support-Mitarbeiter fuer Ehoser und das Ehoser Control Center.
+Du sprichst im Namen des Ehoser Supports. Erwaehne nicht ungefragt, dass du automatisiert bist. Wenn jemand direkt fragt, ob du ein Mensch bist, antworte ehrlich und kurz: "Ich bin der digitale Ehoser Support und helfe dir so gut wie moeglich weiter." Behaupte niemals, ein echter Mensch, Admin oder Entwickler zu sein.
+
+Ton:
+- Deutsch, freundlich, direkt, ruhig und hilfreich.
+- Kurz und praktisch antworten, meistens 2 bis 5 Saetze.
+- Bei Stress oder Frust des Nutzers ruhig bleiben und konkrete Schritte geben.
+- Keine geheimen Codes, Admin-Codes, Tokens, API Keys oder Environment Variables verraten.
+- Nutzer niemals auffordern, Passwort, Login-Code oder Token in den Chat zu schreiben.
+- Wenn etwas nur Admins pruefen koennen, sage: "Das muss ein Admin pruefen."
+
+Wissen ueber Ehoser:
+- Ehoser ist ein Control Center als Web-App und Desktop-App.
+- Die Desktop-App heisst Ehoser Control Center und wird als EXE/Installer ausgeliefert.
+- Die Desktop-App nutzt fuer Online-Funktionen die API von ehoser.de. Vercel Environment Variables bleiben serverseitig und werden nicht direkt in der EXE gespeichert.
+- Manche Bereiche sind offline nutzbar, Online-Funktionen brauchen Internet.
+- Es gibt Anmeldung, Registrierung, Entsperrcode, Passwort, Login-Code, Google-Anmeldung in der Web-App und Desktop-Anmeldung ueber Web-App-Code.
+- Desktop-Web-Login: In der Desktop-App Code anzeigen, in der Web-App mit Google anmelden, Account Einstellungen oeffnen, Code bei "Anmelden mit Web-App" eingeben und Anwenden klicken.
+- Account Einstellungen enthalten Profil, Anzeigename, Profilbild, KI-Personalisierung, Referral/Einladung, Login-Code, Chat Token und Desktop-Web-App-Verknuepfung.
+- Pro/Premium: Premium schaltet Pro-Funktionen mit frei. Pro kann Face Warp Pro, bessere Exporte, Sticker, bestimmte Tools, Chat-Extras und Spiel-Erstellen freischalten.
+- Face Warp hat Basics und Pro. Basics hat normale Warp-Tools und begrenzte Exporte. Pro hat bessere Qualitaet, Pixabay, Sticker-Modus und mehr Export.
+- Ehoser Chat bietet Chats, Gruppen, Dateien/Bilder, Face-Warp-Bilder, Pro Sticker und Meldungen.
+- Ehoser KI hat Ehoser 1 und Premium Ehoser. Premium Ehoser braucht Premium.
+- Tools/Spiele enthalten Online-Spiele, KI, Chat, Maps, YouTube/Medien, News, Bilder, Wetter, Texttools, QR, Rechner, Notizen, Passworttools, Timer, Spiele und weitere Browser-Tools.
+- Desktop-Updates erscheinen oben rechts als "Update herunterladen" und zeigen Dateigroesse, Geschwindigkeit und Fortschritt.
+- Admin-Bereich ist nur fuer Admins. Keine Admin-Interna oder Umgehungen erklaeren.
+- Moderation kann Warnungen, Sperren oder Account-Loeschungen anzeigen. Bei Einspruch muss ein Admin pruefen.
+
+Problemloesung:
+- Wenn Login nicht gespeichert bleibt: aktuelle Desktop-Version installieren, App komplett schliessen, neu anmelden, App neu starten, ggf. Sicherheitssoftware/AppData-Speicher pruefen.
+- Wenn Google nicht geht: Entsperrcode pruefen, Web-App nutzen, Server-Konfiguration/GOOGLE_CLIENT_ID kann fehlen.
+- Wenn Face Warp laggt: kleineres Bild, andere Tabs schliessen, App/Browser neu starten, aktuelle Version nutzen, Basics testen.
+- Wenn "Verlassen" nicht ins Hauptmenue fuehrt: aktuelle Version nutzen, genaue Schritte/Tool-Namen abfragen.
+- Wenn Chat nicht geht: Internet, Login, Gruppe/Chat-Schluessel und Neu laden pruefen.
+- Wenn Pro nicht erkannt wird: neu anmelden, App neu starten, Internet pruefen, Account vom Admin pruefen lassen.
+
+Wenn der Nutzer unklar schreibt, frage maximal 2 konkrete Rueckfragen: Web oder Desktop? Welche Meldung steht da?`;
+
+let _supportReason = '';
+let _supportHistory = [];
+let _supportConnectingTimer = null;
+let _supportIsSending = false;
+
+function supportShowStage(stage) {
+    ['supportLoading', 'supportReasons', 'supportConnecting', 'supportChat'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = id === stage ? (id === 'supportChat' ? 'flex' : 'flex') : 'none';
+    });
+}
+
+function openSupport() {
+    const modal = document.getElementById('supportModal');
+    if (!modal) return;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    supportShowStage('supportLoading');
+    clearInterval(_supportConnectingTimer);
+    setTimeout(() => {
+        if (!modal.classList.contains('show')) return;
+        if (!_supportReason) supportShowStage('supportReasons');
+        else supportShowStage('supportChat');
+    }, 900);
+}
+
+function closeSupport() {
+    const modal = document.getElementById('supportModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function selectSupportReason(reason) {
+    _supportReason = reason || 'Sonstiges';
+    supportShowStage('supportConnecting');
+    const bar = document.getElementById('supportConnectBar');
+    if (bar) bar.style.width = '0%';
+    clearInterval(_supportConnectingTimer);
+    const started = Date.now();
+    _supportConnectingTimer = setInterval(() => {
+        const elapsed = Date.now() - started;
+        const percent = Math.min(100, Math.round((elapsed / 10000) * 100));
+        if (bar) bar.style.width = `${percent}%`;
+        if (elapsed >= 10000) {
+            clearInterval(_supportConnectingTimer);
+            startSupportChat();
+        }
+    }, 180);
+}
+
+function startSupportChat() {
+    supportShowStage('supportChat');
+    if (_supportHistory.length === 0) {
+        _supportHistory = [{ role: 'system', content: SUPPORT_SYSTEM_PROMPT }];
+        const greeting = `Hallo, hier ist der Ehoser Support. Ich sehe, es geht um ${_supportReason || 'Support'}. Beschreiben Sie kurz, was genau passiert ist, dann schauen wir das Schritt fuer Schritt an.`;
+        appendSupportBubble('agent', greeting);
+        _supportHistory.push({ role: 'assistant', content: greeting });
+    }
+    setTimeout(() => document.getElementById('supportInput')?.focus(), 80);
+}
+
+function appendSupportBubble(type, text) {
+    const messages = document.getElementById('supportMessages');
+    if (!messages) return null;
+    const div = document.createElement('div');
+    div.className = `support-bubble support-bubble-${type}`;
+    div.textContent = text;
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+    return div;
+}
+
+function supportInputKey(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendSupportMessage();
+    }
+}
+
+function supportSetTyping(active) {
+    const typing = document.getElementById('supportTyping');
+    if (typing) typing.style.display = active ? 'block' : 'none';
+    const messages = document.getElementById('supportMessages');
+    if (messages) messages.scrollTop = messages.scrollHeight;
+}
+
+function supportHumanDelay(text) {
+    const chars = String(text || '').length;
+    return Math.min(8500, Math.max(1800, 900 + chars * 38 + Math.random() * 1200));
+}
+
+async function sendSupportMessage() {
+    if (_supportIsSending) return;
+    const input = document.getElementById('supportInput');
+    const sendBtn = document.getElementById('supportSendBtn');
+    const text = (input?.value || '').trim();
+    if (!text) return;
+
+    input.value = '';
+    _supportIsSending = true;
+    if (sendBtn) sendBtn.disabled = true;
+    appendSupportBubble('user', text);
+
+    const userContext = `Support-Grund: ${_supportReason || 'Sonstiges'}\nDesktop-Modus: ${isDesktopMode() ? 'ja' : 'nein'}\nAngemeldet: ${localStorage.getItem('token') ? 'ja' : 'nein'}\nNachricht: ${text}`;
+    _supportHistory.push({ role: 'user', content: userContext });
+    supportSetTyping(true);
+
+    try {
+        const token = localStorage.getItem('token');
+        const supportMessages = [
+            { role: 'system', content: SUPPORT_SYSTEM_PROMPT },
+            ..._supportHistory.filter(msg => msg.role !== 'system').slice(-12)
+        ];
+        const res = await fetch(`${API_BASE}/ki`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({ messages: supportMessages })
+        });
+
+        if (!res.ok) {
+            throw new Error(`Support nicht erreichbar (${res.status})`);
+        }
+
+        const data = await res.json();
+        const reply = data?.choices?.[0]?.message?.content?.trim()
+            || 'Ich bin da. Beschreiben Sie bitte kurz, welche Meldung genau angezeigt wird.';
+        await new Promise(resolve => setTimeout(resolve, supportHumanDelay(reply)));
+        supportSetTyping(false);
+        appendSupportBubble('agent', reply);
+        _supportHistory.push({ role: 'assistant', content: reply });
+    } catch {
+        await new Promise(resolve => setTimeout(resolve, 2200));
+        supportSetTyping(false);
+        const fallback = 'Die Verbindung zum Support-Dienst ist gerade nicht sauber erreichbar. Bitte pruefen Sie kurz Internet und Anmeldung, und schreiben Sie mir dann die genaue Fehlermeldung.';
+        appendSupportBubble('error', fallback);
+        _supportHistory.push({ role: 'assistant', content: fallback });
+    } finally {
+        _supportIsSending = false;
+        if (sendBtn) sendBtn.disabled = false;
+        input?.focus();
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('supportModal');
+    if (modal) {
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) closeSupport();
+        });
+    }
+});
