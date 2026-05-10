@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=19">
+    <link rel="stylesheet" href="styles.css?v=20">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="vendor/qrcode-generator.js"></script>
@@ -1728,6 +1728,54 @@ Ramen</textarea>
         </div>
     </div>
 
+    <div id="pricingModal" class="modal">
+        <div class="modal-content settings-modal-content" style="max-width:860px;">
+            <span class="close" onclick="closePricingModal()">&times;</span>
+            <h3>Tarif wählen</h3>
+            <div class="pricing-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0;">
+                <div class="pricing-card">
+                    <h4>Gratis</h4>
+                    <strong>0 Euro</strong>
+                    <ul>
+                        <li>Einfache KI enthalten</li>
+                        <li>Paar Apps</li>
+                        <li>Kein Ehoser Mitglied</li>
+                        <li>30 Credits einmalig</li>
+                    </ul>
+                </div>
+                <div class="pricing-card">
+                    <h4>Pro</h4>
+                    <strong>10 Euro monatlich</strong>
+                    <ul>
+                        <li>Einfache KI</li>
+                        <li>Mehr Apps</li>
+                        <li>200 Credits monatlich</li>
+                    </ul>
+                    <button class="btn-primary" onclick="selectPlanRequest('pro')">Tarif wählen</button>
+                </div>
+                <div class="pricing-card premium">
+                    <h4>Premium</h4>
+                    <strong>20 Euro monatlich</strong>
+                    <ul>
+                        <li>Fortschrittliche KI</li>
+                        <li>1000 Credits monatlich</li>
+                        <li>Video KI mit Sora</li>
+                        <li>Alle Apps</li>
+                        <li>Ehoser Mitglied</li>
+                    </ul>
+                    <button class="btn-primary" onclick="selectPlanRequest('premium')">Tarif wählen</button>
+                </div>
+            </div>
+            <div id="planRequestBox" style="display:none;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px;">
+                <div style="font-weight:800;margin-bottom:8px;">Bar bezahlen</div>
+                <label for="planRealName">Echter Name</label>
+                <input id="planRealName" type="text" placeholder="Max Mustermann" style="margin:6px 0 10px;">
+                <button class="btn-primary" onclick="sendPlanRequest()">Tarif Anfrage senden</button>
+                <small id="planRequestStatus" style="display:block;margin-top:8px;color:var(--muted,#888);"></small>
+            </div>
+        </div>
+    </div>
+
     <div id="facewarpModeModal" class="modal">
         <div class="modal-content settings-modal-content">
             <span class="close" onclick="closeFacewarpModeModal()">&times;</span>
@@ -2406,7 +2454,7 @@ Ramen</textarea>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=24"></script>
+    <script src="app.js?v=25"></script>
     <script src="tools.js?v=3"></script>
 </body>
 </html>
