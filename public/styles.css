@@ -7123,8 +7123,10 @@ body.desktop-mode .mode-hero::after {
 
 .support-launcher {
     position: fixed;
-    right: 18px;
+    left: 50%;
+    right: auto;
     bottom: 18px;
+    transform: translateX(-50%);
     z-index: 2400;
     display: inline-flex;
     align-items: center;
@@ -7141,13 +7143,13 @@ body.desktop-mode .mode-hero::after {
 }
 
 body[data-section="auth"] .support-launcher {
+    left: 50%;
     right: auto;
-    left: 18px;
 }
 
 .support-launcher:hover {
     border-color: rgba(34, 224, 191, 0.68);
-    transform: translateY(-1px);
+    transform: translateX(-50%) translateY(-1px);
 }
 
 .support-launcher-dot {
@@ -7164,7 +7166,7 @@ body[data-section="auth"] .support-launcher {
     z-index: 2700;
     display: none;
     align-items: flex-end;
-    justify-content: flex-end;
+    justify-content: center;
     padding: 18px;
     background: rgba(2, 8, 14, 0.42);
     backdrop-filter: blur(10px);
@@ -7319,18 +7321,24 @@ body[data-section="auth"] .support-launcher {
     min-height: 0;
     display: flex;
     flex-direction: column;
+    background: #07131d;
 }
 
 .support-chatkit-mount {
     flex: 1;
     min-height: 0;
     display: flex;
+    overflow: hidden;
+    background: #07131d;
 }
 
 .support-chatkit {
     width: 100%;
     height: 100%;
     min-height: 0;
+    display: block;
+    background: #07131d;
+    color-scheme: dark;
 }
 
 .support-chatkit-loading,
@@ -7452,12 +7460,13 @@ body[data-section="auth"] .support-launcher {
 
 @media (max-width: 640px) {
     .support-launcher {
+        left: 50%;
         right: auto;
-        left: 10px;
         bottom: 12px;
         min-height: 38px;
         padding: 0 12px;
         font-size: 0.82rem;
+        transform: translateX(-50%);
     }
 
     #auth .auth-container {
