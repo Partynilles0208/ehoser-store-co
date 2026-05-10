@@ -18,7 +18,7 @@ const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre â€“ Token lÃ¤uft praktisch 
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
-const SUPPORT_WORKFLOW_ID = process.env.SUPPORT_WORKFLOW_ID || 'wf_6a0021ed65808190bf7165b1e8113aa60d45c6a2bfe6257f';
+const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -371,7 +371,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/code-reset-status',
   '/api/code-reset-complete',
   '/api/desktop-login/start',
-  '/api/support/session',
+  '/api/support/chat',
   '/api/unlock-code',
   '/api/verify-token'
 ]);
@@ -3895,7 +3895,7 @@ app.post('/api/ki/premium', async (req, res) => {
   }
 });
 
-app.post('/api/support/session', async (req, res) => {
+app.post('/api/support/chat', async (req, res) => {
   const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
   if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
 
@@ -3905,25 +3905,27 @@ app.post('/api/support/session', async (req, res) => {
     if (token) username = jwt.verify(token, JWT_SECRET)?.username || null;
   } catch {}
 
-  const rawUserId = String(req.body?.userId || '').trim();
-  const fallbackUser = crypto
-    .createHash('sha256')
-    .update(`${req.ip || 'unknown'}:${rawUserId || 'guest'}`)
-    .digest('hex')
-    .slice(0, 32);
-  const user = username ? `ehoser-${username}` : `ehoser-guest-${fallbackUser}`;
+  const { messages } = req.body;
+  if (!Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'messages fehlt' });
+  }
 
   try {
-    const aiRes = await fetch('https://api.openai.com/v1/chatkit/sessions', {
+    const systemPrompt = messages.find((msg) => msg.role === 'system')?.content
+      || 'Du bist Ehoser Support. Antworte auf Deutsch, freundlich, kurz und praktisch. Verrate keine Secrets, Tokens, Codes oder Admin-Interna.';
+    const supportContext = username ? `Angemeldeter Nutzer: ${username}` : 'Nutzer ist nicht angemeldet oder Gast.';
+
+    const aiRes = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'OpenAI-Beta': 'chatkit_beta=v1',
         Authorization: `Bearer ${openAIKey}`
       },
       body: JSON.stringify({
-        workflow: { id: SUPPORT_WORKFLOW_ID },
-        user
+        model: SUPPORT_OPENAI_MODEL,
+        instructions: `${String(systemPrompt)}\n\n${supportContext}`,
+        input: toOpenAIResponsesInput(messages),
+        max_output_tokens: 700
       })
     });
 
@@ -3931,14 +3933,18 @@ app.post('/api/support/session', async (req, res) => {
     if (!aiRes.ok) {
       const message = typeof data?.error === 'object'
         ? (data.error?.message || JSON.stringify(data.error))
-        : (data?.error || 'Support-Workflow konnte nicht gestartet werden');
+        : (data?.error || 'Support konnte nicht antworten');
       return res.status(aiRes.status).json({ error: message });
     }
 
-    res.json({ client_secret: data.client_secret });
+    const content = responseOutputText(data);
+    res.json({
+      choices: [{ message: { role: 'assistant', content: content || 'Keine Antwort erhalten.' } }],
+      model: SUPPORT_OPENAI_MODEL
+    });
   } catch (err) {
-    console.error('Support ChatKit Error:', err);
-    res.status(502).json({ error: 'Support-Workflow nicht erreichbar' });
+    console.error('Support OpenAI Error:', err);
+    res.status(502).json({ error: 'Support nicht erreichbar' });
   }
 });
 
