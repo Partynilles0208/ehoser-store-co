@@ -2353,8 +2353,60 @@ Ramen</textarea>
         </div>
     </div>
 
+    <button id="supportLauncher" class="support-launcher" type="button" onclick="openSupport()">
+        <span class="support-launcher-dot"></span>
+        Support
+    </button>
+
+    <div id="supportModal" class="support-modal" aria-hidden="true">
+        <div class="support-panel" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
+            <div class="support-head">
+                <div>
+                    <div class="support-kicker">Ehoser Support</div>
+                    <h2 id="supportTitle">Wie koennen wir helfen?</h2>
+                </div>
+                <button class="support-close" type="button" onclick="closeSupport()" aria-label="Support schliessen">x</button>
+            </div>
+
+            <div id="supportLoading" class="support-stage support-loading">
+                <div class="support-spinner"></div>
+                <strong>Support wird geladen</strong>
+                <span>Einen Moment bitte...</span>
+            </div>
+
+            <div id="supportReasons" class="support-stage" style="display:none">
+                <p class="support-copy">Waehlen Sie den Grund fuer den Support aus.</p>
+                <div class="support-reason-grid">
+                    <button type="button" onclick="selectSupportReason('Anmeldung')">Anmeldung</button>
+                    <button type="button" onclick="selectSupportReason('Technik')">Technik</button>
+                    <button type="button" onclick="selectSupportReason('Bugs')">Bugs</button>
+                    <button type="button" onclick="selectSupportReason('Hilfe')">Hilfe</button>
+                    <button type="button" onclick="selectSupportReason('Sonstiges')">Sonstiges</button>
+                </div>
+            </div>
+
+            <div id="supportConnecting" class="support-stage support-connecting" style="display:none">
+                <div class="support-avatar">E</div>
+                <strong>Bitte warten Sie.</strong>
+                <span>Sie werden mit einem unserer Ehoser Mitarbeiter verbunden.</span>
+                <div class="support-progress"><div id="supportConnectBar"></div></div>
+            </div>
+
+            <div id="supportChat" class="support-chat" style="display:none">
+                <div id="supportMessages" class="support-messages"></div>
+                <div id="supportTyping" class="support-typing" style="display:none">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="support-input-row">
+                    <textarea id="supportInput" rows="1" placeholder="Nachricht an Ehoser Support..." onkeydown="supportInputKey(event)"></textarea>
+                    <button id="supportSendBtn" type="button" onclick="sendSupportMessage()">Senden</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=17"></script>
+    <script src="app.js?v=18"></script>
     <script src="tools.js?v=3"></script>
 </body>
 </html>

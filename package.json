@@ -1,6 +1,6 @@
 {
   "name": "ehoser-shop",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Ehoser Control Center als Web- und Desktop-App",
   "main": "electron/main.js",
   "scripts": {
