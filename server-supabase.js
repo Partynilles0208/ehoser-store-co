@@ -697,7 +697,7 @@ async function ensurePlanCredits(username, profile = null) {
   const current = profile || await getProfile(username);
   const plan = getPlanKey(current);
   const settings = { ...(current.settings || {}) };
-  const credits = settings.credits || {};
+  const credits = settings.credits || (Number.isFinite(Number(current.credits)) ? { balance: Number(current.credits) } : {});
   const period = currentCreditPeriod();
   let balance = Number(credits.balance);
   if (!Number.isFinite(balance)) balance = 0;
@@ -734,16 +734,18 @@ async function changeCredits(username, delta) {
   const profile = await ensurePlanCredits(username);
   const settings = { ...(profile.settings || {}) };
   const credits = { ...(settings.credits || {}) };
-  const balance = Math.max(0, (Number(credits.balance) || 0) + delta);
+  const currentBalance = Number.isFinite(Number(credits.balance)) ? Number(credits.balance) : Number(profile.credits || 0);
+  const balance = Math.max(0, currentBalance + delta);
   settings.credits = { ...credits, balance, updatedAt: new Date().toISOString() };
   return upsertProfile(username, { settings });
 }
 
 async function chargeCredits(username, amount) {
   const profile = await ensurePlanCredits(username);
-  const balance = Number(profile.settings?.credits?.balance || 0);
+  const rawBalance = profile.settings?.credits?.balance ?? profile.credits ?? 0;
+  const balance = Number.isFinite(Number(rawBalance)) ? Number(rawBalance) : 0;
   if (balance < amount) {
-    const err = new Error('Keine Credits mehr verfügbar. Bitte upgrade deinen Plan.');
+    const err = new Error(`Keine Credits mehr verfuegbar. Du brauchst ${amount} Credits, hast aber ${balance}. Bitte upgrade deinen Plan.`);
     err.status = 402;
     err.credits = balance;
     throw err;
