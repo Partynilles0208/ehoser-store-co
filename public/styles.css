@@ -7330,6 +7330,7 @@ body[data-section="auth"] .support-launcher {
     display: flex;
     overflow: hidden;
     background: #07131d;
+    color-scheme: dark;
 }
 
 .support-chatkit {
@@ -7337,8 +7338,22 @@ body[data-section="auth"] .support-launcher {
     height: 100%;
     min-height: 0;
     display: block;
-    background: #07131d;
+    border: 0;
+    background: #07131d !important;
     color-scheme: dark;
+    --chatkit-color-scheme: dark;
+    --chatkit-background: #07131d;
+    --chatkit-bg: #07131d;
+    --chatkit-surface: #07131d;
+    --chatkit-accent: #22e0bf;
+}
+
+.support-chatkit iframe,
+.support-chatkit::part(root),
+.support-chatkit::part(container),
+.support-chatkit::part(chat),
+.support-chatkit::part(main) {
+    background: #07131d !important;
 }
 
 .support-chatkit-loading,
