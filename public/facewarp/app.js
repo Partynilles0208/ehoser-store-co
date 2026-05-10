@@ -76,6 +76,17 @@ const PIXABAY_KEY = "50190970-65ec83f509b70f19f8665f4a1";
 const PIXABAY_ENDPOINT = "https://pixabay.com/api/";
 const FLY_REPEAT = 6;
 
+function setupBackLink() {
+  const link = document.querySelector('a[href="../index.html"]');
+  if (!link) return;
+  const params = new URLSearchParams(window.location.search);
+  const desktop = params.get("desktop") === "1" || Boolean(window.__EHOSER_DESKTOP__);
+  link.textContent = "Zurueck zum Hauptmenue";
+  link.href = desktop ? "../index.html?desktop=1&return=mode-select" : "../index.html?return=mode-select";
+}
+
+setupBackLink();
+
 function updateSliderValues() {
   strengthValue.textContent = strength.toFixed(2);
   sizeValue.textContent = `${radius} px`;

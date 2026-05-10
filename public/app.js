@@ -1746,6 +1746,9 @@ async function loadMyApps() {
 
 function showSection(sectionId) {
     const token = localStorage.getItem('token');
+    if (sectionId === 'auth' && token && !isAdminGuestPreview()) {
+        sectionId = 'mode-select';
+    }
     if (sectionId !== 'auth' && !token && !isAdminGuestPreview()) {
         sectionId = 'auth';
     }
@@ -4060,8 +4063,8 @@ function closeFacewarpModeModal() {
 function openFacewarpWithTier(tier) {
     const safeTier = tier === 'pro' ? 'pro' : 'basic';
     window.location.href = isDesktopMode()
-        ? `facewarp/index.html?tier=${safeTier}`
-        : `/facewarp/?tier=${safeTier}`;
+        ? `facewarp/index.html?tier=${safeTier}&desktop=1&return=mode-select`
+        : `/facewarp/?tier=${safeTier}&return=mode-select`;
 }
 
 function showAlert(message, type) {
