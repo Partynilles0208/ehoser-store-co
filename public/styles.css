@@ -7140,6 +7140,11 @@ body.desktop-mode .mode-hero::after {
     cursor: pointer;
 }
 
+body[data-section="auth"] .support-launcher {
+    right: auto;
+    left: 18px;
+}
+
 .support-launcher:hover {
     border-color: rgba(34, 224, 191, 0.68);
     transform: translateY(-1px);
@@ -7447,8 +7452,16 @@ body.desktop-mode .mode-hero::after {
 
 @media (max-width: 640px) {
     .support-launcher {
-        right: 12px;
+        right: auto;
+        left: 10px;
         bottom: 12px;
+        min-height: 38px;
+        padding: 0 12px;
+        font-size: 0.82rem;
+    }
+
+    #auth .auth-container {
+        padding-bottom: 76px;
     }
 
     .support-modal {

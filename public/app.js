@@ -1760,6 +1760,7 @@ function showSection(sectionId) {
     }
 
     section.classList.add('active');
+    document.body.dataset.section = sectionId;
 
     // Chat hat eigenes internes Scroll-Layout; Seiten-Scroll dafür sperren.
     document.body.classList.toggle('chat-scroll-lock', sectionId === 'chat');
@@ -5835,6 +5836,14 @@ function getSupportClientId() {
 
 function waitForChatKit() {
     return new Promise((resolve, reject) => {
+        if (!document.querySelector('script[data-ehoser-chatkit]')) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.platform.openai.com/deployments/chatkit/chatkit.js';
+            script.async = true;
+            script.dataset.ehoserChatkit = '1';
+            script.onerror = () => reject(new Error('ChatKit konnte nicht geladen werden'));
+            document.head.appendChild(script);
+        }
         let tries = 0;
         const tick = () => {
             if (customElements.get('openai-chatkit')) {
