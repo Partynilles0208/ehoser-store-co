@@ -620,11 +620,22 @@ function getPersonalization() {
 function hasPremiumAccess() {
     const until = currentProfile?.premiumUntil || currentProfile?.settings?.premiumUntil || null;
     const untilMs = until ? Date.parse(until) : 0;
-    return currentProfile?.isPremium === true || (Number.isFinite(untilMs) && untilMs > Date.now());
+    return currentProfile?.isPremium === true
+        || currentProfile?.capabilities?.premiumKi === true
+        || (Number.isFinite(untilMs) && untilMs > Date.now());
+}
+
+function hasVideoGeneratorAccess() {
+    return currentProfile?.isPremium === true || currentProfile?.capabilities?.videoGenerator === true;
 }
 
 function hasProAccess() {
-    return hasPremiumAccess() || currentProfile?.isPro === true;
+    const until = currentProfile?.proUntil || null;
+    const untilMs = until ? Date.parse(until) : 0;
+    return currentProfile?.isPremium === true
+        || currentProfile?.capabilities?.proFeatures === true
+        || currentProfile?.isPro === true
+        || (Number.isFinite(untilMs) && untilMs > Date.now());
 }
 
 function getCreditBalance() {
@@ -632,18 +643,25 @@ function getCreditBalance() {
 }
 
 function getCurrentPlanKey() {
+    if (currentProfile?.isCustom || currentProfile?.customPlan?.enabled) return 'custom';
     if (hasPremiumAccess()) return 'premium';
     if (hasProAccess()) return 'pro';
     return 'free';
 }
 
+function getCurrentPlanLabel() {
+    if (getCurrentPlanKey() === 'custom') return currentProfile?.customPlan?.label || 'Individuell';
+    if (currentProfile?.isPremium === true) return 'Premium';
+    if (hasProAccess()) return 'PRO';
+    return 'Gratis';
+}
+
 function syncPlanStatus() {
     if (!currentProfile) return;
-    currentProfile.isPremium = hasPremiumAccess();
     currentProfile.isPro = hasProAccess();
     currentProfile.credits = getCreditBalance();
     localStorage.setItem('proStatus', currentProfile.isPro ? '1' : '0');
-    localStorage.setItem('premiumStatus', currentProfile.isPremium ? '1' : '0');
+    localStorage.setItem('premiumStatus', hasPremiumAccess() ? '1' : '0');
 }
 
 async function refreshCurrentProfile() {
@@ -1497,7 +1515,8 @@ async function handleRegister(event) {
 function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
     syncPlanStatus();
-    const plan = hasPremiumAccess() ? 'Premium' : (hasProAccess() ? 'PRO' : 'Gratis');
+    const plan = getCurrentPlanLabel();
+    const planKey = getCurrentPlanKey();
     const credits = getCreditBalance();
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     const personalization = getPersonalization();
@@ -1513,9 +1532,9 @@ function showLoggedInUI() {
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
         <a href="admin.html" class="nav-link">Admin</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
-        <button onclick="openPricingModal()" class="plan-badge ${hasPremiumAccess() ? 'premium' : (hasProAccess() ? 'pro' : '')}" style="border:0;cursor:pointer;">${plan}</button>
+        <button onclick="openPricingModal()" class="plan-badge ${planKey === 'custom' ? 'premium' : (currentProfile?.isPremium ? 'premium' : (hasProAccess() ? 'pro' : ''))}" style="border:0;cursor:pointer;">${plan}</button>
         <span class="plan-badge" title="KI Credits">${credits} Credits</span>
-        ${!hasPremiumAccess() ? '<button onclick="openPricingModal()" class="btn-small" style="width:auto;padding:8px 12px;">Pro Mitglied werden</button>' : ''}
+        ${currentProfile?.isPremium !== true && planKey !== 'custom' ? '<button onclick="openPricingModal()" class="btn-small" style="width:auto;padding:8px 12px;">Pro Mitglied werden</button>' : ''}
         <span style="display:flex;align-items:center;gap:8px;">${avatarNode}</span>
         <span class="hello-user">${psBadge} ${helloText}</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
@@ -2739,7 +2758,7 @@ function parseVideoOptions(text) {
 
 function maybeStartVideoFlow(text) {
     if (!/(video|film|clip|sora)/i.test(text || '')) return false;
-    if (!hasPremiumAccess()) {
+    if (!hasVideoGeneratorAccess()) {
         appendKIBubble('ai', 'Es tut mir leid, Video KI ist ab 20 Euro im Shop erhaeltlich. Oeffne oben deinen Tarif und waehle Premium.');
         return true;
     }
@@ -3176,7 +3195,17 @@ function updatePlanBadge() {
     const el = document.getElementById('planBadge');
     if (!el) return;
 
-    if (hasPremiumAccess()) {
+    if (getCurrentPlanKey() === 'custom') {
+        const features = currentProfile?.customPlan?.features || {};
+        const enabled = [
+            features.premiumKi ? 'Premium KI' : '',
+            features.videoGenerator ? 'Video' : '',
+            features.proFeatures ? 'Pro' : '',
+            features.psAccount ? 'PS' : ''
+        ].filter(Boolean).join(', ');
+        el.textContent = `Plan: Individuell${enabled ? ` (${enabled})` : ''} | ${getCreditBalance()} Credits`;
+        el.classList.add('pro', 'premium');
+    } else if (currentProfile?.isPremium === true) {
         const premiumUntil = currentProfile?.premiumUntil || currentProfile?.settings?.premiumUntil || '';
         const until = premiumUntil ? new Date(premiumUntil).toLocaleDateString('de-DE') : '';
         el.textContent = `${until ? `Plan: Premium bis ${until}` : 'Plan: Premium'} | ${getCreditBalance()} Credits`;

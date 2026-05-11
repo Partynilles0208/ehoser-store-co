@@ -183,6 +183,40 @@
         <button onclick="adminContinueReport()">Bericht fortsetzen</button>
     </div>
 
-    <script src="admin.js?v=2"></script>
+    <div id="userBenefitsContext" class="report-context-menu" style="display:none;">
+        <button onclick="openUserBenefitsModal()">Vorteile geben</button>
+    </div>
+
+    <div id="userBenefitsModal" class="sv-modal" style="display:none">
+        <div class="sv-content" style="max-width:560px;">
+            <div class="sv-header">
+                <span id="userBenefitsTitle">Vorteile geben</span>
+                <button class="sv-close" onclick="closeUserBenefitsModal()">Schliessen</button>
+            </div>
+            <div style="display:grid;gap:12px;margin-top:14px;">
+                <label style="display:flex;align-items:center;gap:10px;"><input id="benefitAll" type="checkbox" onchange="toggleAllBenefits(this.checked)"> Alles freischalten</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitVideo" type="checkbox" data-price="20"> Video Generator</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitPremiumKi" type="checkbox" data-price="20"> Professionelle KI</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitPro" type="checkbox" data-price="10"> Pro Funktionen</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitPs" type="checkbox" data-price="5"> Psychologischer Support</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitUpdate" type="checkbox" data-price="0"> Update freischalten</label>
+                <div class="form-group" style="margin:0;">
+                    <label for="benefitCredits">Credits geben</label>
+                    <input id="benefitCredits" type="number" min="0" step="1" value="0" placeholder="z.B. 500">
+                    <small>Credits werden direkt zum Konto addiert.</small>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.05);">
+                    <strong id="benefitPriceResult">Preis: noch nicht berechnet</strong>
+                    <button class="btn-secondary" onclick="calculateBenefitsPrice()">Preis berechnen</button>
+                </div>
+                <div class="admin-actions">
+                    <button id="benefitContinueBtn" class="btn-primary" onclick="saveUserBenefits()" disabled>Fortfahren</button>
+                    <button class="btn-secondary" onclick="closeUserBenefitsModal()">Abbrechen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js?v=3"></script>
 </body>
 </html>
