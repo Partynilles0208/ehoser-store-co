@@ -510,6 +510,27 @@ function normalizeModerationSettings(raw) {
   };
 }
 
+function normalizeCustomPlan(raw) {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const featuresSrc = (src.features && typeof src.features === 'object' && !Array.isArray(src.features)) ? src.features : {};
+  const creditsAdded = Math.max(0, Math.min(1000000, Math.trunc(Number(src.creditsAdded) || 0)));
+  const priceEur = Math.max(0, Math.min(100000, Math.round((Number(src.priceEur) || 0) * 100) / 100));
+  return {
+    enabled: Boolean(src.enabled),
+    label: typeof src.label === 'string' && src.label.trim() ? src.label.trim().slice(0, 40) : 'Individuell',
+    priceEur,
+    creditsAdded,
+    features: {
+      premiumKi: Boolean(featuresSrc.premiumKi),
+      videoGenerator: Boolean(featuresSrc.videoGenerator),
+      proFeatures: Boolean(featuresSrc.proFeatures),
+      psAccount: Boolean(featuresSrc.psAccount),
+      updateUnlocked: Boolean(featuresSrc.updateUnlocked)
+    },
+    updatedAt: typeof src.updatedAt === 'string' ? src.updatedAt : null
+  };
+}
+
 function normalizeSettings(raw) {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
   return {
@@ -523,6 +544,7 @@ function normalizeSettings(raw) {
     personalization: normalizePersonalization(src.personalization),
     moderation: normalizeModerationSettings(src.moderation),
     credits: (src.credits && typeof src.credits === 'object' && !Array.isArray(src.credits)) ? src.credits : undefined,
+    customPlan: src.customPlan ? normalizeCustomPlan(src.customPlan) : undefined,
     planRequests: Array.isArray(src.planRequests) ? src.planRequests.slice(-10) : undefined,
     passwordHash: typeof src.passwordHash === 'string' ? src.passwordHash : undefined,
     _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined
@@ -672,18 +694,32 @@ function normalizeProfileRow(username, row) {
   const ms = proUntil ? Date.parse(proUntil) : 0;
   const premiumMs = premiumUntil ? Date.parse(premiumUntil) : 0;
   const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
+  const settings = normalizeSettings(profile.settings || profile.user_settings);
+  const customPlan = normalizeCustomPlan(settings.customPlan);
+  const hasCustom = customPlan.enabled === true;
+  const capabilities = {
+    premiumKi: isPremium || (hasCustom && customPlan.features.premiumKi),
+    videoGenerator: isPremium || (hasCustom && customPlan.features.videoGenerator),
+    proFeatures: isPremium || (Number.isFinite(ms) && ms > Date.now()) || (hasCustom && customPlan.features.proFeatures),
+    psAccount: hasCustom && customPlan.features.psAccount,
+    updateUnlocked: hasCustom && customPlan.features.updateUnlocked
+  };
   return {
     username,
-    settings: normalizeSettings(profile.settings || profile.user_settings),
+    settings,
     proUntil: proUntil || null,
     premiumUntil: premiumUntil || null,
+    isCustom: hasCustom,
+    customPlan: hasCustom ? customPlan : null,
+    capabilities,
     isPremium,
-    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now())
+    isPro: capabilities.proFeatures
   };
 }
 
 function getPlanKey(profile) {
   if (profile?.isPremium) return 'premium';
+  if (profile?.isCustom) return 'free';
   if (profile?.isPro) return 'pro';
   return 'free';
 }
@@ -830,15 +866,29 @@ async function getProfile(username) {
   const ms = proUntil ? Date.parse(proUntil) : 0;
   const premiumMs = premiumUntil ? Date.parse(premiumUntil) : 0;
   const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
+  const normalizedSettings = normalizeSettings({ ...(settings || mem?.settings || {}), premiumUntil: premiumUntil || null });
+  const customPlan = normalizeCustomPlan(normalizedSettings.customPlan);
+  const hasCustom = customPlan.enabled === true;
+  const proByDate = Number.isFinite(ms) && ms > Date.now();
+  const capabilities = {
+    premiumKi: isPremium || (hasCustom && customPlan.features.premiumKi),
+    videoGenerator: isPremium || (hasCustom && customPlan.features.videoGenerator),
+    proFeatures: isPremium || proByDate || (hasCustom && customPlan.features.proFeatures),
+    psAccount: psAccount || (hasCustom && customPlan.features.psAccount),
+    updateUnlocked: hasCustom && customPlan.features.updateUnlocked
+  };
   return {
     username,
-    settings: normalizeSettings({ ...(settings || mem?.settings || {}), premiumUntil: premiumUntil || null }),
+    settings: normalizedSettings,
     proUntil: proUntil || null,
     premiumUntil: premiumUntil || null,
+    isCustom: hasCustom,
+    customPlan: hasCustom ? customPlan : null,
+    capabilities,
     isPremium,
-    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
-    ps_account: psAccount || false,
-    credits: Number((settings || mem?.settings || {})?.credits?.balance || 0)
+    isPro: capabilities.proFeatures,
+    ps_account: capabilities.psAccount,
+    credits: Number(normalizedSettings?.credits?.balance || 0)
   };
 }
 
@@ -895,13 +945,27 @@ async function upsertProfile(username, patch) {
   const ms = newProUntil ? Date.parse(newProUntil) : 0;
   const premiumMs = newPremiumUntil ? Date.parse(newPremiumUntil) : 0;
   const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
+  const customPlan = normalizeCustomPlan(newSettings.customPlan);
+  const hasCustom = customPlan.enabled === true;
+  const proByDate = Number.isFinite(ms) && ms > Date.now();
+  const capabilities = {
+    premiumKi: isPremium || (hasCustom && customPlan.features.premiumKi),
+    videoGenerator: isPremium || (hasCustom && customPlan.features.videoGenerator),
+    proFeatures: isPremium || proByDate || (hasCustom && customPlan.features.proFeatures),
+    psAccount: hasCustom && customPlan.features.psAccount,
+    updateUnlocked: hasCustom && customPlan.features.updateUnlocked
+  };
   return {
     username,
     settings: newSettings,
     proUntil: newProUntil || null,
     premiumUntil: newPremiumUntil || null,
+    isCustom: hasCustom,
+    customPlan: hasCustom ? customPlan : null,
+    capabilities,
     isPremium,
-    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
+    isPro: capabilities.proFeatures,
+    ps_account: capabilities.psAccount,
     credits: Number(newSettings?.credits?.balance || 0)
   };
 }
@@ -2081,8 +2145,11 @@ app.get('/api/admin/users', async (req, res) => {
         has_pro: profile.proUntil ? Date.parse(profile.proUntil) > Date.now() : false,
         is_pro: profile.isPro,
         is_premium: profile.isPremium,
-        update_unlocked: up?.update_unlocked === true,
-        ps_account: up?.ps_account === true
+        is_custom: profile.isCustom,
+        custom_plan: profile.customPlan,
+        credits: profile.credits,
+        update_unlocked: up?.update_unlocked === true || profile.capabilities?.updateUnlocked === true,
+        ps_account: up?.ps_account === true || profile.capabilities?.psAccount === true
       });
     }
     res.json(users);
@@ -2188,6 +2255,67 @@ app.post('/api/admin/plan-requests/:id/confirm', async (req, res) => {
     await upsertProfile(request.username, { settings });
   } catch {}
   res.json({ ok: true, username: request.username, plan: request.plan });
+});
+
+app.post('/api/admin/users/:id/custom-benefits', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungueltiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Ungueltige Nutzer-ID' });
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('username')
+      .eq('id', userId)
+      .single();
+    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const featuresBody = (req.body?.features && typeof req.body.features === 'object') ? req.body.features : {};
+    const creditsAdded = Math.max(0, Math.min(1000000, Math.trunc(Number(req.body?.creditsAdded) || 0)));
+    const priceEur = Math.max(0, Math.min(100000, Math.round((Number(req.body?.priceEur) || 0) * 100) / 100));
+    const enabled = req.body?.enabled !== false;
+
+    const profile = await getProfile(data.username);
+    const settings = { ...(profile.settings || {}) };
+    const currentCredits = Number(settings.credits?.balance ?? profile.credits ?? 0);
+    const balance = Math.max(0, (Number.isFinite(currentCredits) ? currentCredits : 0) + creditsAdded);
+    settings.credits = {
+      ...(settings.credits || {}),
+      balance,
+      updatedAt: new Date().toISOString()
+    };
+    settings.customPlan = normalizeCustomPlan({
+      enabled,
+      label: 'Individuell',
+      priceEur,
+      creditsAdded,
+      features: {
+        premiumKi: Boolean(featuresBody.premiumKi),
+        videoGenerator: Boolean(featuresBody.videoGenerator),
+        proFeatures: Boolean(featuresBody.proFeatures),
+        psAccount: Boolean(featuresBody.psAccount),
+        updateUnlocked: Boolean(featuresBody.updateUnlocked)
+      },
+      updatedAt: new Date().toISOString()
+    });
+
+    const updated = await upsertProfile(data.username, { settings });
+    if (settings.customPlan.features.psAccount) {
+      await supabaseAdmin.from('user_profiles').update({ ps_account: true }).eq('username', data.username).catch(() => {});
+    }
+    if (settings.customPlan.features.updateUnlocked) {
+      await supabaseAdmin.from('user_profiles').update({ update_unlocked: true }).eq('username', data.username).catch(() => {});
+    }
+
+    res.json({ ok: true, username: data.username, profile: updated, creditsAdded, priceEur });
+  } catch (err) {
+    console.error('Admin Custom Benefits Error:', err);
+    res.status(500).json({ error: err.message || 'Vorteile konnten nicht gespeichert werden' });
+  }
 });
 
 app.post('/api/admin/users/:id/add-month', async (req, res) => {
@@ -4108,7 +4236,7 @@ app.post('/api/ki/premium', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
   const profile = await ensurePlanCredits(auth.username);
-  if (!profile.isPremium) {
+  if (!profile.isPremium && profile.capabilities?.premiumKi !== true) {
     return res.status(403).json({ error: 'Premium Ehoser ist nur mit Premium freigeschaltet.' });
   }
 
@@ -4389,7 +4517,7 @@ app.post('/api/ki/video/create', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
   const profile = await ensurePlanCredits(auth.username);
-  if (!profile.isPremium) {
+  if (!profile.isPremium && profile.capabilities?.videoGenerator !== true) {
     return res.status(403).json({ error: 'Es tut mir leid, Video KI ist ab 20 Euro im Shop erhaeltlich.' });
   }
   const opts = normalizeVideoOptions(req.body);
