@@ -4462,73 +4462,49 @@ app.get('/api/ki/video/:id/status', async (req, res) => {
   res.status(410).json({ error: 'Status-Polling wird nicht verwendet.' });
 });
 
-// Bild-Generierung (HuggingFace SDXL primÃ¤r, Pollinations als Fallback)
+// Bild-Generierung mit OpenAI GPT Image 1 Mini
 app.get('/api/ki/image', async (req, res) => {
   const prompt = req.query.prompt;
   if (!prompt || prompt.trim().length === 0) {
     return res.status(400).json({ error: 'Kein Prompt angegeben' });
   }
-  const seed = req.query.seed || Math.floor(Math.random() * 999999);
-  const hfKey = process.env.HUGGINGFACE_API_KEY;
-  const pollinationsKey = process.env.POLLINATIONS_API_KEY;
-  const encodedPrompt = encodeURIComponent(prompt.slice(0, 500));
+  const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
+  if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
 
   try {
-    // 1. Versuch: HuggingFace Stable Diffusion XL
-    if (hfKey) {
-      try {
-        const hfRes = await fetch('https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${hfKey}`,
-            'Content-Type': 'application/json',
-            'x-wait-for-model': 'true'
-          },
-          body: JSON.stringify({ inputs: prompt.slice(0, 500), parameters: { seed: Number(seed) } })
-        });
-        if (hfRes.ok) {
-          const contentType = hfRes.headers.get('content-type') || 'image/jpeg';
-          if (contentType.startsWith('image/')) {
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('Cache-Control', 'public, max-age=86400');
-            const buffer = await hfRes.arrayBuffer();
-            return res.send(Buffer.from(buffer));
-          }
-        }
-        // HF Fehler loggen aber weiter zu Fallback
-        console.error('[HF] Status:', hfRes.status, await hfRes.text().catch(() => ''));
-      } catch (hfErr) {
-        console.error('[HF] Fehler:', hfErr.message);
-      }
+    const aiRes = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${openAIKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-image-1-mini',
+        prompt: prompt.slice(0, 1000),
+        size: '1024x1024',
+        quality: 'low',
+        output_format: 'png'
+      })
+    });
+
+    if (!aiRes.ok) {
+      const errorText = await aiRes.text().catch(() => '');
+      console.error('[OpenAI Image] Status:', aiRes.status, errorText);
+      return res.status(aiRes.status).json({ error: 'Bildgenerierung mit OpenAI fehlgeschlagen' });
     }
 
-    // 2. Fallback: Pollinations
-    const urls = pollinationsKey
-      ? [`https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&key=${encodeURIComponent(pollinationsKey)}`]
-      : [
-          `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`,
-          `https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`
-        ];
+    const data = await aiRes.json();
+    const b64 = data?.data?.[0]?.b64_json;
+    if (!b64) {
+      console.error('[OpenAI Image] Keine Bilddaten erhalten:', JSON.stringify(data).slice(0, 500));
+      return res.status(502).json({ error: 'OpenAI hat keine Bilddaten geliefert' });
+    }
 
-    let imgRes;
-    for (const url of urls) {
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 8000);
-        imgRes = await fetch(url, { headers: { 'User-Agent': 'ehoser-store/1.0' }, signal: ctrl.signal });
-        clearTimeout(timer);
-        if (imgRes.ok) break;
-      } catch {}
-    }
-    if (!imgRes || !imgRes.ok) {
-      return res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen â€“ kein Dienst verfÃ¼gbar' });
-    }
-    const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    const buffer = await imgRes.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(Buffer.from(b64, 'base64'));
   } catch (err) {
+    console.error('[OpenAI Image] Fehler:', err.message || err);
     res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen' });
   }
 });
