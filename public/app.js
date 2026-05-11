@@ -2672,9 +2672,10 @@ function appendKIImageBubble(prompt, imageUrl) {
         messages.scrollTop = messages.scrollHeight;
     };
     img.onerror = () => {
+        const retryUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'r=';
         loading.innerHTML = '\u274C Bild konnte nicht geladen werden. '
             + '<a href="' + imageUrl + '" target="_blank" rel="noopener" style="color:#8ab4c9;text-decoration:underline;">Direkt \u00F6ffnen</a>'
-            + ' &nbsp;<button onclick="this.closest(\'.ki-bubble\').querySelector(\'img\').src=\'' + imageUrl + '?r=\'+Date.now()" '
+            + ' &nbsp;<button onclick="this.closest(\'.ki-bubble\').querySelector(\'img\').src=\'' + retryUrl + '\'+Date.now()" '
             + 'style="background:#1e3a4a;color:#8ab4c9;border:1px solid #8ab4c9;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.8rem;">'
             + '\uD83D\uDD04 Erneut versuchen</button>';
     };
@@ -2687,9 +2688,7 @@ function kiHandleImageGenCommand(reply) {
     const match = reply.match(/BILD_GENERIEREN:\s*(.+)/i);
     if (!match) return false;
     const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
-    const seed = Math.floor(Math.random() * 999999);
-    // Direkt von Pollinations laden – kein Backend-Proxy, kein Vercel-Timeout
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+    const url = `/api/ki/image?prompt=${encodeURIComponent(prompt)}`;
     const textBefore = reply.replace(/BILD_GENERIEREN:\s*.+/i, '').trim();
     if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
     appendKIImageBubble(prompt, url);
