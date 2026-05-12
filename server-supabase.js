@@ -22,7 +22,17 @@ const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
 const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
-const MAIL_DOMAIN = (process.env.MAIL_DOMAIN || 'ehoser.de').toLowerCase();
+function normalizeMailDomain(value) {
+  return String(value || 'ehoser.de')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/.*$/, '')
+    .replace(/^@+/, '');
+}
+
+const MAIL_DOMAIN = normalizeMailDomain(process.env.MAIL_DOMAIN || 'ehoser.de');
 const MAIL_INBOUND_SECRET = process.env.MAIL_INBOUND_SECRET || '';
 const MAIL_SENDMAIL_PATH = process.env.MAIL_SENDMAIL_PATH || 'sendmail';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
@@ -499,6 +509,7 @@ function normalizeMailLocalPart(value) {
     .trim()
     .toLowerCase()
     .replace(/^@+/, '')
+    .replace(/^https?:\/\//, '')
     .replace(new RegExp(`@${MAIL_DOMAIN.replace(/\./g, '\\.')}$`, 'i'), '');
 }
 
