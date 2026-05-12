@@ -517,9 +517,14 @@ function escapeMailHeader(value) {
   return String(value || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 240);
 }
 
-function formatResendFrom(address) {
-  const cleanAddress = String(address || '').trim().toLowerCase();
-  return `Ehoser <${cleanAddress}>`;
+function extractEmailAddress(value) {
+  const raw = String(value || '').trim();
+  const bracketMatch = raw.match(/<([^>]+)>/);
+  return String(bracketMatch?.[1] || raw)
+    .trim()
+    .toLowerCase()
+    .replace(/^mailto:/, '')
+    .replace(/[^\w.!#$%&'*+/=?^`{|}~@-]/g, '');
 }
 
 async function listMailAccounts(username) {
@@ -536,7 +541,7 @@ async function listMailAccounts(username) {
 }
 
 async function getMailAccount(address) {
-  const normalized = String(address || '').trim().toLowerCase();
+  const normalized = extractEmailAddress(address);
   const { data, error } = await supabaseAdmin
     .from('ehoser_mail_accounts')
     .select('*')
@@ -693,6 +698,7 @@ async function sendMailWithResend({ from, to, subject, text }) {
   if (!RESEND_API_KEY) {
     throw new Error('RESEND_API_KEY fehlt.');
   }
+  const cleanFrom = extractEmailAddress(from);
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -700,7 +706,7 @@ async function sendMailWithResend({ from, to, subject, text }) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      from: formatResendFrom(from),
+      from: cleanFrom,
       to: [to],
       subject,
       text,
@@ -2126,8 +2132,8 @@ app.get('/api/mail/messages', async (req, res) => {
 app.post('/api/mail/send', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
-  const from = String(req.body?.from || '').trim().toLowerCase();
-  const to = String(req.body?.to || '').trim();
+  const from = extractEmailAddress(req.body?.from);
+  const to = extractEmailAddress(req.body?.to);
   const subject = escapeMailHeader(req.body?.subject || '(ohne Betreff)');
   const body = String(req.body?.body || '').slice(0, 20000);
   if (!from || !to || !body.trim()) {
@@ -2139,6 +2145,9 @@ app.post('/api/mail/send', async (req, res) => {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
     return res.status(400).json({ error: 'Empfaenger-Adresse ist ungueltig.' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)) {
+    return res.status(400).json({ error: 'Absender-Adresse ist ungueltig.' });
   }
 
   const now = new Date().toUTCString();
