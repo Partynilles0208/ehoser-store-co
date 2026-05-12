@@ -523,8 +523,11 @@ async function listMailAccounts(username) {
     .select('*')
     .eq('username', username)
     .order('created_at', { ascending: true });
-  if (!error) return data || [];
-  return [...mailAccountsMemory.values()].filter((account) => account.username === username);
+  const profile = await getProfile(username).catch(() => null);
+  const profileAccounts = Array.isArray(profile?.settings?.mailAccounts) ? profile.settings.mailAccounts : [];
+  const memoryAccounts = [...mailAccountsMemory.values()].filter((account) => account.username === username);
+  const merged = [...(!error ? (data || []) : []), ...profileAccounts, ...memoryAccounts];
+  return [...new Map(merged.filter(Boolean).map((account) => [account.address, account])).values()];
 }
 
 async function getMailAccount(address) {
@@ -535,31 +538,56 @@ async function getMailAccount(address) {
     .eq('address', normalized)
     .single();
   if (!error && data) return data;
+  try {
+    const { data: profiles } = await supabaseAdmin
+      .from('user_profiles')
+      .select('username,settings');
+    for (const profile of (profiles || [])) {
+      const found = (profile.settings?.mailAccounts || []).find((account) => account.address === normalized);
+      if (found) return { ...found, username: profile.username };
+    }
+  } catch {}
   return mailAccountsMemory.get(normalized) || null;
 }
 
 async function createMailAccount(username, localPart) {
   const address = buildMailAddress(localPart);
   const payload = { address, username, local_part: localPart };
+  const existing = await getMailAccount(address);
+  if (existing) {
+    const err = new Error(existing.username === username ? 'Adresse existiert bereits.' : 'Diese Adresse ist schon vergeben.');
+    err.code = 'MAIL_EXISTS';
+    throw err;
+  }
   const { data, error } = await supabaseAdmin
     .from('ehoser_mail_accounts')
     .insert([payload])
     .select('*')
     .single();
-  if (!error && data) return data;
+  if (!error && data) {
+    const profile = await getProfile(username).catch(() => null);
+    const settings = { ...(profile?.settings || {}) };
+    const accounts = Array.isArray(settings.mailAccounts) ? settings.mailAccounts : [];
+    if (!accounts.some((account) => account.address === data.address)) {
+      settings.mailAccounts = [...accounts, data].slice(-10);
+      await upsertProfile(username, { settings }).catch(() => {});
+    }
+    return data;
+  }
   if (error?.code === '23505') {
     const err = new Error('Diese Adresse ist schon vergeben.');
     err.code = 'MAIL_EXISTS';
     throw err;
   }
-  if (mailAccountsMemory.has(address)) {
-    const existing = mailAccountsMemory.get(address);
-    const err = new Error(existing.username === username ? 'Adresse existiert bereits.' : 'Diese Adresse ist schon vergeben.');
-    err.code = 'MAIL_EXISTS';
-    throw err;
-  }
-  mailAccountsMemory.set(address, { ...payload, created_at: new Date().toISOString() });
-  return mailAccountsMemory.get(address);
+  const local = { ...payload, created_at: new Date().toISOString() };
+  const profile = await getProfile(username).catch(() => null);
+  const settings = { ...(profile?.settings || {}) };
+  const accounts = Array.isArray(settings.mailAccounts) ? settings.mailAccounts : [];
+  settings.mailAccounts = [...accounts.filter((account) => account.address !== address), local].slice(-10);
+  await upsertProfile(username, { settings }).catch(() => {
+    mailAccountsMemory.set(address, local);
+  });
+  return local;
 }
 
 async function saveMailMessage(payload) {
@@ -582,7 +610,13 @@ async function saveMailMessage(payload) {
     .single();
   if (!error && data) return data;
   const local = { ...message, id: mailMessageMemoryId++, created_at: new Date().toISOString(), read_at: null };
-  mailMessagesMemory.unshift(local);
+  const profile = await getProfile(message.username).catch(() => null);
+  const settings = { ...(profile?.settings || {}) };
+  const messages = Array.isArray(settings.mailMessages) ? settings.mailMessages : [];
+  settings.mailMessages = [local, ...messages].slice(0, 100);
+  await upsertProfile(message.username, { settings }).catch(() => {
+    mailMessagesMemory.unshift(local);
+  });
   return local;
 }
 
@@ -595,10 +629,18 @@ async function listMailMessages(username, address) {
     .limit(100);
   if (address) query = query.eq('address', String(address).toLowerCase());
   const { data, error } = await query;
-  if (!error) return data || [];
-  return mailMessagesMemory
+  const profile = await getProfile(username).catch(() => null);
+  const profileMessages = Array.isArray(profile?.settings?.mailMessages) ? profile.settings.mailMessages : [];
+  const fallbackMessages = [...profileMessages, ...mailMessagesMemory]
     .filter((message) => message.username === username && (!address || message.address === String(address).toLowerCase()))
     .slice(0, 100);
+  if (!error) {
+    const merged = [...(data || []), ...fallbackMessages];
+    return [...new Map(merged.map((message) => [String(message.id), message])).values()]
+      .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))
+      .slice(0, 100);
+  }
+  return fallbackMessages;
 }
 
 function sendRawMailWithSendmail(rawMessage) {
@@ -764,6 +806,8 @@ function normalizeSettings(raw) {
     credits: (src.credits && typeof src.credits === 'object' && !Array.isArray(src.credits)) ? src.credits : undefined,
     customPlan: src.customPlan ? normalizeCustomPlan(src.customPlan) : undefined,
     planRequests: Array.isArray(src.planRequests) ? src.planRequests.slice(-10) : undefined,
+    mailAccounts: Array.isArray(src.mailAccounts) ? src.mailAccounts.slice(-10) : undefined,
+    mailMessages: Array.isArray(src.mailMessages) ? src.mailMessages.slice(-100) : undefined,
     passwordHash: typeof src.passwordHash === 'string' ? src.passwordHash : undefined,
     _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined
   };
