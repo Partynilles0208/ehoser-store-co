@@ -1504,6 +1504,7 @@ async function handleRegister(event) {
         showLoggedInUI();
         await loadApps();
         showSection('mode-select');
+        openWelcomeEmailModal(username);
         restoreReloadSnapshot();
         startOnlinePolling();
         document.getElementById('registerForm').reset();
@@ -1928,12 +1929,24 @@ function selectMailAccount(address) {
 }
 
 async function createMailAccount() {
-    const token = localStorage.getItem('token');
     const input = document.getElementById('emailLocalPart');
     const localPart = input?.value?.trim();
     if (!localPart) {
         showAlert('Bitte Namen fuer die Adresse eingeben.', 'error');
         return;
+    }
+    const account = await saveEhoserMailAddress(localPart);
+    if (!account) return;
+    if (input) input.value = '';
+    activeEmailAddress = account.address;
+    await loadEmailCenter();
+}
+
+async function saveEhoserMailAddress(localPart) {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showAlert('Bitte zuerst anmelden.', 'error');
+        return null;
     }
     try {
         const res = await fetch(`${API_BASE}/mail/accounts`, {
@@ -1943,12 +1956,81 @@ async function createMailAccount() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Adresse konnte nicht erstellt werden.');
-        if (input) input.value = '';
-        activeEmailAddress = data.account.address;
-        showAlert('Email-Adresse erstellt.', 'success');
-        await loadEmailCenter();
+        showAlert(data.replaced ? 'Email-Adresse geaendert.' : 'Email-Adresse erstellt.', 'success');
+        return data.account;
     } catch (error) {
         showAlert(error.message || 'Adresse konnte nicht erstellt werden.', 'error');
+        return null;
+    }
+}
+
+function openWelcomeEmailModal(defaultName) {
+    const modal = document.getElementById('welcomeEmailModal');
+    const input = document.getElementById('welcomeEmailLocalPart');
+    if (!modal || !input) return;
+    input.value = String(defaultName || currentUser?.username || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]/g, '')
+        .slice(0, 32);
+    modal.classList.add('show');
+    setTimeout(() => input.focus(), 50);
+}
+
+function closeWelcomeEmailModal() {
+    document.getElementById('welcomeEmailModal')?.classList.remove('show');
+}
+
+async function saveWelcomeEmailAddress() {
+    const input = document.getElementById('welcomeEmailLocalPart');
+    const localPart = input?.value?.trim();
+    if (!localPart) {
+        showAlert('Bitte Namen fuer die Adresse eingeben.', 'error');
+        return;
+    }
+    const account = await saveEhoserMailAddress(localPart);
+    if (!account) return;
+    activeEmailAddress = account.address;
+    closeWelcomeEmailModal();
+}
+
+async function loadSettingsEmailAddress() {
+    const token = localStorage.getItem('token');
+    const display = document.getElementById('ehoserEmailCurrentDisplay');
+    const input = document.getElementById('settingsEmailLocalPart');
+    if (!token || !display || !input) return;
+    display.textContent = 'Wird geladen...';
+    try {
+        const res = await fetch(`${API_BASE}/mail/accounts`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Adresse konnte nicht geladen werden.');
+        const account = data.accounts?.[0] || null;
+        if (account?.address) {
+            display.textContent = `Aktuell: ${account.address}`;
+            input.value = account.local_part || account.address.split('@')[0] || '';
+        } else {
+            display.textContent = 'Noch keine @ehoser.de Adresse erstellt.';
+            input.value = String(currentUser?.username || '').toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 32);
+        }
+    } catch {
+        display.textContent = 'Adresse konnte nicht geladen werden.';
+    }
+}
+
+async function saveSettingsEmailAddress() {
+    const input = document.getElementById('settingsEmailLocalPart');
+    const localPart = input?.value?.trim();
+    if (!localPart) {
+        showAlert('Bitte Namen fuer die Adresse eingeben.', 'error');
+        return;
+    }
+    const account = await saveEhoserMailAddress(localPart);
+    if (!account) return;
+    activeEmailAddress = account.address;
+    await loadSettingsEmailAddress();
+    if (document.getElementById('emails')?.classList.contains('active')) {
+        await loadEmailCenter();
     }
 }
 
@@ -3414,6 +3496,7 @@ function openSettingsModal() {
     if (toggleBtn) toggleBtn.textContent = 'ðŸ‘ Anzeigen';
     fetchLoginCode();
     updatePlanBadge();
+    loadSettingsEmailAddress();
     // Aktuelle E-Mail laden
     const emailDisplay = document.getElementById('emailCurrentDisplay');
     if (emailDisplay) {

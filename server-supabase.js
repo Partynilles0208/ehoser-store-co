@@ -555,10 +555,30 @@ async function createMailAccount(username, localPart) {
   const payload = { address, username, local_part: localPart };
   const existing = await getMailAccount(address);
   if (existing) {
-    const err = new Error(existing.username === username ? 'Adresse existiert bereits.' : 'Diese Adresse ist schon vergeben.');
-    err.code = 'MAIL_EXISTS';
-    throw err;
+    if (existing.username !== username) {
+      const err = new Error('Diese Adresse ist schon vergeben.');
+      err.code = 'MAIL_EXISTS';
+      throw err;
+    }
+    return existing;
   }
+
+  const ownAccounts = await listMailAccounts(username).catch(() => []);
+  const oldAccount = ownAccounts[0] || null;
+  if (oldAccount?.address && oldAccount.address !== address) {
+    await supabaseAdmin
+      .from('ehoser_mail_accounts')
+      .delete()
+      .eq('username', username)
+      .catch(() => {});
+    await supabaseAdmin
+      .from('ehoser_mail_messages')
+      .update({ address })
+      .eq('username', username)
+      .eq('address', oldAccount.address)
+      .catch(() => {});
+  }
+
   const { data, error } = await supabaseAdmin
     .from('ehoser_mail_accounts')
     .insert([payload])
@@ -567,11 +587,13 @@ async function createMailAccount(username, localPart) {
   if (!error && data) {
     const profile = await getProfile(username).catch(() => null);
     const settings = { ...(profile?.settings || {}) };
-    const accounts = Array.isArray(settings.mailAccounts) ? settings.mailAccounts : [];
-    if (!accounts.some((account) => account.address === data.address)) {
-      settings.mailAccounts = [...accounts, data].slice(-10);
-      await upsertProfile(username, { settings }).catch(() => {});
+    settings.mailAccounts = [data];
+    if (oldAccount?.address && oldAccount.address !== address && Array.isArray(settings.mailMessages)) {
+      settings.mailMessages = settings.mailMessages.map((message) => (
+        message.address === oldAccount.address ? { ...message, address } : message
+      ));
     }
+    await upsertProfile(username, { settings }).catch(() => {});
     return data;
   }
   if (error?.code === '23505') {
@@ -582,8 +604,12 @@ async function createMailAccount(username, localPart) {
   const local = { ...payload, created_at: new Date().toISOString() };
   const profile = await getProfile(username).catch(() => null);
   const settings = { ...(profile?.settings || {}) };
-  const accounts = Array.isArray(settings.mailAccounts) ? settings.mailAccounts : [];
-  settings.mailAccounts = [...accounts.filter((account) => account.address !== address), local].slice(-10);
+  settings.mailAccounts = [local];
+  if (oldAccount?.address && oldAccount.address !== address && Array.isArray(settings.mailMessages)) {
+    settings.mailMessages = settings.mailMessages.map((message) => (
+      message.address === oldAccount.address ? { ...message, address } : message
+    ));
+  }
   await upsertProfile(username, { settings }).catch(() => {
     mailAccountsMemory.set(address, local);
   });
@@ -2065,11 +2091,8 @@ app.post('/api/mail/accounts', async (req, res) => {
   }
   try {
     const ownAccounts = await listMailAccounts(auth.username);
-    if (ownAccounts.length >= 5) {
-      return res.status(400).json({ error: 'Maximal 5 E-Mail-Adressen pro Account.' });
-    }
     const account = await createMailAccount(auth.username, localPart);
-    res.json({ ok: true, account });
+    res.json({ ok: true, account, replaced: ownAccounts.length > 0 });
   } catch (error) {
     console.error('Mail Account Create Error:', error);
     res.status(409).json({ error: error.message || 'Adresse ist schon vergeben.' });
