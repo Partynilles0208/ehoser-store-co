@@ -1892,7 +1892,7 @@ async function loadEmailCenter() {
         }
         renderEmailAccounts();
         await loadMailMessages();
-        if (statusEl) statusEl.textContent = status.inboundConfigured ? 'Bereit' : 'Inbound Secret fehlt noch im Server.';
+        if (statusEl) statusEl.textContent = status.inboundConfigured ? 'Bereit zum Senden' : 'Resend/DNS noch nicht fertig eingerichtet.';
     } catch (error) {
         if (statusEl) statusEl.textContent = '';
         showAlert(error.message || 'Email Center konnte nicht geladen werden.', 'error');
@@ -1901,23 +1901,23 @@ async function loadEmailCenter() {
 
 function renderEmailAccounts() {
     const list = document.getElementById('emailAccountsList');
-    const fromSelect = document.getElementById('emailFromSelect');
-    if (!list || !fromSelect) return;
+    const fromDisplay = document.getElementById('emailFromDisplay');
+    if (!list || !fromDisplay) return;
     if (!emailAccounts.length) {
         list.innerHTML = '<div class="email-empty"><strong>Noch keine Adresse</strong><span>Erstelle deine @ehoser.de Adresse in den Account Einstellungen.</span></div>';
-        fromSelect.innerHTML = '<option value="">Keine Adresse</option>';
+        fromDisplay.textContent = 'Keine Adresse eingerichtet';
         document.getElementById('emailActiveAddress').textContent = '';
         return;
     }
     list.innerHTML = emailAccounts.map((account) => `
         <button class="email-account ${account.address === activeEmailAddress ? 'active' : ''}" onclick="selectMailAccount('${escapeAttribute(account.address)}')">
             <strong>${escapeHtml(account.address)}</strong>
-            <span>Mailbox</span>
+            <span>Standard-Absender</span>
         </button>
     `).join('');
-    fromSelect.innerHTML = emailAccounts.map((account) => `<option value="${escapeAttribute(account.address)}">${escapeHtml(account.address)}</option>`).join('');
-    fromSelect.value = activeEmailAddress || emailAccounts[0].address;
-    document.getElementById('emailActiveAddress').textContent = activeEmailAddress || emailAccounts[0].address;
+    activeEmailAddress = activeEmailAddress || emailAccounts[0].address;
+    fromDisplay.textContent = activeEmailAddress;
+    document.getElementById('emailActiveAddress').textContent = activeEmailAddress;
 }
 
 function selectMailAccount(address) {
@@ -2027,7 +2027,7 @@ async function loadMailMessages() {
     const list = document.getElementById('emailMessagesList');
     if (!list) return;
     if (!activeEmailAddress) {
-        list.innerHTML = '<div class="email-empty"><strong>Postfach bereit</strong><span>Erstelle links zuerst eine @ehoser.de-Adresse.</span></div>';
+        list.innerHTML = '<div class="email-empty"><strong>Postfach bereit</strong><span>Erstelle deine @ehoser.de Adresse in den Account Einstellungen.</span></div>';
         return;
     }
     try {
@@ -2065,13 +2065,13 @@ async function loadMailMessages() {
 
 async function sendMailMessage() {
     const token = localStorage.getItem('token');
-    const from = document.getElementById('emailFromSelect')?.value || activeEmailAddress;
+    const from = activeEmailAddress;
     const to = document.getElementById('emailToInput')?.value?.trim();
     const subject = document.getElementById('emailSubjectInput')?.value?.trim();
     const body = document.getElementById('emailBodyInput')?.value || '';
     const statusEl = document.getElementById('emailStatusText');
     if (!from || !to || !body.trim()) {
-        showAlert('Von, An und Nachricht ausfuellen.', 'error');
+        showAlert('Bitte zuerst eine Ehoser E-Mail in den Einstellungen erstellen und Nachricht ausfuellen.', 'error');
         return;
     }
     if (statusEl) statusEl.textContent = 'Sende...';
