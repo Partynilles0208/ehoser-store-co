@@ -5110,6 +5110,60 @@ app.get('/api/ki/video/:id/status', async (req, res) => {
 });
 
 // Bild-Generierung mit OpenAI GPT Image 1 Mini
+const kiImageEditUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    cb(null, ['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype));
+  }
+});
+
+app.post('/api/ki/image/edit', kiImageEditUpload.single('image'), async (req, res) => {
+  const prompt = String(req.body?.prompt || '').trim();
+  if (!prompt) return res.status(400).json({ error: 'Kein Prompt angegeben' });
+  if (!req.file) return res.status(400).json({ error: 'Bitte ein PNG, JPG oder WebP anhaengen (max 50 MB).' });
+
+  const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
+  if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
+
+  try {
+    const fd = new FormData();
+    const imageBlob = new Blob([req.file.buffer], { type: req.file.mimetype });
+    fd.append('model', 'gpt-image-1-mini');
+    fd.append('prompt', prompt.slice(0, 1000));
+    fd.append('image', imageBlob, req.file.originalname || 'reference.png');
+    fd.append('size', '1024x1024');
+    fd.append('quality', 'low');
+    fd.append('output_format', 'png');
+
+    const aiRes = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${openAIKey}` },
+      body: fd
+    });
+
+    if (!aiRes.ok) {
+      const errorText = await aiRes.text().catch(() => '');
+      console.error('[OpenAI Image Edit] Status:', aiRes.status, errorText);
+      return res.status(aiRes.status).json({ error: 'Bildbearbeitung mit OpenAI fehlgeschlagen' });
+    }
+
+    const data = await aiRes.json();
+    const b64 = data?.data?.[0]?.b64_json;
+    if (!b64) {
+      console.error('[OpenAI Image Edit] Keine Bilddaten erhalten:', JSON.stringify(data).slice(0, 500));
+      return res.status(502).json({ error: 'OpenAI hat keine Bilddaten geliefert' });
+    }
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(Buffer.from(b64, 'base64'));
+  } catch (err) {
+    console.error('[OpenAI Image Edit] Fehler:', err.message || err);
+    res.status(502).json({ error: 'Bildbearbeitung fehlgeschlagen' });
+  }
+});
+
 app.get('/api/ki/image', async (req, res) => {
   const prompt = req.query.prompt;
   if (!prompt || prompt.trim().length === 0) {

@@ -2810,9 +2810,9 @@ function showKIChat() {
     document.getElementById('kiNameModal').style.display = 'none';
     document.getElementById('kiChatWrapper').style.display = 'flex';
 
-    // Anhang-Button nur fÃ¼r PRO sichtbar
+    // Anhang-Button fuer Datei-Analyse und Bild-Referenzen sichtbar machen
     const attachBtn = document.getElementById('kiAttachBtn');
-    if (attachBtn) attachBtn.style.display = localStorage.getItem('proStatus') === '1' ? 'flex' : 'none';
+    if (attachBtn) attachBtn.style.display = 'flex';
 
     // Nur beim ersten Mal initialisieren
     if (_kiHistory.length === 0) {
@@ -2828,12 +2828,13 @@ function showKIChat() {
 function kiHandleFileSelect(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
-        showAlert('Datei zu groÃŸ (max. 4 MB).', 'error');
+    const isImage = file.type.startsWith('image/');
+    const maxSize = isImage ? 20 * 1024 * 1024 : 4 * 1024 * 1024;
+    if (file.size > maxSize) {
+        showAlert(isImage ? 'Bild zu gross (max. 20 MB).' : 'Datei zu gross (max. 4 MB).', 'error');
         event.target.value = '';
         return;
     }
-    const isImage = file.type.startsWith('image/');
     const reader = new FileReader();
     reader.onload = (e) => {
         _kiAttachment = { type: isImage ? 'image' : 'text', data: e.target.result, name: file.name };
@@ -2856,6 +2857,14 @@ function kiClearAttachment() {
 function kiReplaceNamePlaceholder(text) {
     const name = sessionStorage.getItem('kiUserName') || '';
     return name ? text.replace(/\[name\]/gi, name) : text;
+}
+
+function kiAttachmentCanBeImageReference(att) {
+    return att?.type === 'image' && typeof att.data === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.test(att.data);
+}
+
+function kiLooksLikeImageGenerationRequest(text) {
+    return /(bild|image|foto|photo|zeichnung|logo|poster|avatar|thumbnail|generier|erstelle|mach daraus|bearbeite|verwandle|style|stil|edit)/i.test(text || '');
 }
 
 function setKIModel(model) {
@@ -2911,11 +2920,12 @@ function appendKIImageBubble(prompt, imageUrl) {
     label.textContent = '\uD83C\uDFA8 Generiertes Bild: ' + prompt;
     div.appendChild(label);
     const loading = document.createElement('div');
+    loading.className = 'ki-image-loading';
     loading.style.cssText = 'color:#8ab4c9;font-size:0.9rem;padding:4px 0;';
     loading.textContent = '\u23F3 Bild wird generiert\u2026 (kann bis zu 30 Sekunden dauern)';
     div.appendChild(loading);
     const img = document.createElement('img');
-    img.src = imageUrl;
+    if (imageUrl) img.src = imageUrl;
     img.alt = prompt;
     img.style.cssText = 'max-width:100%;border-radius:10px;display:none;cursor:pointer;margin-top:6px;';
     img.title = 'Klicken zum \u00D6ffnen in neuem Tab';
@@ -2926,6 +2936,7 @@ function appendKIImageBubble(prompt, imageUrl) {
         messages.scrollTop = messages.scrollHeight;
     };
     img.onerror = () => {
+        if (!imageUrl) return;
         const retryUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'r=';
         loading.innerHTML = '\u274C Bild konnte nicht geladen werden. '
             + '<a href="' + imageUrl + '" target="_blank" rel="noopener" style="color:#8ab4c9;text-decoration:underline;">Direkt \u00F6ffnen</a>'
@@ -2936,17 +2947,58 @@ function appendKIImageBubble(prompt, imageUrl) {
     div.appendChild(img);
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
+    return div;
 }
 
-function kiHandleImageGenCommand(reply) {
+function kiHandleImageGenCommand(reply, referenceImage = null) {
     const match = reply.match(/BILD_GENERIEREN:\s*(.+)/i);
     if (!match) return false;
     const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
-    const url = `/api/ki/image?prompt=${encodeURIComponent(prompt)}`;
     const textBefore = reply.replace(/BILD_GENERIEREN:\s*.+/i, '').trim();
     if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
-    appendKIImageBubble(prompt, url);
+    kiStartImageGeneration(prompt, referenceImage);
     return true;
+}
+
+async function kiStartImageGeneration(prompt, referenceImage = null) {
+    if (referenceImage && kiAttachmentCanBeImageReference(referenceImage)) {
+        const bubble = appendKIImageBubble(prompt, '');
+        const img = bubble?.querySelector('img');
+        const loading = bubble?.querySelector('.ki-image-loading');
+        if (img) img.removeAttribute('src');
+        try {
+            const blob = await (await fetch(referenceImage.data)).blob();
+            const fd = new FormData();
+            fd.append('prompt', prompt);
+            fd.append('image', blob, referenceImage.name || 'reference.png');
+            const res = await fetch(`${API_BASE}/ki/image/edit`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+                body: fd
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err?.error || 'Bildbearbeitung fehlgeschlagen');
+            }
+            const outBlob = await res.blob();
+            const objectUrl = URL.createObjectURL(outBlob);
+            if (loading) loading.remove();
+            if (img) {
+                img.src = objectUrl;
+                img.style.display = 'block';
+                img.onclick = () => window.open(objectUrl, '_blank', 'noopener');
+            }
+            await refreshCurrentProfile();
+            return;
+        } catch (err) {
+            if (loading) loading.textContent = '\u274C ' + (err?.message || 'Bildbearbeitung fehlgeschlagen');
+            await refreshCurrentProfile();
+            return;
+        }
+    }
+
+    const url = `/api/ki/image?prompt=${encodeURIComponent(prompt)}`;
+    appendKIImageBubble(prompt, url);
 }
 
 function appendKIVideoBubble(prompt) {
@@ -3152,6 +3204,30 @@ async function sendKIMessage() {
         input?.focus();
         return;
     }
+    if (_kiAttachment?.type === 'image' && kiLooksLikeImageGenerationRequest(text)) {
+        const reference = _kiAttachment;
+        const msgEl = document.getElementById('kiMessages');
+        if (msgEl) {
+            const bubble = document.createElement('div');
+            bubble.className = 'ki-bubble ki-bubble-user';
+            const img = document.createElement('img');
+            img.src = reference.data;
+            img.className = 'ki-bubble-img';
+            img.alt = reference.name;
+            bubble.appendChild(img);
+            if (text) { const t = document.createElement('div'); t.style.marginTop='6px'; t.textContent = text; bubble.appendChild(t); }
+            msgEl.appendChild(bubble);
+            msgEl.scrollTop = msgEl.scrollHeight;
+        }
+        input.value = '';
+        if (sendBtn) sendBtn.disabled = true;
+        kiClearAttachment();
+        appendKIBubble('ai', 'Ich nutze dein angehaengtes Bild als Referenz und erstelle daraus ein neues Bild.');
+        await kiStartImageGeneration(text || 'Edit this image creatively while preserving the main subject.', reference);
+        if (sendBtn) sendBtn.disabled = false;
+        input?.focus();
+        return;
+    }
 
     input.value = '';
     if (sendBtn) sendBtn.disabled = true;
@@ -3204,6 +3280,7 @@ async function sendKIMessage() {
         historyMsg = apiMessage;
     }
 
+    const attachedForThisRequest = _kiAttachment;
     kiClearAttachment();
 
     // Verlauf + API-Nachrichten aufbauen
@@ -3236,7 +3313,7 @@ async function sendKIMessage() {
         const data = await res.json();
         const rawReply = data?.choices?.[0]?.message?.content || '(Keine Antwort)';
         _kiHistory.push({ role: 'assistant', content: rawReply });
-        if (!kiHandleVideoGenCommand(rawReply) && !kiHandleImageGenCommand(rawReply)) {
+        if (!kiHandleVideoGenCommand(rawReply) && !kiHandleImageGenCommand(rawReply, attachedForThisRequest)) {
             const reply = kiReplaceNamePlaceholder(rawReply);
             appendKIBubble('ai', reply);
         }
