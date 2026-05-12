@@ -498,15 +498,15 @@
                     <aside class="email-sidebar">
                         <div class="email-sidebar-head">
                             <div>
-                                <span>Adressen</span>
-                                <strong>Mailboxen</strong>
+                                <span>Ehoser Mail</span>
+                                <strong>Postfach</strong>
                             </div>
                             <button class="btn-small" onclick="loadEmailCenter()" title="Aktualisieren">&#8635;</button>
                         </div>
                         <div id="emailAccountsList" class="email-account-list"></div>
                         <div class="email-create-box email-settings-link-box">
                             <strong>Adresse verwalten</strong>
-                            <span>Erstellen und Aendern geht nur in den Account Einstellungen.</span>
+                            <span>Deine feste Absenderadresse aenderst du in den Einstellungen.</span>
                             <button class="btn-secondary" onclick="openSettingsModal()">Einstellungen oeffnen</button>
                         </div>
                     </aside>
@@ -516,8 +516,11 @@
                                 <span>Neue Nachricht</span>
                                 <strong>Schreiben</strong>
                             </div>
+                            <div class="email-from-fixed">
+                                <span>Von</span>
+                                <strong id="emailFromDisplay">Keine Adresse eingerichtet</strong>
+                            </div>
                             <div class="email-compose-grid">
-                                <label><span>Von</span><select id="emailFromSelect"></select></label>
                                 <label><span>An</span><input id="emailToInput" type="email" placeholder="empfaenger@example.com"></label>
                                 <label class="email-compose-subject"><span>Betreff</span><input id="emailSubjectInput" type="text" maxlength="180" placeholder="Worum geht es?"></label>
                             </div>
