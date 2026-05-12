@@ -1905,7 +1905,7 @@ function renderEmailAccounts() {
     const fromSelect = document.getElementById('emailFromSelect');
     if (!list || !fromSelect) return;
     if (!emailAccounts.length) {
-        list.innerHTML = '<div class="email-empty">Noch keine Adresse erstellt.</div>';
+        list.innerHTML = '<div class="email-empty"><strong>Noch keine Adresse</strong><span>Erstelle links deine erste @ehoser.de Mailbox.</span></div>';
         fromSelect.innerHTML = '<option value="">Keine Adresse</option>';
         document.getElementById('emailActiveAddress').textContent = '';
         return;
@@ -1957,7 +1957,7 @@ async function loadMailMessages() {
     const list = document.getElementById('emailMessagesList');
     if (!list) return;
     if (!activeEmailAddress) {
-        list.innerHTML = '<div class="email-empty">Erstelle links zuerst eine @ehoser.de-Adresse.</div>';
+        list.innerHTML = '<div class="email-empty"><strong>Postfach bereit</strong><span>Erstelle links zuerst eine @ehoser.de-Adresse.</span></div>';
         return;
     }
     try {
@@ -1968,7 +1968,7 @@ async function loadMailMessages() {
         if (!res.ok) throw new Error(data.error || 'Nachrichten konnten nicht geladen werden.');
         const messages = data.messages || [];
         if (!messages.length) {
-            list.innerHTML = '<div class="email-empty">Noch keine Nachrichten in dieser Mailbox.</div>';
+            list.innerHTML = '<div class="email-empty"><strong>Keine Nachrichten</strong><span>Neue Mails erscheinen hier automatisch.</span></div>';
             return;
         }
         list.innerHTML = messages.map((message) => {
