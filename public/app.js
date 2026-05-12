@@ -1531,6 +1531,7 @@ function showLoggedInUI() {
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
         <a href="admin.html" class="nav-link">Admin</a>
+        <button onclick="showSection('emails')" class="btn-small" style="width:auto;padding:8px 12px;">Emails</button>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
         <button onclick="openPricingModal()" class="plan-badge ${planKey === 'custom' ? 'premium' : (currentProfile?.isPremium ? 'premium' : (hasProAccess() ? 'pro' : ''))}" style="border:0;cursor:pointer;">${plan}</button>
         <span class="plan-badge" title="KI Credits">${credits} Credits</span>
@@ -1858,6 +1859,170 @@ function showSection(sectionId) {
     }
     if (sectionId === 'games') {
         if (!gamesAllLoaded.length) loadGames();
+    }
+    if (sectionId === 'emails') {
+        loadEmailCenter();
+    }
+}
+
+let emailAccounts = [];
+let activeEmailAddress = '';
+
+async function loadEmailCenter() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showAlert('Bitte zuerst anmelden.', 'error');
+        return;
+    }
+    const statusEl = document.getElementById('emailStatusText');
+    if (statusEl) statusEl.textContent = 'Lade...';
+    try {
+        const [statusRes, accountsRes] = await Promise.all([
+            fetch(`${API_BASE}/mail/status`, { headers: { Authorization: `Bearer ${token}` } }),
+            fetch(`${API_BASE}/mail/accounts`, { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        const status = await statusRes.json().catch(() => ({}));
+        const accountsPayload = await accountsRes.json().catch(() => ({}));
+        if (!accountsRes.ok) throw new Error(accountsPayload.error || 'Mailboxen konnten nicht geladen werden.');
+        emailAccounts = accountsPayload.accounts || [];
+        const suffix = document.getElementById('emailDomainSuffix');
+        if (suffix) suffix.textContent = `@${accountsPayload.domain || status.domain || 'ehoser.de'}`;
+        if (!activeEmailAddress && emailAccounts.length) activeEmailAddress = emailAccounts[0].address;
+        if (activeEmailAddress && !emailAccounts.some((account) => account.address === activeEmailAddress)) {
+            activeEmailAddress = emailAccounts[0]?.address || '';
+        }
+        renderEmailAccounts();
+        await loadMailMessages();
+        if (statusEl) statusEl.textContent = status.inboundConfigured ? 'Bereit' : 'Inbound Secret fehlt noch im Server.';
+    } catch (error) {
+        if (statusEl) statusEl.textContent = '';
+        showAlert(error.message || 'Email Center konnte nicht geladen werden.', 'error');
+    }
+}
+
+function renderEmailAccounts() {
+    const list = document.getElementById('emailAccountsList');
+    const fromSelect = document.getElementById('emailFromSelect');
+    if (!list || !fromSelect) return;
+    if (!emailAccounts.length) {
+        list.innerHTML = '<div class="email-empty">Noch keine Adresse erstellt.</div>';
+        fromSelect.innerHTML = '<option value="">Keine Adresse</option>';
+        document.getElementById('emailActiveAddress').textContent = '';
+        return;
+    }
+    list.innerHTML = emailAccounts.map((account) => `
+        <button class="email-account ${account.address === activeEmailAddress ? 'active' : ''}" onclick="selectMailAccount('${escapeAttribute(account.address)}')">
+            <strong>${escapeHtml(account.address)}</strong>
+            <span>Mailbox</span>
+        </button>
+    `).join('');
+    fromSelect.innerHTML = emailAccounts.map((account) => `<option value="${escapeAttribute(account.address)}">${escapeHtml(account.address)}</option>`).join('');
+    fromSelect.value = activeEmailAddress || emailAccounts[0].address;
+    document.getElementById('emailActiveAddress').textContent = activeEmailAddress || emailAccounts[0].address;
+}
+
+function selectMailAccount(address) {
+    activeEmailAddress = address;
+    renderEmailAccounts();
+    loadMailMessages();
+}
+
+async function createMailAccount() {
+    const token = localStorage.getItem('token');
+    const input = document.getElementById('emailLocalPart');
+    const localPart = input?.value?.trim();
+    if (!localPart) {
+        showAlert('Bitte Namen fuer die Adresse eingeben.', 'error');
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/mail/accounts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ localPart })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Adresse konnte nicht erstellt werden.');
+        if (input) input.value = '';
+        activeEmailAddress = data.account.address;
+        showAlert('Email-Adresse erstellt.', 'success');
+        await loadEmailCenter();
+    } catch (error) {
+        showAlert(error.message || 'Adresse konnte nicht erstellt werden.', 'error');
+    }
+}
+
+async function loadMailMessages() {
+    const token = localStorage.getItem('token');
+    const list = document.getElementById('emailMessagesList');
+    if (!list) return;
+    if (!activeEmailAddress) {
+        list.innerHTML = '<div class="email-empty">Erstelle links zuerst eine @ehoser.de-Adresse.</div>';
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/mail/messages?address=${encodeURIComponent(activeEmailAddress)}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Nachrichten konnten nicht geladen werden.');
+        const messages = data.messages || [];
+        if (!messages.length) {
+            list.innerHTML = '<div class="email-empty">Noch keine Nachrichten in dieser Mailbox.</div>';
+            return;
+        }
+        list.innerHTML = messages.map((message) => {
+            const direction = message.direction === 'outbound' ? 'Gesendet' : 'Empfangen';
+            const other = message.direction === 'outbound' ? message.recipient : message.sender;
+            const date = message.created_at ? new Date(message.created_at).toLocaleString('de-DE') : '';
+            return `
+                <article class="email-message">
+                    <div class="email-message-top">
+                        <span class="email-pill">${direction}</span>
+                        <strong>${escapeHtml(message.subject || '(ohne Betreff)')}</strong>
+                        <time>${escapeHtml(date)}</time>
+                    </div>
+                    <div class="email-message-meta">${escapeHtml(other || '')}</div>
+                    <p>${escapeHtml(message.text_body || '').replace(/\n/g, '<br>')}</p>
+                    ${message.status && message.status !== 'sent' && message.status !== 'received' ? `<small>${escapeHtml(message.status)}</small>` : ''}
+                </article>
+            `;
+        }).join('');
+    } catch (error) {
+        list.innerHTML = '<div class="email-empty">Nachrichten konnten nicht geladen werden.</div>';
+    }
+}
+
+async function sendMailMessage() {
+    const token = localStorage.getItem('token');
+    const from = document.getElementById('emailFromSelect')?.value || activeEmailAddress;
+    const to = document.getElementById('emailToInput')?.value?.trim();
+    const subject = document.getElementById('emailSubjectInput')?.value?.trim();
+    const body = document.getElementById('emailBodyInput')?.value || '';
+    const statusEl = document.getElementById('emailStatusText');
+    if (!from || !to || !body.trim()) {
+        showAlert('Von, An und Nachricht ausfuellen.', 'error');
+        return;
+    }
+    if (statusEl) statusEl.textContent = 'Sende...';
+    try {
+        const res = await fetch(`${API_BASE}/mail/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ from, to, subject, body })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Mail konnte nicht gesendet werden.');
+        document.getElementById('emailToInput').value = '';
+        document.getElementById('emailSubjectInput').value = '';
+        document.getElementById('emailBodyInput').value = '';
+        activeEmailAddress = from;
+        showAlert('Email gesendet.', 'success');
+        await loadMailMessages();
+    } catch (error) {
+        showAlert(error.message || 'Mail konnte nicht gesendet werden.', 'error');
+    } finally {
+        if (statusEl) statusEl.textContent = '';
     }
 }
 

@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
+const { spawn } = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
 const { Pool } = require('pg');
 require('dotenv').config();
@@ -21,12 +22,18 @@ const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
 const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
+const MAIL_DOMAIN = (process.env.MAIL_DOMAIN || 'ehoser.de').toLowerCase();
+const MAIL_INBOUND_SECRET = process.env.MAIL_INBOUND_SECRET || '';
+const MAIL_SENDMAIL_PATH = process.env.MAIL_SENDMAIL_PATH || 'sendmail';
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_ATTEMPTS = 20;
 const guestPresence = new Map();
 const GUEST_WINDOW_MS = 5 * 60 * 1000;
+const mailAccountsMemory = new Map();
+const mailMessagesMemory = [];
+let mailMessageMemoryId = 1;
 const chatGroupMetaMemory = new Map();
 const chatGroupAdminsMemory = new Map();
 const MODERATION_SEQUENCE_STEPS = [
@@ -138,6 +145,27 @@ CREATE TABLE IF NOT EXISTS chat_group_admins (
   username TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   PRIMARY KEY (group_id, username)
+);
+CREATE TABLE IF NOT EXISTS ehoser_mail_accounts (
+  address TEXT PRIMARY KEY,
+  username TEXT NOT NULL,
+  local_part TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS ehoser_mail_messages (
+  id BIGSERIAL PRIMARY KEY,
+  username TEXT NOT NULL,
+  address TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  sender TEXT,
+  recipient TEXT,
+  subject TEXT,
+  text_body TEXT,
+  html_body TEXT,
+  raw TEXT,
+  status TEXT DEFAULT 'received',
+  read_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT NOW()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMP NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT NULL;
@@ -271,6 +299,31 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
       );
     `);
     await pool.query(`
+      CREATE TABLE IF NOT EXISTS ehoser_mail_accounts (
+        address TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        local_part TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ehoser_mail_messages (
+        id BIGSERIAL PRIMARY KEY,
+        username TEXT NOT NULL,
+        address TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        sender TEXT,
+        recipient TEXT,
+        subject TEXT,
+        text_body TEXT,
+        html_body TEXT,
+        raw TEXT,
+        status TEXT DEFAULT 'received',
+        read_at TIMESTAMP NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS chat_reports (
         id BIGSERIAL PRIMARY KEY,
         group_id UUID NOT NULL,
@@ -393,6 +446,7 @@ const PUBLIC_API_PATHS = new Set([
 function isPublicApiPath(pathname) {
   return PUBLIC_API_PATHS.has(pathname)
     || pathname.startsWith('/api/admin/')
+    || pathname === '/api/mail/inbound'
     || pathname.startsWith('/api/ki')
     || pathname === '/api/apps'
     || pathname.startsWith('/api/apps/')
@@ -435,6 +489,128 @@ async function createAvailableGoogleUsername(email, name) {
     if (error || !data) return username;
   }
   return `user_${crypto.randomBytes(4).toString('hex')}`;
+}
+
+function normalizeMailLocalPart(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, '')
+    .replace(new RegExp(`@${MAIL_DOMAIN.replace(/\./g, '\\.')}$`, 'i'), '');
+}
+
+function isValidMailLocalPart(value) {
+  return /^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$/.test(value)
+    && !value.includes('..')
+    && !value.startsWith('.')
+    && !value.endsWith('.');
+}
+
+function buildMailAddress(localPart) {
+  return `${localPart}@${MAIL_DOMAIN}`;
+}
+
+function escapeMailHeader(value) {
+  return String(value || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 240);
+}
+
+async function listMailAccounts(username) {
+  const { data, error } = await supabaseAdmin
+    .from('ehoser_mail_accounts')
+    .select('*')
+    .eq('username', username)
+    .order('created_at', { ascending: true });
+  if (!error) return data || [];
+  return [...mailAccountsMemory.values()].filter((account) => account.username === username);
+}
+
+async function getMailAccount(address) {
+  const normalized = String(address || '').trim().toLowerCase();
+  const { data, error } = await supabaseAdmin
+    .from('ehoser_mail_accounts')
+    .select('*')
+    .eq('address', normalized)
+    .single();
+  if (!error && data) return data;
+  return mailAccountsMemory.get(normalized) || null;
+}
+
+async function createMailAccount(username, localPart) {
+  const address = buildMailAddress(localPart);
+  const payload = { address, username, local_part: localPart };
+  const { data, error } = await supabaseAdmin
+    .from('ehoser_mail_accounts')
+    .insert([payload])
+    .select('*')
+    .single();
+  if (!error && data) return data;
+  if (error?.code === '23505') {
+    const err = new Error('Diese Adresse ist schon vergeben.');
+    err.code = 'MAIL_EXISTS';
+    throw err;
+  }
+  if (mailAccountsMemory.has(address)) {
+    const existing = mailAccountsMemory.get(address);
+    const err = new Error(existing.username === username ? 'Adresse existiert bereits.' : 'Diese Adresse ist schon vergeben.');
+    err.code = 'MAIL_EXISTS';
+    throw err;
+  }
+  mailAccountsMemory.set(address, { ...payload, created_at: new Date().toISOString() });
+  return mailAccountsMemory.get(address);
+}
+
+async function saveMailMessage(payload) {
+  const message = {
+    username: payload.username,
+    address: String(payload.address || '').toLowerCase(),
+    direction: payload.direction || 'inbound',
+    sender: payload.sender || null,
+    recipient: payload.recipient || null,
+    subject: payload.subject || '',
+    text_body: payload.text_body || '',
+    html_body: payload.html_body || '',
+    raw: payload.raw || '',
+    status: payload.status || (payload.direction === 'outbound' ? 'sent' : 'received')
+  };
+  const { data, error } = await supabaseAdmin
+    .from('ehoser_mail_messages')
+    .insert([message])
+    .select('*')
+    .single();
+  if (!error && data) return data;
+  const local = { ...message, id: mailMessageMemoryId++, created_at: new Date().toISOString(), read_at: null };
+  mailMessagesMemory.unshift(local);
+  return local;
+}
+
+async function listMailMessages(username, address) {
+  let query = supabaseAdmin
+    .from('ehoser_mail_messages')
+    .select('*')
+    .eq('username', username)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (address) query = query.eq('address', String(address).toLowerCase());
+  const { data, error } = await query;
+  if (!error) return data || [];
+  return mailMessagesMemory
+    .filter((message) => message.username === username && (!address || message.address === String(address).toLowerCase()))
+    .slice(0, 100);
+}
+
+function sendRawMailWithSendmail(rawMessage) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(MAIL_SENDMAIL_PATH, ['-t', '-i'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(stderr.trim() || `sendmail beendet mit Code ${code}`));
+    });
+    child.stdin.write(rawMessage);
+    child.stdin.end();
+  });
 }
 
 // Fallback fÃ¼r Serverless/fehlende Tabellen
@@ -1769,6 +1945,158 @@ app.put('/api/me/settings', async (req, res) => {
   });
   const profile = await upsertProfile(auth.username, { settings });
   res.json({ ok: true, profile });
+});
+
+app.get('/api/mail/status', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  res.json({
+    domain: MAIL_DOMAIN,
+    sendmailPath: MAIL_SENDMAIL_PATH,
+    inboundConfigured: Boolean(MAIL_INBOUND_SECRET)
+  });
+});
+
+app.get('/api/mail/accounts', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  try {
+    const accounts = await listMailAccounts(auth.username);
+    res.json({ accounts, domain: MAIL_DOMAIN });
+  } catch (error) {
+    console.error('Mail Accounts Error:', error);
+    res.status(500).json({ error: 'E-Mail-Adressen konnten nicht geladen werden.' });
+  }
+});
+
+app.post('/api/mail/accounts', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const localPart = normalizeMailLocalPart(req.body?.localPart || req.body?.address);
+  if (!isValidMailLocalPart(localPart)) {
+    return res.status(400).json({ error: 'Nutze 3-32 Zeichen: a-z, 0-9, Punkt, Minus oder Unterstrich.' });
+  }
+  try {
+    const ownAccounts = await listMailAccounts(auth.username);
+    if (ownAccounts.length >= 5) {
+      return res.status(400).json({ error: 'Maximal 5 E-Mail-Adressen pro Account.' });
+    }
+    const account = await createMailAccount(auth.username, localPart);
+    res.json({ ok: true, account });
+  } catch (error) {
+    console.error('Mail Account Create Error:', error);
+    res.status(409).json({ error: error.message || 'Adresse ist schon vergeben.' });
+  }
+});
+
+app.get('/api/mail/messages', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const address = req.query.address ? String(req.query.address).trim().toLowerCase() : '';
+  try {
+    if (address) {
+      const account = await getMailAccount(address);
+      if (!account || account.username !== auth.username) {
+        return res.status(403).json({ error: 'Diese Mailbox gehoert dir nicht.' });
+      }
+    }
+    const messages = await listMailMessages(auth.username, address);
+    res.json({ messages });
+  } catch (error) {
+    console.error('Mail Messages Error:', error);
+    res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden.' });
+  }
+});
+
+app.post('/api/mail/send', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const from = String(req.body?.from || '').trim().toLowerCase();
+  const to = String(req.body?.to || '').trim();
+  const subject = escapeMailHeader(req.body?.subject || '(ohne Betreff)');
+  const body = String(req.body?.body || '').slice(0, 20000);
+  if (!from || !to || !body.trim()) {
+    return res.status(400).json({ error: 'Absender, Empfaenger und Text sind erforderlich.' });
+  }
+  const account = await getMailAccount(from);
+  if (!account || account.username !== auth.username) {
+    return res.status(403).json({ error: 'Diese Absender-Adresse gehoert dir nicht.' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return res.status(400).json({ error: 'Empfaenger-Adresse ist ungueltig.' });
+  }
+
+  const now = new Date().toUTCString();
+  const messageId = `<${crypto.randomBytes(16).toString('hex')}@${MAIL_DOMAIN}>`;
+  const raw = [
+    `From: ${from}`,
+    `To: ${escapeMailHeader(to)}`,
+    `Subject: ${subject}`,
+    `Date: ${now}`,
+    `Message-ID: ${messageId}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    body
+  ].join('\r\n');
+
+  try {
+    await sendRawMailWithSendmail(raw);
+    const message = await saveMailMessage({
+      username: auth.username,
+      address: from,
+      direction: 'outbound',
+      sender: from,
+      recipient: to,
+      subject,
+      text_body: body,
+      raw,
+      status: 'sent'
+    });
+    res.json({ ok: true, message });
+  } catch (error) {
+    console.error('Mail Send Error:', error);
+    const message = await saveMailMessage({
+      username: auth.username,
+      address: from,
+      direction: 'outbound',
+      sender: from,
+      recipient: to,
+      subject,
+      text_body: body,
+      raw,
+      status: 'sendmail-error'
+    });
+    res.status(500).json({
+      error: `sendmail konnte nicht senden: ${error.message}. Installiere/konfiguriere Postfix oder setze MAIL_SENDMAIL_PATH.`,
+      message
+    });
+  }
+});
+
+app.post('/api/mail/inbound', async (req, res) => {
+  if (!MAIL_INBOUND_SECRET || req.body?.secret !== MAIL_INBOUND_SECRET) {
+    return res.status(403).json({ error: 'Inbound Secret ungueltig.' });
+  }
+  const recipient = String(req.body?.recipient || req.body?.to || '').trim().toLowerCase();
+  const account = await getMailAccount(recipient);
+  if (!account) {
+    return res.status(404).json({ error: 'Mailbox nicht gefunden.' });
+  }
+  const message = await saveMailMessage({
+    username: account.username,
+    address: account.address,
+    direction: 'inbound',
+    sender: String(req.body?.sender || req.body?.from || '').trim(),
+    recipient,
+    subject: escapeMailHeader(req.body?.subject || '(ohne Betreff)'),
+    text_body: String(req.body?.text || req.body?.body || '').slice(0, 20000),
+    html_body: String(req.body?.html || '').slice(0, 50000),
+    raw: String(req.body?.raw || '').slice(0, 100000),
+    status: 'received'
+  });
+  res.json({ ok: true, id: message.id });
 });
 
 app.post('/api/me/plan-request', async (req, res) => {
