@@ -587,17 +587,19 @@ async function createMailAccount(username, localPart) {
   const ownAccounts = await listMailAccounts(username).catch(() => []);
   const oldAccount = ownAccounts[0] || null;
   if (oldAccount?.address && oldAccount.address !== address) {
-    await supabaseAdmin
-      .from('ehoser_mail_accounts')
-      .delete()
-      .eq('username', username)
-      .catch(() => {});
-    await supabaseAdmin
-      .from('ehoser_mail_messages')
-      .update({ address })
-      .eq('username', username)
-      .eq('address', oldAccount.address)
-      .catch(() => {});
+    try {
+      await supabaseAdmin
+        .from('ehoser_mail_accounts')
+        .delete()
+        .eq('username', username);
+    } catch {}
+    try {
+      await supabaseAdmin
+        .from('ehoser_mail_messages')
+        .update({ address })
+        .eq('username', username)
+        .eq('address', oldAccount.address);
+    } catch {}
   }
 
   const { data, error } = await supabaseAdmin
@@ -2818,10 +2820,14 @@ app.post('/api/admin/users/:id/custom-benefits', async (req, res) => {
 
     const updated = await upsertProfile(data.username, { settings });
     if (settings.customPlan.features.psAccount) {
-      await supabaseAdmin.from('user_profiles').update({ ps_account: true }).eq('username', data.username).catch(() => {});
+      try {
+        await supabaseAdmin.from('user_profiles').update({ ps_account: true }).eq('username', data.username);
+      } catch {}
     }
     if (settings.customPlan.features.updateUnlocked) {
-      await supabaseAdmin.from('user_profiles').update({ update_unlocked: true }).eq('username', data.username).catch(() => {});
+      try {
+        await supabaseAdmin.from('user_profiles').update({ update_unlocked: true }).eq('username', data.username);
+      } catch {}
     }
 
     res.json({ ok: true, username: data.username, profile: updated, creditsAdded, priceEur });
