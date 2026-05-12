@@ -517,6 +517,11 @@ function escapeMailHeader(value) {
   return String(value || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 240);
 }
 
+function formatResendFrom(address) {
+  const cleanAddress = String(address || '').trim().toLowerCase();
+  return `Ehoser <${cleanAddress}>`;
+}
+
 async function listMailAccounts(username) {
   const { data, error } = await supabaseAdmin
     .from('ehoser_mail_accounts')
@@ -695,7 +700,7 @@ async function sendMailWithResend({ from, to, subject, text }) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      from,
+      from: formatResendFrom(from),
       to: [to],
       subject,
       text,

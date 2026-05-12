@@ -504,13 +504,10 @@
                             <button class="btn-small" onclick="loadEmailCenter()" title="Aktualisieren">&#8635;</button>
                         </div>
                         <div id="emailAccountsList" class="email-account-list"></div>
-                        <div class="email-create-box">
-                            <label for="emailLocalPart">Neue Adresse</label>
-                            <div class="email-address-row">
-                                <input id="emailLocalPart" type="text" maxlength="32" placeholder="name">
-                                <span id="emailDomainSuffix">@ehoser.de</span>
-                            </div>
-                            <button class="btn-primary" onclick="createMailAccount()">Adresse erstellen</button>
+                        <div class="email-create-box email-settings-link-box">
+                            <strong>Adresse verwalten</strong>
+                            <span>Erstellen und Aendern geht nur in den Account Einstellungen.</span>
+                            <button class="btn-secondary" onclick="openSettingsModal()">Einstellungen oeffnen</button>
                         </div>
                     </aside>
                     <section class="email-main">
