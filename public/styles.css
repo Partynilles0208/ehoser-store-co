@@ -86,6 +86,158 @@ body.energy-saver * {
     transition: none !important;
 }
 
+.email-center {
+    display: grid;
+    grid-template-columns: minmax(240px, 300px) 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+.email-sidebar,
+.email-main,
+.email-compose,
+.email-message {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.email-sidebar,
+.email-main {
+    padding: 14px;
+}
+
+.email-sidebar-head,
+.email-inbox-head,
+.email-compose-actions,
+.email-message-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.email-account-list {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.email-account {
+    width: 100%;
+    display: grid;
+    gap: 3px;
+    text-align: left;
+    padding: 10px 12px;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.email-account.active {
+    border-color: rgba(14, 240, 208, 0.55);
+    background: rgba(14, 240, 208, 0.12);
+}
+
+.email-account span,
+.email-empty,
+.email-message-meta,
+.email-inbox-head span,
+.email-compose-actions span,
+.email-message time,
+.email-message small {
+    color: var(--muted);
+    font-size: 0.86rem;
+}
+
+.email-create-box {
+    display: grid;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+
+.email-address-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.email-address-row input,
+.email-compose input,
+.email-compose select,
+.email-compose textarea {
+    width: 100%;
+    min-width: 0;
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font: inherit;
+}
+
+.email-main {
+    display: grid;
+    gap: 14px;
+}
+
+.email-compose {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+}
+
+.email-compose-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.email-compose-grid label {
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.86rem;
+}
+
+.email-compose-subject {
+    grid-column: 1 / -1;
+}
+
+.email-message-list {
+    display: grid;
+    gap: 10px;
+}
+
+.email-message {
+    padding: 12px;
+}
+
+.email-message p {
+    margin: 10px 0 0;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.email-pill {
+    flex: 0 0 auto;
+    border: 1px solid rgba(14, 240, 208, 0.35);
+    border-radius: 999px;
+    padding: 3px 8px;
+    color: var(--brand);
+    font-size: 0.78rem;
+}
+
+@media (max-width: 800px) {
+    .email-center,
+    .email-compose-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ---------------------------------------------------------------
    VFX � Animations f�r Sound & visuelle Effekte
    --------------------------------------------------------------- */

@@ -180,6 +180,14 @@
                                 <span class="mode-badge mode-badge-chat">🔒 E2E verschlüsselt</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-mail" onclick="selectMode('emails')">
+                            <div class="mode-card-icon">&#9993;</div>
+                            <div class="mode-card-body">
+                                <h3>Emails</h3>
+                                <p>Eigene @ehoser.de-Adresse erstellen, Postfach lesen und Nachrichten senden.</p>
+                                <span class="mode-badge mode-badge-mail">Self-hosted Mail</span>
+                            </div>
+                        </button>
                         <button class="mode-card mode-card-map" onclick="selectMode('map')">
                             <div class="mode-card-icon">🗺️</div>
                             <div class="mode-card-body">
@@ -477,6 +485,49 @@
             </section>
 
             <!-- ── PS Overlay (Vollbild Umfrage + Chat) ──────────────────── -->
+            <section id="emails" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">Zurueck</button>
+                    <h2>Emails</h2>
+                </div>
+                <div class="email-center">
+                    <aside class="email-sidebar">
+                        <div class="email-sidebar-head">
+                            <strong>Mailboxen</strong>
+                            <button class="btn-small" onclick="loadEmailCenter()" title="Aktualisieren">&#8635;</button>
+                        </div>
+                        <div id="emailAccountsList" class="email-account-list"></div>
+                        <div class="email-create-box">
+                            <label for="emailLocalPart">Neue @ehoser.de Adresse</label>
+                            <div class="email-address-row">
+                                <input id="emailLocalPart" type="text" maxlength="32" placeholder="name">
+                                <span id="emailDomainSuffix">@ehoser.de</span>
+                            </div>
+                            <button class="btn-primary" onclick="createMailAccount()">Adresse erstellen</button>
+                        </div>
+                    </aside>
+                    <section class="email-main">
+                        <div class="email-compose">
+                            <div class="email-compose-grid">
+                                <label>Von<select id="emailFromSelect"></select></label>
+                                <label>An<input id="emailToInput" type="email" placeholder="empfaenger@example.com"></label>
+                                <label class="email-compose-subject">Betreff<input id="emailSubjectInput" type="text" maxlength="180" placeholder="Betreff"></label>
+                            </div>
+                            <textarea id="emailBodyInput" rows="5" placeholder="Nachricht schreiben"></textarea>
+                            <div class="email-compose-actions">
+                                <span id="emailStatusText"></span>
+                                <button class="btn-primary" onclick="sendMailMessage()">Senden</button>
+                            </div>
+                        </div>
+                        <div class="email-inbox-head">
+                            <strong>Postfach</strong>
+                            <span id="emailActiveAddress"></span>
+                        </div>
+                        <div id="emailMessagesList" class="email-message-list"></div>
+                    </section>
+                </div>
+            </section>
+
             <div id="psOverlay" style="display:none;position:fixed;inset:0;z-index:10000;background:#07131d;overflow-y:auto;flex-direction:column;align-items:center;justify-content:center;">
 
                 <!-- Screen 1: Name eingeben -->
