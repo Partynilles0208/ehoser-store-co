@@ -2775,6 +2775,7 @@ let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
 let _kiModel = 'ehoser1';
 let _pendingVideoRequest = null;
+const KI_MAX_IMAGE_UPLOAD_BYTES = 2.5 * 1024 * 1024;
 
 function updateKIModelAccessUI() {
     const premiumBtn = document.getElementById('kiModelPremium');
@@ -2825,7 +2826,50 @@ function showKIChat() {
     setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
 }
 
-function kiHandleFileSelect(event) {
+function kiBlobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => reject(reader.error || new Error('Datei konnte nicht gelesen werden'));
+        reader.readAsDataURL(blob);
+    });
+}
+
+function kiLoadImage(dataUrl) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Bild konnte nicht geladen werden'));
+        img.src = dataUrl;
+    });
+}
+
+function kiCanvasToBlob(canvas, type, quality) {
+    return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+async function kiPrepareImageAttachment(file) {
+    const rawDataUrl = await kiBlobToDataUrl(file);
+    if (file.size <= KI_MAX_IMAGE_UPLOAD_BYTES) return rawDataUrl;
+
+    const img = await kiLoadImage(rawDataUrl);
+    const maxSide = 1600;
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of [0.86, 0.72, 0.58]) {
+        const blob = await kiCanvasToBlob(canvas, 'image/jpeg', quality);
+        if (blob && blob.size <= KI_MAX_IMAGE_UPLOAD_BYTES) return kiBlobToDataUrl(blob);
+    }
+    const blob = await kiCanvasToBlob(canvas, 'image/jpeg', 0.5);
+    return blob ? kiBlobToDataUrl(blob) : rawDataUrl;
+}
+
+async function kiHandleFileSelect(event) {
     const file = event.target.files?.[0];
     if (!file) return;
     const isImage = file.type.startsWith('image/');
@@ -2835,14 +2879,23 @@ function kiHandleFileSelect(event) {
         event.target.value = '';
         return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        _kiAttachment = { type: isImage ? 'image' : 'text', data: e.target.result, name: file.name };
-        document.getElementById('kiAttachPreview').style.display = 'flex';
-        document.getElementById('kiAttachName').textContent = 'ðŸ“Ž ' + file.name;
-    };
-    if (isImage) reader.readAsDataURL(file);
-    else reader.readAsText(file);
+    if (isImage) {
+        try {
+            _kiAttachment = { type: 'image', data: await kiPrepareImageAttachment(file), name: file.name };
+            document.getElementById('kiAttachPreview').style.display = 'flex';
+            document.getElementById('kiAttachName').textContent = 'ðŸ“Ž ' + file.name;
+        } catch {
+            showAlert('Bild konnte nicht vorbereitet werden.', 'error');
+        }
+    } else {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            _kiAttachment = { type: 'text', data: e.target.result, name: file.name };
+            document.getElementById('kiAttachPreview').style.display = 'flex';
+            document.getElementById('kiAttachName').textContent = 'ðŸ“Ž ' + file.name;
+        };
+        reader.readAsText(file);
+    }
     event.target.value = '';
 }
 
