@@ -1886,8 +1886,6 @@ async function loadEmailCenter() {
         const accountsPayload = await accountsRes.json().catch(() => ({}));
         if (!accountsRes.ok) throw new Error(accountsPayload.error || 'Mailboxen konnten nicht geladen werden.');
         emailAccounts = accountsPayload.accounts || [];
-        const suffix = document.getElementById('emailDomainSuffix');
-        if (suffix) suffix.textContent = `@${accountsPayload.domain || status.domain || 'ehoser.de'}`;
         if (!activeEmailAddress && emailAccounts.length) activeEmailAddress = emailAccounts[0].address;
         if (activeEmailAddress && !emailAccounts.some((account) => account.address === activeEmailAddress)) {
             activeEmailAddress = emailAccounts[0]?.address || '';
@@ -1906,7 +1904,7 @@ function renderEmailAccounts() {
     const fromSelect = document.getElementById('emailFromSelect');
     if (!list || !fromSelect) return;
     if (!emailAccounts.length) {
-        list.innerHTML = '<div class="email-empty"><strong>Noch keine Adresse</strong><span>Erstelle links deine erste @ehoser.de Mailbox.</span></div>';
+        list.innerHTML = '<div class="email-empty"><strong>Noch keine Adresse</strong><span>Erstelle deine @ehoser.de Adresse in den Account Einstellungen.</span></div>';
         fromSelect.innerHTML = '<option value="">Keine Adresse</option>';
         document.getElementById('emailActiveAddress').textContent = '';
         return;
@@ -1929,17 +1927,7 @@ function selectMailAccount(address) {
 }
 
 async function createMailAccount() {
-    const input = document.getElementById('emailLocalPart');
-    const localPart = input?.value?.trim();
-    if (!localPart) {
-        showAlert('Bitte Namen fuer die Adresse eingeben.', 'error');
-        return;
-    }
-    const account = await saveEhoserMailAddress(localPart);
-    if (!account) return;
-    if (input) input.value = '';
-    activeEmailAddress = account.address;
-    await loadEmailCenter();
+    openSettingsModal();
 }
 
 async function saveEhoserMailAddress(localPart) {
