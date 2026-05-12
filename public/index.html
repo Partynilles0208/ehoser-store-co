@@ -486,19 +486,26 @@
 
             <!-- ── PS Overlay (Vollbild Umfrage + Chat) ──────────────────── -->
             <section id="emails" class="section">
-                <div class="tool-header">
-                    <button class="btn-back" onclick="selectMode('mode-select')">Zurueck</button>
-                    <h2>Emails</h2>
+                <div class="email-hero">
+                    <button class="btn-back email-back" onclick="selectMode('mode-select')">Zurueck</button>
+                    <div>
+                        <span class="email-kicker">Ehoser Mail</span>
+                        <h2>Emails</h2>
+                        <p>Verwalte deine @ehoser.de Adressen, schreibe Nachrichten und lies dein Postfach an einem Ort.</p>
+                    </div>
                 </div>
                 <div class="email-center">
                     <aside class="email-sidebar">
                         <div class="email-sidebar-head">
-                            <strong>Mailboxen</strong>
+                            <div>
+                                <span>Adressen</span>
+                                <strong>Mailboxen</strong>
+                            </div>
                             <button class="btn-small" onclick="loadEmailCenter()" title="Aktualisieren">&#8635;</button>
                         </div>
                         <div id="emailAccountsList" class="email-account-list"></div>
                         <div class="email-create-box">
-                            <label for="emailLocalPart">Neue @ehoser.de Adresse</label>
+                            <label for="emailLocalPart">Neue Adresse</label>
                             <div class="email-address-row">
                                 <input id="emailLocalPart" type="text" maxlength="32" placeholder="name">
                                 <span id="emailDomainSuffix">@ehoser.de</span>
@@ -508,10 +515,14 @@
                     </aside>
                     <section class="email-main">
                         <div class="email-compose">
+                            <div class="email-panel-title">
+                                <span>Neue Nachricht</span>
+                                <strong>Schreiben</strong>
+                            </div>
                             <div class="email-compose-grid">
-                                <label>Von<select id="emailFromSelect"></select></label>
-                                <label>An<input id="emailToInput" type="email" placeholder="empfaenger@example.com"></label>
-                                <label class="email-compose-subject">Betreff<input id="emailSubjectInput" type="text" maxlength="180" placeholder="Betreff"></label>
+                                <label><span>Von</span><select id="emailFromSelect"></select></label>
+                                <label><span>An</span><input id="emailToInput" type="email" placeholder="empfaenger@example.com"></label>
+                                <label class="email-compose-subject"><span>Betreff</span><input id="emailSubjectInput" type="text" maxlength="180" placeholder="Worum geht es?"></label>
                             </div>
                             <textarea id="emailBodyInput" rows="5" placeholder="Nachricht schreiben"></textarea>
                             <div class="email-compose-actions">
@@ -520,7 +531,10 @@
                             </div>
                         </div>
                         <div class="email-inbox-head">
-                            <strong>Postfach</strong>
+                            <div>
+                                <span>Aktuelle Mailbox</span>
+                                <strong>Postfach</strong>
+                            </div>
                             <span id="emailActiveAddress"></span>
                         </div>
                         <div id="emailMessagesList" class="email-message-list"></div>

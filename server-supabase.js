@@ -25,6 +25,8 @@ const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
 const MAIL_DOMAIN = (process.env.MAIL_DOMAIN || 'ehoser.de').toLowerCase();
 const MAIL_INBOUND_SECRET = process.env.MAIL_INBOUND_SECRET || '';
 const MAIL_SENDMAIL_PATH = process.env.MAIL_SENDMAIL_PATH || 'sendmail';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -447,6 +449,7 @@ function isPublicApiPath(pathname) {
   return PUBLIC_API_PATHS.has(pathname)
     || pathname.startsWith('/api/admin/')
     || pathname === '/api/mail/inbound'
+    || pathname === '/api/mail/resend-webhook'
     || pathname.startsWith('/api/ki')
     || pathname === '/api/apps'
     || pathname.startsWith('/api/apps/')
@@ -611,6 +614,45 @@ function sendRawMailWithSendmail(rawMessage) {
     child.stdin.write(rawMessage);
     child.stdin.end();
   });
+}
+
+async function sendMailWithResend({ from, to, subject, text }) {
+  if (!RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY fehlt.');
+  }
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject,
+      text,
+      reply_to: from
+    })
+  });
+  const payload = await response.json().catch(async () => ({ message: await response.text().catch(() => '') }));
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || 'Resend konnte die Mail nicht senden.');
+  }
+  return payload;
+}
+
+async function getResendReceivedEmail(emailId) {
+  if (!RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY fehlt.');
+  }
+  const response = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}` }
+  });
+  const payload = await response.json().catch(async () => ({ message: await response.text().catch(() => '') }));
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || 'Resend-Mail konnte nicht geladen werden.');
+  }
+  return payload;
 }
 
 // Fallback fÃ¼r Serverless/fehlende Tabellen
@@ -1952,8 +1994,9 @@ app.get('/api/mail/status', async (req, res) => {
   if (!auth) return;
   res.json({
     domain: MAIL_DOMAIN,
+    provider: RESEND_API_KEY ? 'resend' : 'sendmail',
     sendmailPath: MAIL_SENDMAIL_PATH,
-    inboundConfigured: Boolean(MAIL_INBOUND_SECRET)
+    inboundConfigured: Boolean(MAIL_INBOUND_SECRET || RESEND_API_KEY)
   });
 });
 
@@ -2042,7 +2085,11 @@ app.post('/api/mail/send', async (req, res) => {
   ].join('\r\n');
 
   try {
-    await sendRawMailWithSendmail(raw);
+    if (RESEND_API_KEY) {
+      await sendMailWithResend({ from, to, subject, text: body });
+    } else {
+      await sendRawMailWithSendmail(raw);
+    }
     const message = await saveMailMessage({
       username: auth.username,
       address: from,
@@ -2069,7 +2116,9 @@ app.post('/api/mail/send', async (req, res) => {
       status: 'sendmail-error'
     });
     res.status(500).json({
-      error: `sendmail konnte nicht senden: ${error.message}. Installiere/konfiguriere Postfix oder setze MAIL_SENDMAIL_PATH.`,
+      error: RESEND_API_KEY
+        ? `Resend konnte nicht senden: ${error.message}. Pruefe RESEND_API_KEY und Domain-Verifizierung.`
+        : `sendmail konnte nicht senden: ${error.message}. Installiere/konfiguriere Postfix oder setze MAIL_SENDMAIL_PATH.`,
       message
     });
   }
@@ -2097,6 +2146,50 @@ app.post('/api/mail/inbound', async (req, res) => {
     status: 'received'
   });
   res.json({ ok: true, id: message.id });
+});
+
+app.post('/api/mail/resend-webhook', async (req, res) => {
+  if (RESEND_WEBHOOK_SECRET && req.query.secret !== RESEND_WEBHOOK_SECRET) {
+    return res.status(403).json({ error: 'Webhook Secret ungueltig.' });
+  }
+  const event = req.body || {};
+  if (event.type !== 'email.received') {
+    return res.json({ ok: true, ignored: true });
+  }
+  const emailId = event.data?.email_id || event.data?.id;
+  if (!emailId) {
+    return res.status(400).json({ error: 'email_id fehlt.' });
+  }
+
+  try {
+    const email = await getResendReceivedEmail(emailId);
+    const recipients = Array.isArray(email.to) ? email.to : [email.to].filter(Boolean);
+    const accountPairs = await Promise.all(recipients.map(async (recipient) => {
+      const clean = String(recipient || '').match(/<([^>]+)>/)?.[1] || String(recipient || '');
+      const account = await getMailAccount(clean.trim().toLowerCase());
+      return account ? { account, recipient: clean.trim().toLowerCase() } : null;
+    }));
+    const target = accountPairs.find(Boolean);
+    if (!target) {
+      return res.status(404).json({ error: 'Keine passende Mailbox in der App gefunden.' });
+    }
+    const message = await saveMailMessage({
+      username: target.account.username,
+      address: target.account.address,
+      direction: 'inbound',
+      sender: String(email.from || '').trim(),
+      recipient: target.recipient,
+      subject: escapeMailHeader(email.subject || '(ohne Betreff)'),
+      text_body: String(email.text || '').slice(0, 20000),
+      html_body: String(email.html || '').slice(0, 50000),
+      raw: JSON.stringify({ resendEmailId: email.id, messageId: email.message_id, attachments: email.attachments || [] }).slice(0, 100000),
+      status: 'received'
+    });
+    res.json({ ok: true, id: message.id });
+  } catch (error) {
+    console.error('Resend Webhook Error:', error);
+    res.status(500).json({ error: error.message || 'Resend Webhook konnte nicht verarbeitet werden.' });
+  }
 });
 
 app.post('/api/me/plan-request', async (req, res) => {
