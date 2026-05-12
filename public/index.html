@@ -1650,6 +1650,23 @@ Ramen</textarea>
             </div>
         </div>
 
+        <div id="welcomeEmailModal" class="modal">
+            <div class="modal-content email-setup-modal">
+                <span class="close" onclick="closeWelcomeEmailModal()">&times;</span>
+                <span class="email-kicker">Ehoser Mail</span>
+                <h3>Mach dir eine E-Mail-Adresse</h3>
+                <p>Waehle deinen Namen. Daraus wird automatisch deine Adresse mit @ehoser.de.</p>
+                <div class="ehoser-email-picker">
+                    <input id="welcomeEmailLocalPart" type="text" maxlength="32" placeholder="deinname">
+                    <span>@ehoser.de</span>
+                </div>
+                <div class="email-setup-actions">
+                    <button class="btn-primary" onclick="saveWelcomeEmailAddress()">Fertig</button>
+                    <button class="btn-secondary" onclick="closeWelcomeEmailModal()">Spaeter</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Spiele-Spielen Modal (Vollbild) -->
         <div id="gameModal" class="modal game-modal">
             <div class="modal-content game-modal-content">
@@ -1753,6 +1770,16 @@ Ramen</textarea>
                     <button onclick="copyLoginCode()" class="btn-small" style="padding:4px 10px;font-size:12px;">📋 Kopieren</button>
                 </div>
                 <small style="display:block;margin-top:8px;color:var(--muted,#888);font-size:11px;">⚠️ Halte diesen Code geheim. Du brauchst ihn zum Anmelden.</small>
+            </div>
+            <div class="settings-ehoser-mail-box">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">Deine Ehoser E-Mail</div>
+                <div id="ehoserEmailCurrentDisplay" class="settings-mail-current">Wird geladen...</div>
+                <div class="ehoser-email-picker">
+                    <input id="settingsEmailLocalPart" type="text" maxlength="32" placeholder="name">
+                    <span>@ehoser.de</span>
+                </div>
+                <button onclick="saveSettingsEmailAddress()" class="btn-small" style="padding:8px 14px;margin-top:10px;">Adresse speichern</button>
+                <small style="display:block;margin-top:8px;color:var(--muted,#888);font-size:11px;">Du kannst genau eine @ehoser.de Adresse haben. Beim Aendern wird deine alte Adresse ersetzt.</small>
             </div>
             <!-- E-Mail Verknüpfung -->
             <div style="background:rgba(0,0,0,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-top:12px;">
