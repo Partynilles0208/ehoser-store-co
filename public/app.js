@@ -1322,60 +1322,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     updateGoogleAuthVisibility();
 
-    // Splash: standardmäßig nur einmal (persistiert auch über Neustarts)
-    const splash = document.getElementById('introSplash');
-    if (splash) {
-        const forceIntro = new URLSearchParams(window.location.search).get('intro') === '1';
-        const alreadyShown = !forceIntro && (
-            sessionStorage.getItem('intro_shown') === '1'
-        );
-        if (alreadyShown) {
-            splash.remove();
-            document.body.classList.remove('splash-active');
-            document.body.style.overflow = '';
-            showCaptcha();
-        } else {
-            // Neues Intro: kompaktes Reveal statt langer Splash-Sequenz
-            const compactIntro = window.matchMedia?.('(max-width: 640px)').matches;
-            const bigLogoDelay = compactIntro ? 1200 : 3000;
-            const splashEndDelay = compactIntro ? 2800 : 5200;
-            const bigLogo = document.getElementById('introBigLogo');
-            if (bigLogo) {
-                setTimeout(() => {
-                    bigLogo.style.opacity = '1';
-                    bigLogo.style.transition = 'opacity 0.18s ease, transform 0.65s cubic-bezier(.2,1.3,.3,1)';
-                    bigLogo.style.transform = 'translateY(0) scale(1)';
-                    setTimeout(() => {
-                        bigLogo.style.transition = 'transform 0.28s ease-out';
-                        bigLogo.style.transform = 'translateY(0) scale(0.98)';
-                    }, 650);
-                }, bigLogoDelay);
-            }
-
-            // Finaler Übergang auf die neue Oberfläche, auf Mobile schneller
-            setTimeout(() => {
-                splash.remove();
-                document.body.classList.remove('splash-active');
-                document.body.style.overflow = '';
-                sessionStorage.setItem('intro_shown', '1');
-                // Weißes Body-Overlay für den Blitz-Übergang (mit Fallback, damit es nie hängen bleibt)
-                const bodyFlash = document.createElement('div');
-                bodyFlash.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99998;pointer-events:none;opacity:1;transition:opacity 0.3s ease;';
-                document.body.appendChild(bodyFlash);
-                setTimeout(() => {
-                    bodyFlash.style.opacity = '0';
-                }, 30);
-                setTimeout(() => {
-                    if (bodyFlash.parentNode) bodyFlash.remove();
-                }, 500);
-                showCaptcha();
-            }, splashEndDelay);
-        }
-    } else {
-        document.body.classList.remove('splash-active');
-        document.body.style.overflow = '';
-        showCaptcha();
-    }
+    showCaptcha();
 });
 
 async function verifyToken(token) {
@@ -3467,7 +3414,6 @@ async function logout() {
     clearDesktopActivated();
     await clearDesktopAuthToken();
     sessionStorage.removeItem('adminGuestPreview');
-    sessionStorage.removeItem('intro_shown');
     currentUser = null;
     currentProfile = null;
     allApps = [];
