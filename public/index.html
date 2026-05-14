@@ -15,56 +15,11 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="vendor/qrcode-generator.js"></script>
     <script src="vendor/qrcode-compat.js"></script>
-    <!-- Sofort schwarzer Hintergrund + alles außer Splash verstecken -->
     <style>
-        html { background: #000; }
-        body.splash-active { background: #000 !important; overflow: hidden !important; }
-        body.splash-active > *:not(#introSplash) { display: none !important; }
         body.captcha-active { overflow: hidden !important; }
     </style>
 </head>
-<body class="splash-active">
-    <!-- ── Intro Splash ──────────────────────────────────────────────────── -->
-    <div id="introSplash" class="intro-splash">
-        <!-- Phase 1: Blaues Logo + ehoser Text -->
-        <div class="intro-logo-blue" id="introLogoBlue">E</div>
-        <div class="intro-ehoser-text" id="introEhoserText">ehoser labs</div>
-
-        <!-- Phase 2: Pinkes Logo + by Nils Becker -->
-        <div class="intro-logo-pink" id="introLogoPink">E</div>
-        <div class="intro-nils-text" id="introNilsText">
-            <span class="intro-by">Browser Suite</span>
-            <span class="intro-nils">Tools. Games. KI.</span>
-        </div>
-
-        <!-- Phase 3: Blauer Badge + KI & Kreativität -->
-        <div class="intro-badge-row" id="introBadgeBlue">
-            <div class="intro-badge-icon intro-badge-icon-blue">E</div>
-            <span class="intro-badge-label">Alles neu aufgebaut</span>
-        </div>
-
-        <!-- Phase 4: Grüner Badge + Kostenlos & Community -->
-        <div class="intro-badge-row" id="introBadgeGreen">
-            <div class="intro-badge-icon intro-badge-icon-green">E</div>
-            <span class="intro-badge-label">Schnell. Klar. Direkt.</span>
-        </div>
-
-        <!-- Blitz nach Phase 4 -->
-        <div class="intro-flash" id="introFlash"></div>
-
-        <!-- Phase 5: Großes Logo mit Glanz -->
-        <div class="intro-big-logo" id="introBigLogo">
-            E
-            <div class="intro-shine"></div>
-        </div>
-
-        <!-- Phase 6: Tagline von rechts -->
-        <div class="intro-tagline" id="introTagline">Dein neuer Startpunkt</div>
-
-        <!-- Finaler Blitz -->
-        <div class="intro-flash-final" id="introFlashFinal"></div>
-    </div>
-
+<body>
     <!-- ── Update-Abstimmung Overlay ──────────────────────────────────────── -->
     <div id="voteScreen" style="display:none;position:fixed;inset:0;z-index:9999;background:#07131d;overflow-y:auto;padding:32px 16px;">
         <div style="max-width:560px;margin:0 auto;padding-top:40px;">
