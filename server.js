@@ -5,7 +5,7 @@ const express = require("express");
 const fs = require("fs/promises");
 const multer = require("multer");
 const path = require("path");
-const { nanoid } = require("nanoid");
+const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
@@ -35,6 +35,10 @@ app.get("/health", (req, res) => {
 
 function hasStoreAccess(req) {
   return req.cookies.ehoser_access === "granted";
+}
+
+function createId(size = 10) {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, size);
 }
 
 function hasAdminAccess(req) {
@@ -70,7 +74,7 @@ async function ensureLocalStore() {
   } catch {
     const demo = [
       {
-        id: nanoid(10),
+        id: createId(10),
         title: "Neon Drift",
         icon_url: "/assets/placeholder-neon.svg",
         trailer_url: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
@@ -81,7 +85,7 @@ async function ensureLocalStore() {
         created_at: new Date().toISOString(),
       },
       {
-        id: nanoid(10),
+        id: createId(10),
         title: "Orbit Factory",
         icon_url: "/assets/placeholder-orbit.svg",
         trailer_url: "",
@@ -121,7 +125,7 @@ async function saveGame(payload) {
     throw error;
   }
   const game = {
-    id: payload.id || nanoid(10),
+    id: payload.id || createId(10),
     title: payload.title?.trim() || "Unbenanntes Spiel",
     icon_url: payload.icon_url || "",
     trailer_url: payload.trailer_url || "",
@@ -159,7 +163,7 @@ async function deleteGame(id) {
 
 async function uploadFile(file, folder) {
   const safeName = file.originalname.replace(/[^\w.\-]+/g, "_");
-  const objectName = `${folder}/${Date.now()}-${nanoid(8)}-${safeName}`;
+  const objectName = `${folder}/${Date.now()}-${createId(8)}-${safeName}`;
   if (supabase) {
     const { error } = await supabase.storage.from(BUCKET).upload(objectName, file.buffer, {
       contentType: file.mimetype,
