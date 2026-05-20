@@ -1,0 +1,23 @@
+{
+  "name": "ehoser",
+  "version": "1.0.0",
+  "description": "Ehoser game company storefront with protected access and Supabase-backed admin publishing.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
+    "nanoid": "^5.1.11"
+  }
+}

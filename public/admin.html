@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ehoser Admin</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="admin-body">
+    <header class="topbar">
+      <a class="brand" href="/store">
+        <span class="brand-mark">E</span>
+        <span>Ehoser Admin</span>
+      </a>
+      <nav class="nav-actions">
+        <a href="/store">Store</a>
+      </nav>
+    </header>
+
+    <main class="admin-layout">
+      <section class="admin-editor">
+        <p class="eyebrow">Spiel verwalten</p>
+        <h1>Release-Daten</h1>
+        <form id="gameForm" class="admin-form">
+          <input type="hidden" id="gameId" />
+          <label>Titel <input id="title" required placeholder="Spielname" /></label>
+          <label>Beschreibung <textarea id="description" rows="5" placeholder="Kurzbeschreibung fuer die Storeseite"></textarea></label>
+          <label>Veroeffentlichungsdatum <input id="releaseAt" type="datetime-local" /></label>
+          <div class="file-row">
+            <label>Icon <input id="iconFile" type="file" accept="image/*" /></label>
+            <label>Trailer <input id="trailerFile" type="file" accept="video/*" /></label>
+          </div>
+          <div class="file-row">
+            <label>Bilder <input id="imageFiles" type="file" accept="image/*" multiple /></label>
+            <label>EXE <input id="exeFile" type="file" accept=".exe,application/x-msdownload,application/octet-stream" /></label>
+          </div>
+          <label>Icon URL <input id="iconUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
+          <label>Trailer URL <input id="trailerUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
+          <label>Bilder URLs <textarea id="imageUrls" rows="3" placeholder="Eine URL pro Zeile"></textarea></label>
+          <label>EXE Download URL <input id="downloadUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
+          <div class="form-actions">
+            <button type="submit">Speichern</button>
+            <button type="button" id="resetForm" class="secondary">Neu</button>
+          </div>
+          <p id="adminMessage" class="form-message"></p>
+        </form>
+      </section>
+
+      <section class="admin-list">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Bibliothek</p>
+            <h2>Veröffentlichte Spiele</h2>
+          </div>
+        </div>
+        <div id="adminGames" class="admin-game-list"></div>
+      </section>
+    </main>
+
+    <script src="/assets/admin.js"></script>
+  </body>
+</html>

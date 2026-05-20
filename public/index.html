@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ehoser Store</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="Ehoser Startseite">
+        <span class="brand-mark">E</span>
+        <span>Ehoser</span>
+      </a>
+      <nav class="nav-actions" aria-label="Hauptnavigation">
+        <a href="#home" title="Start">Start</a>
+        <a class="icon-link" href="#downloads" title="Downloads" aria-label="Downloads">↓</a>
+        <a href="/admin" title="Admin">Admin</a>
+      </nav>
+    </header>
+
+    <main>
+      <section id="home" class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Independent Games Studio</p>
+          <h1>Ehoser</h1>
+          <p>Neue Spiele, Trailer, Bilder und Release-Termine an einem Ort. Downloads erscheinen erst, wenn ein Spiel wirklich freigegeben ist.</p>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <img src="/assets/hero-art.svg" alt="" />
+        </div>
+      </section>
+
+      <section class="section-head">
+        <div>
+          <p class="eyebrow">Hauptseite</p>
+          <h2>Spiele & Trailer</h2>
+        </div>
+      </section>
+      <section id="games" class="game-grid" aria-live="polite"></section>
+
+      <section id="downloads" class="downloads-band">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Download-Zentrale</p>
+            <h2>Spiele herunterladen</h2>
+          </div>
+        </div>
+        <div id="downloadGrid" class="download-grid"></div>
+      </section>
+    </main>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
