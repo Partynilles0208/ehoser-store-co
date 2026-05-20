@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Ehoser game company storefront with protected access and Supabase-backed admin publishing.",
   "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",

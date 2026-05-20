@@ -29,6 +29,10 @@ app.use(cookieParser());
 app.use("/assets", express.static(PUBLIC_DIR, { maxAge: "1h" }));
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
 
+app.get("/health", (req, res) => {
+  res.json({ ok: true, storage: supabase ? "supabase" : "local" });
+});
+
 function hasStoreAccess(req) {
   return req.cookies.ehoser_access === "granted";
 }
