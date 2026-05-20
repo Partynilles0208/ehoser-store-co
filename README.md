@@ -26,7 +26,23 @@ Im Adminbereich kannst du Icon, Trailer, Bilder und EXE hochladen. Wenn keine EX
 
 ## Als echte Webseite deployen
 
-Diese App braucht einen Node.js-Webservice, nicht GitHub Pages. Empfohlen ist Railway oder Render.
+Diese App braucht einen Node.js-Webservice, nicht GitHub Pages. Vercel ist vorbereitet und nutzt `server.js` als Node.js Function.
+
+### Vercel
+
+1. Vercel oeffnen und das GitHub-Repository `Partynilles0208/ehoser-store-co` importieren.
+2. Framework Preset: `Other`.
+3. Build Command leer lassen oder `npm install` nutzen.
+4. Output Directory leer lassen.
+5. Diese Environment Variables setzen:
+   - `SITE_ACCESS_CODE=0208`
+   - `ADMIN_ACCESS_CODE=Nils2014!`
+   - `SUPABASE_URL=...`
+   - `SUPABASE_SERVICE_ROLE_KEY=...`
+   - `SUPABASE_STORAGE_BUCKET=games`
+6. Deploy starten.
+
+Wichtig fuer Vercel: Verwende Supabase fuer Datenbank und Storage. Vercel Functions sind serverless; lokale Upload-Ordner sind nicht fuer dauerhafte Dateien gedacht.
 
 ### Railway
 

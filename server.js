@@ -263,9 +263,16 @@ app.use((error, req, res, next) => {
   res.status(error.status || 500).json({ error: error.message || "Serverfehler" });
 });
 
-ensureLocalStore().then(() => {
+async function startLocalServer() {
+  await ensureLocalStore();
   app.listen(PORT, () => {
     console.log(`Ehoser server running on http://localhost:${PORT}`);
     console.log(supabase ? "Supabase mode enabled." : "Local fallback mode enabled.");
   });
-});
+}
+
+if (require.main === module) {
+  startLocalServer();
+}
+
+module.exports = app;
