@@ -68,8 +68,20 @@ function renderGames(games) {
 
 async function loadGames() {
   const response = await fetch("/api/games");
-  if (!response.ok) {
+  if (response.status === 401) {
     window.location.href = "/";
+    return;
+  }
+  if (!response.ok) {
+    gamesEl.innerHTML = `
+      <article class="game-card error-card">
+        <div class="game-content">
+          <h3>Spiele konnten nicht geladen werden</h3>
+          <p>Bitte pruefe in Supabase, ob die Tabelle aus <code>supabase/schema.sql</code> angelegt ist.</p>
+        </div>
+      </article>
+    `;
+    downloadsEl.innerHTML = "";
     return;
   }
   renderGames(await response.json());

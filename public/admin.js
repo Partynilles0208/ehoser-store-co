@@ -109,11 +109,16 @@ function renderAdminGames(games) {
 
 async function loadAdminGames() {
   const response = await fetch("/api/admin/games");
-  if (!response.ok) {
+  if (response.status === 401) {
     window.location.href = "/admin";
     return;
   }
-  renderAdminGames(await response.json());
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    list.innerHTML = `<p class="form-message error">${data.error || "Admin-Daten konnten nicht geladen werden. Pruefe Supabase."}</p>`;
+    return;
+  }
+  renderAdminGames(data);
 }
 
 form.addEventListener("submit", async (event) => {

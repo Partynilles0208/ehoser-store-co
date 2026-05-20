@@ -28,6 +28,12 @@ const supabase =
 
 app.use(express.json({ limit: "4mb" }));
 app.use(cookieParser());
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/assets")) {
+    res.set("Cache-Control", "no-store");
+  }
+  next();
+});
 app.use("/assets", express.static(PUBLIC_DIR, { maxAge: "1h" }));
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "1h" }));
 
