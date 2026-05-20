@@ -1,0 +1,1142 @@
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+const imgCanvas = document.createElement("canvas");
+const imgCtx = imgCanvas.getContext("2d", { willReadFrequently: true });
+const originalCanvas = document.createElement("canvas");
+const originalCtx = originalCanvas.getContext("2d", { willReadFrequently: true });
+
+const fileInput = document.getElementById("fileInput");
+const resetBtn = document.getElementById("resetBtn");
+const saveBtn = document.getElementById("saveBtn");
+const strengthInput = document.getElementById("strength");
+const sizeInput = document.getElementById("size");
+const softnessInput = document.getElementById("softness");
+const strengthValue = document.getElementById("strengthValue");
+const sizeValue = document.getElementById("sizeValue");
+const softnessValue = document.getElementById("softnessValue");
+const placeholder = document.getElementById("placeholder");
+const brush = document.getElementById("brush");
+const canvasFrame = document.getElementById("canvasFrame");
+const cameraBtn = document.getElementById("cameraBtn");
+const captureBtn = document.getElementById("captureBtn");
+const cameraVideo = document.getElementById("camera");
+const cameraPreview = document.getElementById("cameraPreview");
+const cameraHint = document.getElementById("cameraHint");
+const modeButtons = document.querySelectorAll("[data-mode]");
+const pixabayQuery = document.getElementById("pixabayQuery");
+const pixabaySearchBtn = document.getElementById("pixabaySearchBtn");
+const pixabayResults = document.getElementById("pixabayResults");
+const pixabayUseBtn = document.getElementById("pixabayUseBtn");
+const pixabayStatus = document.getElementById("pixabayStatus");
+const undoBtn = document.getElementById("undoBtn");
+const redoBtn = document.getElementById("redoBtn");
+const exportFormatSelect = document.getElementById("exportFormat");
+const exportQualityWrap = document.getElementById("exportQualityWrap");
+const exportQualityInput = document.getElementById("exportQuality");
+const exportQualityValue = document.getElementById("exportQualityValue");
+const flipHBtn = document.getElementById("flipHBtn");
+const flipVBtn = document.getElementById("flipVBtn");
+const tierBasicBtn = document.getElementById("tierBasicBtn");
+const tierProBtn = document.getElementById("tierProBtn");
+const tierInfo = document.getElementById("tierInfo");
+const editorWarpBtn = document.getElementById("editorWarpBtn");
+const editorStickerBtn = document.getElementById("editorStickerBtn");
+const stickerControls = document.getElementById("stickerControls");
+const stickerInput = document.getElementById("stickerInput");
+const removeStickerBtn = document.getElementById("removeStickerBtn");
+const removeBgBtn = document.getElementById("removeBgBtn");
+
+const EHOSER_API_ORIGIN = window.location.protocol === "file:" ? "https://ehoser.de" : window.location.origin;
+const API_BASE = `${EHOSER_API_ORIGIN}/api`;
+const MAX_EDIT_DIMENSION = 1800;
+const MAX_HISTORY_STATES = 12;
+
+let strength = parseFloat(strengthInput.value);
+let radius = parseInt(sizeInput.value, 10);
+let softness = parseFloat(softnessInput.value);
+let hasImage = false;
+let dragging = false;
+let lastPos = null;
+let mode = "push";
+let cameraStream = null;
+let selectedPixabay = null;
+let selectedPixabayCard = null;
+let originalImgData = null;
+let historyStack = [];
+let redoStack = [];
+let isPro = false;
+let exportCount = 0;
+let editorMode = "warp";
+let stickerLayer = null;
+let stickerDragging = false;
+let stickerDragOffsetX = 0;
+let stickerDragOffsetY = 0;
+
+const PIXABAY_KEY = "50190970-65ec83f509b70f19f8665f4a1";
+const PIXABAY_ENDPOINT = "https://pixabay.com/api/";
+const FLY_REPEAT = 6;
+
+function setupBackLink() {
+  const link = document.querySelector('a[href="../index.html"]');
+  if (!link) return;
+  const params = new URLSearchParams(window.location.search);
+  const desktop = params.get("desktop") === "1" || Boolean(window.__EHOSER_DESKTOP__);
+  link.textContent = "Zurueck zum Hauptmenue";
+  link.href = desktop ? "../index.html?desktop=1&return=mode-select" : "../index.html?return=mode-select";
+}
+
+setupBackLink();
+
+function updateSliderValues() {
+  strengthValue.textContent = strength.toFixed(2);
+  sizeValue.textContent = `${radius} px`;
+  softnessValue.textContent = softness.toFixed(1);
+  updateBrushSize();
+}
+
+function setHasImage(value) {
+  hasImage = value;
+  placeholder.classList.toggle("is-hidden", value);
+  canvasFrame.classList.toggle("has-image", value);
+  resetBtn.disabled = !value;
+  saveBtn.disabled = !value;
+  const saveToChatBtn = document.getElementById('saveToChatBtn');
+  if (saveToChatBtn) saveToChatBtn.disabled = !value;
+  if (removeBgBtn) removeBgBtn.disabled = !value;
+  if (flipHBtn) flipHBtn.disabled = !value;
+  if (flipVBtn) flipVBtn.disabled = !value;
+}
+
+function saveHistory() {
+  if (!hasImage) return;
+  const snapshot = imgCtx.getImageData(0, 0, imgCanvas.width, imgCanvas.height);
+  historyStack.push(snapshot);
+  if (historyStack.length > MAX_HISTORY_STATES) historyStack.shift();
+  redoStack = [];
+  syncHistoryButtons();
+}
+
+function undo() {
+  if (!historyStack.length) return;
+  const current = imgCtx.getImageData(0, 0, imgCanvas.width, imgCanvas.height);
+  redoStack.push(current);
+  const prev = historyStack.pop();
+  imgCtx.putImageData(prev, 0, 0);
+  drawToScreen();
+  syncHistoryButtons();
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  const current = imgCtx.getImageData(0, 0, imgCanvas.width, imgCanvas.height);
+  historyStack.push(current);
+  const next = redoStack.pop();
+  imgCtx.putImageData(next, 0, 0);
+  drawToScreen();
+  syncHistoryButtons();
+}
+
+function syncHistoryButtons() {
+  if (undoBtn) undoBtn.disabled = !historyStack.length;
+  if (redoBtn) redoBtn.disabled = !redoStack.length;
+}
+
+function updateBrushSize() {
+  if (!hasImage) return;
+  const rect = canvas.getBoundingClientRect();
+  const scale = rect.width / canvas.width;
+  const cssRadius = radius * scale;
+  brush.style.width = `${cssRadius * 2}px`;
+  brush.style.height = `${cssRadius * 2}px`;
+}
+
+function updateBrushPosition(cssX, cssY, visible) {
+  if (!hasImage) return;
+  if (visible) {
+    brush.style.opacity = "1";
+  }
+  brush.style.left = `${cssX}px`;
+  brush.style.top = `${cssY}px`;
+}
+
+function hideBrush() {
+  brush.style.opacity = "0";
+}
+
+function getPointerPos(event) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = (event.clientX - rect.left) * scaleX;
+  const y = (event.clientY - rect.top) * scaleY;
+  return {
+    x,
+    y,
+    cssX: event.clientX - rect.left,
+    cssY: event.clientY - rect.top,
+  };
+}
+
+function drawToScreen() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(imgCanvas, 0, 0);
+  if (stickerLayer?.img) {
+    drawSticker(ctx, stickerLayer);
+  }
+}
+
+function setCanvasSize(width, height) {
+  canvas.width = width;
+  canvas.height = height;
+  imgCanvas.width = width;
+  imgCanvas.height = height;
+  originalCanvas.width = width;
+  originalCanvas.height = height;
+}
+
+function drawLoadedImage(img) {
+  const sourceWidth = img.naturalWidth || img.width;
+  const sourceHeight = img.naturalHeight || img.height;
+  const scale = Math.min(1, MAX_EDIT_DIMENSION / Math.max(sourceWidth, sourceHeight));
+  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+  setCanvasSize(targetWidth, targetHeight);
+  originalCtx.clearRect(0, 0, targetWidth, targetHeight);
+  imgCtx.clearRect(0, 0, targetWidth, targetHeight);
+  originalCtx.drawImage(img, 0, 0, targetWidth, targetHeight);
+  imgCtx.drawImage(img, 0, 0, targetWidth, targetHeight);
+  originalImgData = originalCtx.getImageData(0, 0, targetWidth, targetHeight);
+  historyStack = [];
+  redoStack = [];
+  syncHistoryButtons();
+  drawToScreen();
+  setHasImage(true);
+  updateBrushSize();
+}
+
+function loadImageFromFile(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    drawLoadedImage(img);
+    URL.revokeObjectURL(url);
+    fileInput.value = "";
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+}
+
+function loadImageFromUrl(url) {
+  if (!url) return;
+  const img = new Image();
+  img.onload = () => {
+    drawLoadedImage(img);
+    setPixabayStatus("Bild geladen.");
+  };
+  img.onerror = () => {
+    setPixabayStatus("Bild konnte nicht geladen werden.");
+  };
+  img.src = url;
+}
+
+function drawSticker(targetCtx, sticker) {
+  if (!sticker?.img) return;
+  targetCtx.save();
+  targetCtx.translate(sticker.x, sticker.y);
+  targetCtx.rotate(sticker.rotation);
+  targetCtx.drawImage(sticker.img, -sticker.w / 2, -sticker.h / 2, sticker.w, sticker.h);
+  targetCtx.restore();
+}
+
+function setEditorMode(nextMode) {
+  editorMode = nextMode === "sticker" ? "sticker" : "warp";
+  editorWarpBtn.classList.toggle("active", editorMode === "warp");
+  editorStickerBtn.classList.toggle("active", editorMode === "sticker");
+  stickerControls.style.display = editorMode === "sticker" ? "" : "none";
+  if (editorMode === "sticker" && !isPro) {
+    setPixabayStatus("Sticker Modus ist nur mit PRO verfügbar.");
+    editorMode = "warp";
+    editorWarpBtn.classList.add("active");
+    editorStickerBtn.classList.remove("active");
+    stickerControls.style.display = "none";
+  }
+}
+
+function setTier(nextTier) {
+  isPro = nextTier === "pro";
+  tierBasicBtn.classList.toggle("active", !isPro);
+  tierProBtn.classList.toggle("active", isPro);
+  tierProBtn.classList.toggle("pro-active", isPro);
+  editorStickerBtn.disabled = !isPro;
+  pixabaySearchBtn.disabled = !isPro;
+  pixabayUseBtn.disabled = true;
+  if (!isPro && editorMode === "sticker") {
+    setEditorMode("warp");
+  }
+  if (isPro) {
+    tierInfo.textContent = "Pro aktiv: Pixabay entsperrt, Sticker Modus, unbegrenzter Export, bessere Qualität.";
+    setPixabayStatus("PRO aktiv.");
+  } else {
+    tierInfo.textContent = "Basics aktiv: Warp Tools normal, Export auf 3 pro Sitzung begrenzt.";
+    setPixabayStatus("Pixabay ist nur im Pro Face Warp verfügbar.");
+  }
+}
+
+async function resolveTierFromServer() {
+  const forcedTier = new URLSearchParams(window.location.search).get("tier");
+  const token = localStorage.getItem("token");
+  
+  // 🔥 Zuerst localStorage proStatus prüfen (schneller, aus letztem Login)
+  const cachedProStatus = localStorage.getItem("proStatus");
+  if (cachedProStatus === "1" && forcedTier !== "basic") {
+    setTier("pro");
+    return;
+  }
+  if (cachedProStatus === "0") {
+    setTier("basic");
+    return;
+  }
+  
+  // Wenn nicht gecacht: vom Server abrufen
+  if (!token) {
+    setTier("basic");
+    return;
+  }
+  
+  try {
+    const res = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    const proByAccount = Boolean(data?.profile?.isPro);
+    // 🔥 Ergebnis in localStorage speichern
+    localStorage.setItem("proStatus", proByAccount ? "1" : "0");
+    
+    if (forcedTier === "pro" && !proByAccount) {
+      alert("Pro Face Warp ist nicht aktiv. Du nutzt Basics.");
+    }
+    setTier(proByAccount && forcedTier !== "basic" ? "pro" : "basic");
+  } catch {
+    // 🔥 Bei Fehler: localStorage fallback, dann basic
+    if (cachedProStatus === "1") {
+      setTier("pro");
+    } else {
+      setTier("basic");
+    }
+  }
+}
+
+function setStickerImageFromUrl(url) {
+  const img = new Image();
+  img.onload = () => {
+    const base = Math.min(canvas.width || img.width, canvas.height || img.height) * 0.35;
+    const ratio = img.width / img.height;
+    const w = base;
+    const h = base / (ratio || 1);
+    stickerLayer = {
+      img,
+      x: (canvas.width || img.width) / 2,
+      y: (canvas.height || img.height) / 2,
+      w,
+      h,
+      rotation: 0
+    };
+    drawToScreen();
+  };
+  img.src = url;
+}
+
+function bakeStickerToImage() {
+  if (!stickerLayer?.img || !hasImage) return;
+  saveHistory();
+  const s = stickerLayer;
+  imgCtx.save();
+  imgCtx.translate(s.x, s.y);
+  imgCtx.rotate(s.rotation);
+  imgCtx.drawImage(s.img, -s.w / 2, -s.h / 2, s.w, s.h);
+  imgCtx.restore();
+  stickerLayer = null;
+  drawToScreen();
+  setPixabayStatus("Sticker eingebettet — jetzt warpbar!");
+}
+
+function resetImage() {
+  if (!hasImage) return;
+  imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
+  imgCtx.drawImage(originalCanvas, 0, 0);
+  drawToScreen();
+}
+
+function exportImage() {
+  if (!hasImage) return;
+  if (!isPro && exportCount >= 3) {
+    alert("Basics erlaubt 3 Exporte pro Sitzung. Für unbegrenzt: Pro Face Warp.");
+    return;
+  }
+
+  const format = exportFormatSelect ? exportFormatSelect.value : "image/png";
+  const quality = exportQualityInput ? parseFloat(exportQualityInput.value) : 0.92;
+  const scale = isPro ? 1.8 : 1;
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(imgCanvas.width * scale));
+  out.height = Math.max(1, Math.round(imgCanvas.height * scale));
+  const outCtx = out.getContext("2d");
+  outCtx.drawImage(imgCanvas, 0, 0, out.width, out.height);
+  if (stickerLayer?.img) {
+    drawSticker(outCtx, {
+      ...stickerLayer,
+      x: stickerLayer.x * scale,
+      y: stickerLayer.y * scale,
+      w: stickerLayer.w * scale,
+      h: stickerLayer.h * scale
+    });
+  }
+
+  const ext = format === "image/jpeg" ? "jpg" : "png";
+  const link = document.createElement("a");
+  link.download = `face-warp.${ext}`;
+  link.href = out.toDataURL(format, isPro ? 1 : quality);
+  link.click();
+  exportCount += 1;
+}
+
+function flipImage(horizontal) {
+  if (!hasImage) return;
+  saveHistory();
+  const width = imgCanvas.width;
+  const height = imgCanvas.height;
+  const tmp = document.createElement("canvas");
+  tmp.width = width;
+  tmp.height = height;
+  const tmpCtx = tmp.getContext("2d");
+  tmpCtx.save();
+  if (horizontal) {
+    tmpCtx.translate(width, 0);
+    tmpCtx.scale(-1, 1);
+  } else {
+    tmpCtx.translate(0, height);
+    tmpCtx.scale(1, -1);
+  }
+  tmpCtx.drawImage(imgCanvas, 0, 0);
+  tmpCtx.restore();
+  imgCtx.clearRect(0, 0, width, height);
+  imgCtx.drawImage(tmp, 0, 0);
+  drawToScreen();
+}
+
+function setPixabayStatus(text) {
+  if (!pixabayStatus) return;
+  pixabayStatus.textContent = text;
+}
+
+function getPixabayKey() {
+  if (PIXABAY_KEY && PIXABAY_KEY !== "PASTE_YOUR_PIXABAY_KEY") {
+    return PIXABAY_KEY;
+  }
+  return "";
+}
+
+function renderPixabayResults(hits) {
+  pixabayResults.innerHTML = "";
+  selectedPixabay = null;
+  selectedPixabayCard = null;
+  pixabayUseBtn.disabled = true;
+
+  if (!hits.length) {
+    setPixabayStatus("Keine Treffer.");
+    return;
+  }
+
+  setPixabayStatus(`${hits.length} Treffer`);
+
+  hits.forEach((hit) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "result-card";
+
+    const img = document.createElement("img");
+    img.alt = hit.tags || "Pixabay Bild";
+    img.loading = "lazy";
+    const previewSrc = hit.previewURL || hit.webformatURL;
+    img.src = `${API_BASE}/pixabay/image?url=${encodeURIComponent(previewSrc)}`;
+    img.onerror = () => { img.src = previewSrc; }; // Fallback direkt
+
+    button.appendChild(img);
+    button.addEventListener("click", () => {
+      if (selectedPixabayCard) {
+        selectedPixabayCard.classList.remove("selected");
+      }
+      button.classList.add("selected");
+      selectedPixabayCard = button;
+      selectedPixabay = hit;
+      pixabayUseBtn.disabled = false;
+      setPixabayStatus(`Ausgewaehlt: ${hit.tags || "Bild"}`);
+    });
+
+    pixabayResults.appendChild(button);
+  });
+}
+
+async function searchPixabay(query) {
+  if (!isPro) {
+    setPixabayStatus("Pixabay ist nur im Pro Face Warp verfügbar.");
+    return;
+  }
+  const key = getPixabayKey();
+  if (!key) {
+    setPixabayStatus("Pixabay API-Key fehlt. Bitte in app.js setzen.");
+    return;
+  }
+  if (!query) {
+    setPixabayStatus("Bitte Suchwort eingeben.");
+    return;
+  }
+
+  setPixabayStatus("Suche...");
+  pixabayResults.innerHTML = "";
+  selectedPixabay = null;
+  pixabayUseBtn.disabled = true;
+
+  try {
+    const token = localStorage.getItem('token') || '';
+    const params = new URLSearchParams({ q: query });
+    const response = await fetch(`${API_BASE}/pixabay?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    renderPixabayResults(Array.isArray(data.hits) ? data.hits : []);
+  } catch (error) {
+    setPixabayStatus("Fehler bei der Suche.");
+  }
+}
+
+// Catmull-Rom cubic weight function for bicubic sampling
+function cubicWeight(t) {
+  const a = -0.5;
+  const absT = Math.abs(t);
+  if (absT <= 1) return (a + 2) * absT * absT * absT - (a + 3) * absT * absT + 1;
+  if (absT < 2) return a * absT * absT * absT - 5 * a * absT * absT + 8 * a * absT - 4 * a;
+  return 0;
+}
+
+function sampleBicubic(data, w, h, sx, sy) {
+  const x0 = Math.floor(sx);
+  const y0 = Math.floor(sy);
+  let r = 0, g = 0, b = 0, a = 0;
+  for (let m = -1; m <= 2; m++) {
+    const wy = cubicWeight(sy - (y0 + m));
+    const iy = Math.max(0, Math.min(h - 1, y0 + m));
+    for (let n = -1; n <= 2; n++) {
+      const wx = cubicWeight(sx - (x0 + n));
+      const ix = Math.max(0, Math.min(w - 1, x0 + n));
+      const i = (iy * w + ix) * 4;
+      const wt = wx * wy;
+      r += data[i]     * wt;
+      g += data[i + 1] * wt;
+      b += data[i + 2] * wt;
+      a += data[i + 3] * wt;
+    }
+  }
+  return [r, g, b, a];
+}
+
+function sampleBicubicLocal(data, localW, localH, offsetX, offsetY, imageW, imageH, sx, sy) {
+  const clampedX = Math.max(0, Math.min(imageW - 1, sx));
+  const clampedY = Math.max(0, Math.min(imageH - 1, sy));
+  const localX = clampedX - offsetX;
+  const localY = clampedY - offsetY;
+  return sampleBicubic(data, localW, localH, localX, localY);
+}
+
+function applyStroke(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dist = Math.hypot(dx, dy);
+  const steps = Math.max(1, Math.ceil(dist / (radius * 0.18)));
+  const stepX = dx / steps;
+  const stepY = dy / steps;
+
+  for (let i = 1; i <= steps; i += 1) {
+    const x = from.x + stepX * i;
+    const y = from.y + stepY * i;
+    warpAt(x, y, stepX, stepY, false);
+  }
+  drawToScreen();
+}
+
+function warpAt(centerX, centerY, deltaX, deltaY, shouldDraw = true) {
+  const width = imgCanvas.width;
+  const height = imgCanvas.height;
+  if (width === 0 || height === 0) return;
+
+  const left = Math.max(0, Math.floor(centerX - radius));
+  const top = Math.max(0, Math.floor(centerY - radius));
+  const right = Math.min(width, Math.ceil(centerX + radius));
+  const bottom = Math.min(height, Math.ceil(centerY + radius));
+  const boxWidth = right - left;
+  const boxHeight = bottom - top;
+  if (boxWidth <= 0 || boxHeight <= 0) return;
+
+  const pinchPad = mode === "pinch" ? radius * Math.min(0.7, strength * 0.55) : 0;
+  const pad = Math.ceil(Math.max(8, pinchPad, Math.abs(deltaX) + 4, Math.abs(deltaY) + 4));
+  const srcLeft = Math.max(0, left - pad);
+  const srcTop = Math.max(0, top - pad);
+  const srcRight = Math.min(width, right + pad);
+  const srcBottom = Math.min(height, bottom + pad);
+  const srcWidth = srcRight - srcLeft;
+  const srcHeight = srcBottom - srcTop;
+  const src = imgCtx.getImageData(srcLeft, srcTop, srcWidth, srcHeight);
+  const srcData = src.data;
+  const out = imgCtx.createImageData(boxWidth, boxHeight);
+  const outData = out.data;
+
+  const radiusSquared = radius * radius;
+
+  const origData = originalImgData ? originalImgData.data : srcData;
+
+  for (let y = 0; y < boxHeight; y += 1) {
+    const gy = top + y;
+    for (let x = 0; x < boxWidth; x += 1) {
+      const gx = left + x;
+      const dx = gx - centerX;
+      const dy = gy - centerY;
+      const distSquared = dx * dx + dy * dy;
+      const outIndex = (y * boxWidth + x) * 4;
+      const localX = gx - srcLeft;
+      const localY = gy - srcTop;
+      const srcIdx = (localY * srcWidth + localX) * 4;
+      const origIdx = (gy * width + gx) * 4;
+
+      // smooth and reconstruct modes bypass the sample-position approach
+      if (distSquared < radiusSquared && (mode === "smooth" || mode === "reconstruct")) {
+        const dist = Math.sqrt(distSquared);
+        const tn = dist / radius;
+        const smooth = 1 - (3 * tn * tn - 2 * tn * tn * tn);
+        const influence = Math.pow(smooth, softness);
+        const t = Math.min(1, strength * influence);
+
+        if (mode === "smooth") {
+          const kr = Math.max(1, Math.round(3 * influence));
+          let rs = 0, gs = 0, bs = 0, as_ = 0, cnt = 0;
+          for (let ky = -kr; ky <= kr; ky += 1) {
+            for (let kx = -kr; kx <= kr; kx += 1) {
+              const nx = Math.max(0, Math.min(width - 1, gx + kx));
+              const ny = Math.max(0, Math.min(height - 1, gy + ky));
+              const nLocalX = Math.max(0, Math.min(srcWidth - 1, nx - srcLeft));
+              const nLocalY = Math.max(0, Math.min(srcHeight - 1, ny - srcTop));
+              const ni = (nLocalY * srcWidth + nLocalX) * 4;
+              rs += srcData[ni]; gs += srcData[ni + 1]; bs += srcData[ni + 2]; as_ += srcData[ni + 3];
+              cnt += 1;
+            }
+          }
+          outData[outIndex]     = srcData[srcIdx]     * (1 - t) + (rs / cnt) * t;
+          outData[outIndex + 1] = srcData[srcIdx + 1] * (1 - t) + (gs / cnt) * t;
+          outData[outIndex + 2] = srcData[srcIdx + 2] * (1 - t) + (bs / cnt) * t;
+          outData[outIndex + 3] = srcData[srcIdx + 3] * (1 - t) + (as_ / cnt) * t;
+        } else {
+          outData[outIndex]     = srcData[srcIdx]     * (1 - t) + origData[origIdx]     * t;
+          outData[outIndex + 1] = srcData[srcIdx + 1] * (1 - t) + origData[origIdx + 1] * t;
+          outData[outIndex + 2] = srcData[srcIdx + 2] * (1 - t) + origData[origIdx + 2] * t;
+          outData[outIndex + 3] = srcData[srcIdx + 3] * (1 - t) + origData[origIdx + 3] * t;
+        }
+        continue;
+      }
+
+      let sampleX = gx;
+      let sampleY = gy;
+
+      if (distSquared < radiusSquared) {
+        const dist = Math.sqrt(distSquared);
+        const tn = dist / radius;
+        const smooth = 1 - (3 * tn * tn - 2 * tn * tn * tn); // smoothstep
+        const influence = Math.pow(smooth, softness);
+
+        if (mode === "push") {
+          sampleX = gx - deltaX * strength * influence;
+          sampleY = gy - deltaY * strength * influence;
+        } else if (mode === "bulge") {
+          const factor = Math.max(0.2, 1 - strength * influence);
+          sampleX = centerX + dx * factor;
+          sampleY = centerY + dy * factor;
+        } else if (mode === "pinch") {
+          const factor = 1 + strength * influence;
+          sampleX = centerX + dx * factor;
+          sampleY = centerY + dy * factor;
+        } else if (mode === "twirl") {
+          const spin = deltaX + deltaY;
+          const direction = spin === 0 ? 1 : Math.sign(spin);
+          const angle = direction * strength * influence * 1.2;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          sampleX = centerX + dx * cos - dy * sin;
+          sampleY = centerY + dx * sin + dy * cos;
+        }
+
+        if (sampleX < 0) sampleX = 0;
+        if (sampleY < 0) sampleY = 0;
+        if (sampleX > width - 1) sampleX = width - 1;
+        if (sampleY > height - 1) sampleY = height - 1;
+      }
+
+      const [cr, cg, cb, ca] = sampleBicubicLocal(srcData, srcWidth, srcHeight, srcLeft, srcTop, width, height, sampleX, sampleY);
+      outData[outIndex]     = Math.max(0, Math.min(255, cr));
+      outData[outIndex + 1] = Math.max(0, Math.min(255, cg));
+      outData[outIndex + 2] = Math.max(0, Math.min(255, cb));
+      outData[outIndex + 3] = Math.max(0, Math.min(255, ca));
+    }
+  }
+
+  imgCtx.putImageData(out, left, top);
+  if (shouldDraw) drawToScreen();
+}
+
+strengthInput.addEventListener("input", () => {
+  strength = parseFloat(strengthInput.value);
+  updateSliderValues();
+});
+
+sizeInput.addEventListener("input", () => {
+  radius = parseInt(sizeInput.value, 10);
+  updateSliderValues();
+});
+
+softnessInput.addEventListener("input", () => {
+  softness = parseFloat(softnessInput.value);
+  updateSliderValues();
+});
+
+fileInput.addEventListener("change", (event) => {
+  const file = event.target.files && event.target.files[0];
+  loadImageFromFile(file);
+});
+
+resetBtn.addEventListener("click", resetImage);
+
+if (removeBgBtn) {
+  removeBgBtn.addEventListener("click", () => {
+    if (!hasImage) return;
+    saveHistory();
+    const w = imgCanvas.width;
+    const h = imgCanvas.height;
+    const imageData = imgCtx.getImageData(0, 0, w, h);
+    const d = imageData.data;
+    // Tolerance: wie weit von Weiß entfernt ein Pixel noch als Hintergrund gilt
+    const tolerance = 30;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      if (r >= 255 - tolerance && g >= 255 - tolerance && b >= 255 - tolerance) {
+        d[i + 3] = 0; // Alpha auf transparent
+      }
+    }
+    imgCtx.putImageData(imageData, 0, 0);
+    // Auch originalCtx updaten damit Reset nicht zurücksetzt
+    originalCtx.putImageData(imageData, 0, 0);
+    originalImgData = originalCtx.getImageData(0, 0, w, h);
+    drawToScreen();
+  });
+}
+saveBtn.addEventListener("click", exportImage);
+
+const saveToChatBtn = document.getElementById('saveToChatBtn');
+if (saveToChatBtn) {
+  saveToChatBtn.addEventListener('click', async () => {
+    if (!hasImage) return;
+    const token = localStorage.getItem('token');
+    if (!token) { alert('Nicht angemeldet – bitte zuerst einloggen'); return; }
+    const out = document.createElement('canvas');
+    out.width = imgCanvas.width;
+    out.height = imgCanvas.height;
+    const outCtx = out.getContext('2d');
+    outCtx.drawImage(imgCanvas, 0, 0);
+    if (stickerLayer?.img) drawSticker(outCtx, stickerLayer);
+    const dataUrl = out.toDataURL('image/png');
+    const blob = await (await fetch(dataUrl)).blob();
+    const formData = new FormData();
+    formData.append('file', new File([blob], 'facewarp.png', { type: 'image/png' }));
+    saveToChatBtn.textContent = '⏳ Speichern…';
+    saveToChatBtn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/chat/upload`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
+      const saved = JSON.parse(localStorage.getItem('chatSavedFacewarps') || '[]');
+      saved.unshift(data.url);
+      localStorage.setItem('chatSavedFacewarps', JSON.stringify(saved.slice(0, 20)));
+      saveToChatBtn.textContent = '✓ Gespeichert!';
+      setTimeout(() => { saveToChatBtn.textContent = '💬 In Chat speichern'; saveToChatBtn.disabled = false; }, 2500);
+    } catch (e) {
+      alert('Fehler: ' + e.message);
+      saveToChatBtn.textContent = '💬 In Chat speichern';
+      saveToChatBtn.disabled = false;
+    }
+  });
+}
+
+pixabaySearchBtn.addEventListener("click", () => {
+  const query = pixabayQuery.value.trim();
+  searchPixabay(query);
+});
+
+pixabayQuery.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    const query = pixabayQuery.value.trim();
+    searchPixabay(query);
+  }
+});
+
+pixabayUseBtn.addEventListener("click", () => {
+  if (!selectedPixabay) return;
+  const rawUrl = selectedPixabay.webformatURL || selectedPixabay.previewURL;
+  const proxyUrl = `${API_BASE}/pixabay/image?url=${encodeURIComponent(rawUrl)}`;
+  setPixabayStatus("Bild wird geladen...");
+  if (editorMode === "sticker") {
+    setStickerImageFromUrl(proxyUrl);
+  } else {
+    loadImageFromUrl(proxyUrl);
+  }
+});
+
+canvas.addEventListener("pointerdown", (event) => {
+  if (!hasImage) return;
+  if (editorMode === "sticker") {
+    if (!stickerLayer) return;
+    const pos = getPointerPos(event);
+    stickerDragging = true;
+    stickerDragOffsetX = pos.x - stickerLayer.x;
+    stickerDragOffsetY = pos.y - stickerLayer.y;
+    return;
+  }
+  event.preventDefault();
+  canvas.setPointerCapture(event.pointerId);
+  saveHistory();
+  dragging = true;
+  lastPos = getPointerPos(event);
+  updateBrushPosition(lastPos.cssX, lastPos.cssY, true);
+  if (mode !== "push") {
+    warpAt(lastPos.x, lastPos.y, 0, 0);
+  }
+});
+
+canvas.addEventListener("pointermove", (event) => {
+  if (!hasImage) return;
+  const pos = getPointerPos(event);
+  if (editorMode === "sticker") {
+    if (stickerDragging && stickerLayer) {
+      stickerLayer.x = pos.x - stickerDragOffsetX;
+      stickerLayer.y = pos.y - stickerDragOffsetY;
+      drawToScreen();
+    }
+    return;
+  }
+  updateBrushPosition(pos.cssX, pos.cssY, true);
+  if (!dragging) return;
+  if (!lastPos) {
+    lastPos = pos;
+    return;
+  }
+  applyStroke(lastPos, pos);
+  lastPos = pos;
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  if (!hasImage) return;
+  if (editorMode === "sticker") {
+    stickerDragging = false;
+    return;
+  }
+  dragging = false;
+  lastPos = null;
+  canvas.releasePointerCapture(event.pointerId);
+});
+
+canvas.addEventListener("pointerleave", () => {
+  if (!hasImage) return;
+  hideBrush();
+});
+
+canvas.addEventListener("pointerenter", (event) => {
+  if (!hasImage) return;
+  updateBrushSize();
+  const pos = getPointerPos(event);
+  updateBrushPosition(pos.cssX, pos.cssY, true);
+});
+
+canvas.addEventListener("pointercancel", () => {
+  dragging = false;
+  stickerDragging = false;
+  lastPos = null;
+  hideBrush();
+});
+
+canvasFrame.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  canvasFrame.classList.add("drag");
+});
+
+canvasFrame.addEventListener("dragleave", () => {
+  canvasFrame.classList.remove("drag");
+});
+
+canvasFrame.addEventListener("drop", (event) => {
+  event.preventDefault();
+  canvasFrame.classList.remove("drag");
+  const file = event.dataTransfer.files && event.dataTransfer.files[0];
+  loadImageFromFile(file);
+});
+
+window.addEventListener("resize", updateBrushSize);
+
+modeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    modeButtons.forEach((btn) => btn.classList.remove("active"));
+    button.classList.add("active");
+    mode = button.dataset.mode || "push";
+  });
+});
+
+tierBasicBtn.addEventListener("click", () => setTier("basic"));
+tierProBtn.addEventListener("click", async () => {
+  if (isPro) { setTier("basic"); return; }
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert("Bitte melde dich im ehoser Store an, um Pro Face Warp zu nutzen.");
+    return;
+  }
+  tierProBtn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (data?.profile?.isPro) {
+      setTier("pro");
+    } else {
+      alert("Pro Face Warp ist nicht aktiv.\nLade eine Person ein — ihr erhaltet beide 2 Tage Pro!");
+    }
+  } catch {
+    alert("Verbindungsfehler. Bitte versuche es erneut.");
+  } finally {
+    tierProBtn.disabled = false;
+  }
+});
+editorWarpBtn.addEventListener("click", () => setEditorMode("warp"));
+editorStickerBtn.addEventListener("click", () => setEditorMode("sticker"));
+
+if (stickerInput) {
+  stickerInput.addEventListener("change", (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file || !isPro) return;
+    const url = URL.createObjectURL(file);
+    setStickerImageFromUrl(url);
+    stickerInput.value = "";
+  });
+}
+
+if (removeStickerBtn) {
+  removeStickerBtn.addEventListener("click", () => {
+    stickerLayer = null;
+    drawToScreen();
+  });
+}
+
+const bakeStickerBtn = document.getElementById("bakeStickerBtn");
+if (bakeStickerBtn) {
+  bakeStickerBtn.addEventListener("click", () => {
+    if (!stickerLayer) { setPixabayStatus("Kein Sticker aktiv."); return; }
+    if (!hasImage) { setPixabayStatus("Zuerst ein Bild laden."); return; }
+    bakeStickerToImage();
+    setEditorMode("warp");
+  });
+}
+
+cameraBtn.addEventListener("click", async () => {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((track) => track.stop());
+    cameraStream = null;
+    cameraVideo.srcObject = null;
+    cameraPreview.classList.remove("active");
+    cameraHint.textContent = "Kamera aus";
+    cameraBtn.textContent = "Kamera starten";
+    captureBtn.disabled = true;
+    return;
+  }
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" },
+      audio: false,
+    });
+    cameraVideo.srcObject = cameraStream;
+    await cameraVideo.play();
+    cameraPreview.classList.add("active");
+    cameraHint.textContent = "Live";
+    cameraBtn.textContent = "Kamera stoppen";
+    captureBtn.disabled = false;
+  } catch (error) {
+    cameraHint.textContent = "Keine Kamera";
+  }
+});
+
+captureBtn.addEventListener("click", () => {
+  if (!cameraStream) return;
+  const width = cameraVideo.videoWidth;
+  const height = cameraVideo.videoHeight;
+  if (!width || !height) return;
+  setCanvasSize(width, height);
+  originalCtx.clearRect(0, 0, width, height);
+  imgCtx.clearRect(0, 0, width, height);
+  originalCtx.drawImage(cameraVideo, 0, 0, width, height);
+  imgCtx.drawImage(cameraVideo, 0, 0, width, height);
+  originalImgData = originalCtx.getImageData(0, 0, width, height);
+  historyStack = [];
+  redoStack = [];
+  syncHistoryButtons();
+  drawToScreen();
+  setHasImage(true);
+  updateBrushSize();
+});
+
+function initFlyText() {
+  const tracks = document.querySelectorAll(".fly-track");
+  tracks.forEach((track) => {
+    const text = track.dataset.text || "WARP 2.0";
+    let html = "";
+    for (let r = 0; r < FLY_REPEAT; r += 1) {
+      for (const char of text) {
+        if (char === " ") {
+          html += '<span class="fly-gap"></span>';
+        } else {
+          html += `<span>${char}</span>`;
+        }
+      }
+      html += '<span class="fly-gap"></span>';
+    }
+    track.innerHTML = html;
+  });
+}
+
+// Mouse wheel: resize brush
+canvas.addEventListener("wheel", (event) => {
+  if (!hasImage) return;
+  if (editorMode === "sticker" && stickerLayer) {
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.06 : 0.94;
+    stickerLayer.w = Math.max(20, stickerLayer.w * factor);
+    stickerLayer.h = Math.max(20, stickerLayer.h * factor);
+    drawToScreen();
+    return;
+  }
+  event.preventDefault();
+  const delta = event.deltaY < 0 ? 5 : -5;
+  const min = parseInt(sizeInput.min, 10);
+  const max = parseInt(sizeInput.max, 10);
+  radius = Math.max(min, Math.min(max, radius + delta));
+  sizeInput.value = radius;
+  updateSliderValues();
+}, { passive: false });
+
+// Keyboard shortcuts
+document.addEventListener("keydown", (event) => {
+  // Undo / Redo
+  if (event.ctrlKey && event.key === "z" && !event.shiftKey) { event.preventDefault(); undo(); return; }
+  if (event.ctrlKey && (event.key === "Z" || (event.shiftKey && event.key === "z"))) { event.preventDefault(); redo(); return; }
+  if (event.ctrlKey && event.key === "y") { event.preventDefault(); redo(); return; }
+
+  // Paste image from clipboard
+  if (event.ctrlKey && event.key === "v") return; // handled by paste event
+
+  // Mode shortcuts (only when not in an input)
+  if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) return;
+
+  if (editorMode === "sticker" && stickerLayer) {
+    if (event.key.toLowerCase() === "q") {
+      event.preventDefault();
+      stickerLayer.rotation -= 0.1;
+      drawToScreen();
+      return;
+    }
+    if (event.key.toLowerCase() === "e") {
+      event.preventDefault();
+      stickerLayer.rotation += 0.1;
+      drawToScreen();
+      return;
+    }
+  }
+
+  const modeMap = { "1": "push", "2": "bulge", "3": "pinch", "4": "twirl", "5": "smooth", "6": "reconstruct" };
+  if (modeMap[event.key]) {
+    event.preventDefault();
+    const target = document.querySelector(`[data-mode="${modeMap[event.key]}"]`);
+    if (target) target.click();
+    return;
+  }
+
+  // Brush size with [ and ]
+  if (event.key === "[") {
+    event.preventDefault();
+    const min = parseInt(sizeInput.min, 10);
+    radius = Math.max(min, radius - 10);
+    sizeInput.value = radius;
+    updateSliderValues();
+  }
+  if (event.key === "]") {
+    event.preventDefault();
+    const max = parseInt(sizeInput.max, 10);
+    radius = Math.min(max, radius + 10);
+    sizeInput.value = radius;
+    updateSliderValues();
+  }
+});
+
+// Paste image from clipboard
+document.addEventListener("paste", (event) => {
+  const items = event.clipboardData && event.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) { loadImageFromFile(file); break; }
+    }
+  }
+});
+
+if (undoBtn) undoBtn.addEventListener("click", undo);
+if (redoBtn) redoBtn.addEventListener("click", redo);
+if (flipHBtn) flipHBtn.addEventListener("click", () => flipImage(true));
+if (flipVBtn) flipVBtn.addEventListener("click", () => flipImage(false));
+
+if (exportFormatSelect) {
+  exportFormatSelect.addEventListener("change", () => {
+    if (exportQualityWrap) {
+      exportQualityWrap.hidden = exportFormatSelect.value !== "image/jpeg";
+    }
+  });
+}
+
+if (exportQualityInput) {
+  exportQualityInput.addEventListener("input", () => {
+    if (exportQualityValue) {
+      exportQualityValue.textContent = `${Math.round(parseFloat(exportQualityInput.value) * 100)}%`;
+    }
+  });
+}
+
+if (exportFormatSelect && exportQualityWrap) {
+  exportQualityWrap.hidden = exportFormatSelect.value !== "image/jpeg";
+}
+
+if (exportQualityInput && exportQualityValue) {
+  exportQualityValue.textContent = `${Math.round(parseFloat(exportQualityInput.value) * 100)}%`;
+}
+
+initFlyText();
+syncHistoryButtons();
+updateSliderValues();
+resolveTierFromServer();
