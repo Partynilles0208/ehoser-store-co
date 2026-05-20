@@ -5,3 +5,4 @@ uploads/
 store.db
 npm-debug.log*
 .DS_Store
+.vercel
