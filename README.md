@@ -23,3 +23,28 @@ Ohne Supabase-Keys nutzt der Server lokale Dateien in `data/` und `uploads/`. Mi
 4. Server neu starten.
 
 Im Adminbereich kannst du Icon, Trailer, Bilder und EXE hochladen. Wenn keine EXE hinterlegt ist oder das Veroeffentlichungsdatum in der Zukunft liegt, zeigt der Store statt Download das Erscheinungsdatum.
+
+## Als echte Webseite deployen
+
+Diese App braucht einen Node.js-Webservice, nicht GitHub Pages. Empfohlen ist Railway oder Render.
+
+### Railway
+
+1. Railway oeffnen und ein neues Projekt aus dem GitHub-Repository `Partynilles0208/ehoser-store-co` erstellen.
+2. Railway erkennt `package.json` und nutzt `npm start`.
+3. Diese Variablen setzen:
+   - `SITE_ACCESS_CODE=0208`
+   - `ADMIN_ACCESS_CODE=Nils2014!`
+   - `SUPABASE_URL=...`
+   - `SUPABASE_SERVICE_ROLE_KEY=...`
+   - `SUPABASE_STORAGE_BUCKET=games`
+4. Deploy starten. Danach gibt Railway eine oeffentliche HTTPS-Adresse aus.
+
+### Render
+
+1. New Web Service erstellen und GitHub-Repository verbinden.
+2. Build Command: `npm install`
+3. Start Command: `npm start`
+4. Environment Variables wie oben setzen.
+
+Der Check-Endpunkt fuer Hoster ist `/health`.

@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: ehoser-store
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: SITE_ACCESS_CODE
+        value: "0208"
+      - key: ADMIN_ACCESS_CODE
+        value: "Nils2014!"
+      - key: SUPABASE_STORAGE_BUCKET
+        value: games
