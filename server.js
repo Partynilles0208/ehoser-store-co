@@ -69,7 +69,8 @@ function publicGame(game) {
   const isReleased = !releaseAt || releaseAt <= new Date();
   return {
     ...game,
-    download_url: isReleased ? game.download_url : "",
+    download_url: isReleased && game.download_url ? `/api/games/${encodeURIComponent(game.id)}/download` : "",
+    download_count: Number(game.download_count || 0),
     is_released: isReleased,
     release_label: releaseAt ? releaseAt.toLocaleString("de-DE", { timeZone: RELEASE_TIME_ZONE, dateStyle: "short", timeStyle: "short" }) : "Jetzt verfuegbar",
   };
@@ -91,6 +92,7 @@ async function ensureLocalStore() {
         description: "Ein schneller Arcade-Racer mit futuristischen Strecken, klarer Steuerung und Zeitrennen.",
         release_at: new Date().toISOString(),
         download_url: "",
+        download_count: 0,
         created_at: new Date().toISOString(),
       },
       {
@@ -102,6 +104,7 @@ async function ensureLocalStore() {
         description: "Baue Produktionslinien im Weltraum, optimiere Routen und schalte neue Module frei.",
         release_at: "2026-08-15T10:00:00.000Z",
         download_url: "",
+        download_count: 0,
         created_at: new Date().toISOString(),
       },
     ];
@@ -126,8 +129,20 @@ async function listGames() {
   return data || [];
 }
 
+async function getGame(id) {
+  if (supabase) {
+    const { data, error } = await supabase.from("games").select("*").eq("id", id).maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  const games = await readLocalGames();
+  return games.find((game) => game.id === id) || null;
+}
+
 async function saveGame(payload) {
   const now = new Date().toISOString();
+  const existingGame = payload.id ? await getGame(payload.id) : null;
   if (!payload.download_url && !payload.release_at) {
     const error = new Error("Wenn keine EXE hinterlegt ist, muss ein Veroeffentlichungsdatum gesetzt werden.");
     error.status = 400;
@@ -145,6 +160,11 @@ async function saveGame(payload) {
     created_at: payload.created_at || now,
     updated_at: now,
   };
+  if (payload.download_count !== undefined) {
+    game.download_count = Math.max(0, Number(payload.download_count) || 0);
+  } else {
+    game.download_count = Math.max(0, Number(existingGame?.download_count || 0));
+  }
 
   if (supabase) {
     const { data, error } = await supabase.from("games").upsert(game).select().single();
@@ -154,10 +174,32 @@ async function saveGame(payload) {
 
   const games = await readLocalGames();
   const index = games.findIndex((item) => item.id === game.id);
-  if (index >= 0) games[index] = { ...games[index], ...game };
-  else games.unshift(game);
+  let savedGame = game;
+  if (index >= 0) {
+    games[index] = { ...games[index], ...game };
+    savedGame = games[index];
+  } else {
+    games.unshift(game);
+  }
   await writeLocalGames(games);
-  return game;
+  return savedGame;
+}
+
+async function incrementDownloadCount(id) {
+  if (supabase) {
+    const game = await getGame(id);
+    if (!game) return;
+    const nextCount = Math.max(0, Number(game.download_count || 0)) + 1;
+    const { error } = await supabase.from("games").update({ download_count: nextCount }).eq("id", id);
+    if (error) throw error;
+    return;
+  }
+
+  const games = await readLocalGames();
+  const index = games.findIndex((game) => game.id === id);
+  if (index < 0) return;
+  games[index].download_count = Math.max(0, Number(games[index].download_count || 0)) + 1;
+  await writeLocalGames(games);
 }
 
 async function deleteGame(id) {
@@ -226,6 +268,24 @@ app.get("/api/games", requireStore, async (req, res, next) => {
   try {
     const games = await listGames();
     res.json(games.map(publicGame));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/games/:id/download", requireStore, async (req, res, next) => {
+  try {
+    const game = await getGame(req.params.id);
+    if (!game) return res.status(404).json({ error: "Spiel nicht gefunden." });
+
+    const releaseAt = game.release_at ? new Date(game.release_at) : null;
+    const isReleased = !releaseAt || releaseAt <= new Date();
+    if (!isReleased || !game.download_url) {
+      return res.status(403).json({ error: "Download ist noch nicht verfuegbar." });
+    }
+
+    await incrementDownloadCount(game.id);
+    res.redirect(game.download_url);
   } catch (error) {
     next(error);
   }
