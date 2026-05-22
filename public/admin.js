@@ -30,13 +30,31 @@ function setMessage(text, ok = true) {
 
 async function readResponse(response) {
   const contentType = response.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) return response.json();
   const text = await response.text();
+  if (!text) return {};
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text };
+    }
+  }
   return { error: text || response.statusText || "Anfrage fehlgeschlagen" };
 }
 
 function responseError(data, fallback) {
   return data?.error || data?.message || fallback;
+}
+
+function uploadError(data, type) {
+  const text = responseError(data, "Upload fehlgeschlagen");
+  if (/request entity too large|payload too large|datei ist zu gross|file too large/i.test(text)) {
+    if (type === "executables") {
+      return "Die EXE ist fuer den direkten Upload zu gross. Lade sie extern hoch und trage den Link unten bei EXE Download URL ein.";
+    }
+    return "Die Datei ist fuer den direkten Upload zu gross.";
+  }
+  return text;
 }
 
 function localDateValue(value) {
@@ -72,7 +90,7 @@ async function uploadOne(input, type) {
   body.append("file", input.files[0]);
   const response = await fetch("/api/admin/upload", { method: "POST", body });
   const data = await readResponse(response);
-  if (!response.ok) throw new Error(responseError(data, "Upload fehlgeschlagen"));
+  if (!response.ok) throw new Error(uploadError(data, type));
   return data.url;
 }
 
@@ -84,7 +102,7 @@ async function uploadMany(input, type) {
     body.append("file", file);
     const response = await fetch("/api/admin/upload", { method: "POST", body });
     const data = await readResponse(response);
-    if (!response.ok) throw new Error(responseError(data, "Upload fehlgeschlagen"));
+    if (!response.ok) throw new Error(uploadError(data, type));
     urls.push(data.url);
   }
   return urls;

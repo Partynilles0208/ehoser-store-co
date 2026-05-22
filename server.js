@@ -333,6 +333,11 @@ app.post("/api/admin/upload", requireAdmin, upload.single("file"), async (req, r
 
 app.use((error, req, res, next) => {
   console.error(error);
+  if (error.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({
+      error: "Datei ist zu gross. Lade grosse EXE-Dateien extern hoch und trage den Link bei EXE Download URL ein.",
+    });
+  }
   res.status(error.status || 500).json({ error: error.message || "Serverfehler" });
 });
 
