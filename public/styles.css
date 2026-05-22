@@ -285,6 +285,10 @@ main {
   line-height: 1.55;
 }
 
+.admin-row p {
+  margin: 0.25rem 0 0;
+}
+
 .status-pill {
   display: inline-flex;
   margin-top: 0.5rem;

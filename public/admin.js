@@ -28,6 +28,17 @@ function setMessage(text, ok = true) {
   message.classList.toggle("error", !ok);
 }
 
+async function readResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) return response.json();
+  const text = await response.text();
+  return { error: text || response.statusText || "Anfrage fehlgeschlagen" };
+}
+
+function responseError(data, fallback) {
+  return data?.error || data?.message || fallback;
+}
+
 function localDateValue(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -49,14 +60,19 @@ function formatReleaseDate(value) {
   });
 }
 
+function formatDownloadCount(value) {
+  const count = Math.max(0, Number(value || 0));
+  return `${count.toLocaleString("de-DE")} ${count === 1 ? "Download" : "Downloads"}`;
+}
+
 async function uploadOne(input, type) {
   if (!input.files?.[0]) return "";
   const body = new FormData();
   body.append("type", type);
   body.append("file", input.files[0]);
   const response = await fetch("/api/admin/upload", { method: "POST", body });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Upload fehlgeschlagen");
+  const data = await readResponse(response);
+  if (!response.ok) throw new Error(responseError(data, "Upload fehlgeschlagen"));
   return data.url;
 }
 
@@ -67,8 +83,8 @@ async function uploadMany(input, type) {
     body.append("type", type);
     body.append("file", file);
     const response = await fetch("/api/admin/upload", { method: "POST", body });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Upload fehlgeschlagen");
+    const data = await readResponse(response);
+    if (!response.ok) throw new Error(responseError(data, "Upload fehlgeschlagen"));
     urls.push(data.url);
   }
   return urls;
@@ -101,6 +117,7 @@ function renderAdminGames(games) {
           <div>
             <h3>${escapeHtml(game.title)}</h3>
             <p>${escapeHtml(formatReleaseDate(game.release_at))} · ${game.download_url ? "EXE hinterlegt" : "Keine EXE"}</p>
+            <p>${formatDownloadCount(game.download_count)}</p>
           </div>
           <button data-edit="${game.id}" class="secondary">Bearbeiten</button>
           <button data-delete="${game.id}" class="danger">Loeschen</button>
@@ -128,9 +145,9 @@ async function loadAdminGames() {
     window.location.href = "/admin";
     return;
   }
-  const data = await response.json().catch(() => ({}));
+  const data = await readResponse(response);
   if (!response.ok) {
-    list.innerHTML = `<p class="form-message error">${data.error || "Admin-Daten konnten nicht geladen werden. Pruefe Supabase."}</p>`;
+    list.innerHTML = `<p class="form-message error">${escapeHtml(responseError(data, "Admin-Daten konnten nicht geladen werden. Pruefe Supabase."))}</p>`;
     return;
   }
   renderAdminGames(data);
@@ -162,8 +179,8 @@ form.addEventListener("submit", async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Speichern fehlgeschlagen");
+    const data = await readResponse(response);
+    if (!response.ok) throw new Error(responseError(data, "Speichern fehlgeschlagen"));
     fillForm(data);
     setMessage("Gespeichert.");
     await loadAdminGames();

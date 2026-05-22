@@ -7,6 +7,7 @@ create table if not exists public.games (
   description text default '',
   release_at timestamptz,
   download_url text default '',
+  download_count integer not null default 0,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
