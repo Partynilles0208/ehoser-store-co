@@ -70,7 +70,7 @@ function publicGame(game) {
     ...game,
     download_url: isReleased ? game.download_url : "",
     is_released: isReleased,
-    release_label: releaseAt ? releaseAt.toLocaleDateString("de-DE") : "Jetzt verfuegbar",
+    release_label: releaseAt ? releaseAt.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "Jetzt verfuegbar",
   };
 }
 

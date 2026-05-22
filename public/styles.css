@@ -296,6 +296,33 @@ main {
   font-weight: 800;
 }
 
+.release-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.release-meta .status-pill {
+  margin-top: 0;
+}
+
+.release-meta.compact {
+  margin-top: 0.35rem;
+}
+
+.countdown-pill {
+  display: inline-flex;
+  border: 1px solid rgba(255, 206, 92, 0.34);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  color: var(--accent-2);
+  font-size: 0.85rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
 .downloads-band {
   border-top: 1px solid var(--line);
   background: #0c1118;
