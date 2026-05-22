@@ -1,6 +1,7 @@
 const form = document.getElementById("gameForm");
 const message = document.getElementById("adminMessage");
 const list = document.getElementById("adminGames");
+const RELEASE_TIME_ZONE = "Europe/Berlin";
 
 const fields = {
   id: document.getElementById("gameId"),
@@ -32,6 +33,20 @@ function localDateValue(value) {
   const date = new Date(value);
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 16);
+}
+
+function formatReleaseDate(value) {
+  if (!value) return "Sofort sichtbar";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sofort sichtbar";
+  return date.toLocaleString("de-DE", {
+    timeZone: RELEASE_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 async function uploadOne(input, type) {
@@ -85,7 +100,7 @@ function renderAdminGames(games) {
           <img src="${game.icon_url || "/assets/placeholder-neon.svg"}" alt="" />
           <div>
             <h3>${escapeHtml(game.title)}</h3>
-            <p>${escapeHtml(game.release_at ? new Date(game.release_at).toLocaleString("de-DE") : "Sofort sichtbar")} · ${game.download_url ? "EXE hinterlegt" : "Keine EXE"}</p>
+            <p>${escapeHtml(formatReleaseDate(game.release_at))} · ${game.download_url ? "EXE hinterlegt" : "Keine EXE"}</p>
           </div>
           <button data-edit="${game.id}" class="secondary">Bearbeiten</button>
           <button data-delete="${game.id}" class="danger">Loeschen</button>

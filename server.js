@@ -20,6 +20,7 @@ const WRITABLE_ROOT = process.env.VERCEL ? os.tmpdir() : __dirname;
 const DATA_FILE = path.join(WRITABLE_ROOT, "data", "games.json");
 const UPLOAD_DIR = path.join(WRITABLE_ROOT, "uploads");
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "games";
+const RELEASE_TIME_ZONE = "Europe/Berlin";
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -70,7 +71,7 @@ function publicGame(game) {
     ...game,
     download_url: isReleased ? game.download_url : "",
     is_released: isReleased,
-    release_label: releaseAt ? releaseAt.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "Jetzt verfuegbar",
+    release_label: releaseAt ? releaseAt.toLocaleString("de-DE", { timeZone: RELEASE_TIME_ZONE, dateStyle: "short", timeStyle: "short" }) : "Jetzt verfuegbar",
   };
 }
 

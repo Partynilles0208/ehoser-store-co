@@ -1,5 +1,6 @@
 const gamesEl = document.getElementById("games");
 const downloadsEl = document.getElementById("downloadGrid");
+const RELEASE_TIME_ZONE = "Europe/Berlin";
 let countdownTimer = null;
 let nextReleaseRefreshAt = 0;
 
@@ -28,6 +29,7 @@ function releaseDate(game) {
 
 function formatReleaseDate(date) {
   return `${date.toLocaleString("de-DE", {
+    timeZone: RELEASE_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
