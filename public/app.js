@@ -1,5 +1,7 @@
 const gamesEl = document.getElementById("games");
 const downloadsEl = document.getElementById("downloadGrid");
+let countdownTimer = null;
+let nextReleaseRefreshAt = 0;
 
 function escapeHtml(value = "") {
   return String(value)
@@ -11,9 +13,57 @@ function escapeHtml(value = "") {
 }
 
 function releaseText(game) {
+  const releaseAt = releaseDate(game);
   if (game.is_released && game.download_url) return "Download bereit";
+  if (releaseAt) return `Erscheint am ${formatReleaseDate(releaseAt)}`;
   if (game.release_label) return `Erscheint am ${game.release_label}`;
   return "Noch kein Download";
+}
+
+function releaseDate(game) {
+  if (!game.release_at) return null;
+  const date = new Date(game.release_at);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatReleaseDate(date) {
+  return `${date.toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })} Uhr`;
+}
+
+function formatCountdown(diffMs) {
+  const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const clock = [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+  return days > 0 ? `${days} ${days === 1 ? "Tag" : "Tage"} ${clock}` : clock;
+}
+
+function countdownText(date) {
+  const diff = date.getTime() - Date.now();
+  if (diff <= 0) return "jetzt";
+  return formatCountdown(diff);
+}
+
+function releaseInfo(game, compact = false) {
+  const date = releaseDate(game);
+  const countdown = !game.is_released && date
+    ? `<span class="countdown-pill" data-release-at="${escapeHtml(date.toISOString())}">Countdown: ${escapeHtml(countdownText(date))}</span>`
+    : "";
+
+  return `
+    <div class="release-meta${compact ? " compact" : ""}">
+      <span class="status-pill">${escapeHtml(releaseText(game))}</span>
+      ${countdown}
+    </div>
+  `;
 }
 
 function mediaFor(game) {
@@ -35,7 +85,7 @@ function renderGames(games) {
               <h3>${escapeHtml(game.title)}</h3>
             </div>
             <p>${escapeHtml(game.description || "Noch keine Beschreibung vorhanden.")}</p>
-            <span class="status-pill">${escapeHtml(releaseText(game))}</span>
+            ${releaseInfo(game)}
           </div>
         </article>
       `
@@ -52,7 +102,7 @@ function renderGames(games) {
           </button>
           <div>
             <h3>${escapeHtml(game.title)}</h3>
-            <p>${escapeHtml(canDownload ? "Klicken zum Herunterladen" : releaseText(game))}</p>
+            ${canDownload ? "<p>Klicken zum Herunterladen</p>" : releaseInfo(game, true)}
           </div>
         </article>
       `;
@@ -64,6 +114,43 @@ function renderGames(games) {
       window.location.href = button.dataset.url;
     });
   });
+
+  startCountdowns();
+}
+
+function updateCountdowns() {
+  const nodes = document.querySelectorAll("[data-release-at]");
+  let hasActiveCountdown = false;
+  let hasExpiredCountdown = false;
+
+  nodes.forEach((node) => {
+    const date = new Date(node.dataset.releaseAt);
+    if (Number.isNaN(date.getTime())) return;
+
+    const diff = date.getTime() - Date.now();
+    hasActiveCountdown = hasActiveCountdown || diff > 0;
+    hasExpiredCountdown = hasExpiredCountdown || diff <= 0;
+    node.textContent = `Countdown: ${diff <= 0 ? "jetzt" : formatCountdown(diff)}`;
+  });
+
+  if (hasExpiredCountdown && Date.now() > nextReleaseRefreshAt) {
+    nextReleaseRefreshAt = Date.now() + 30000;
+    setTimeout(loadGames, 1200);
+  }
+
+  if (!hasActiveCountdown && countdownTimer) {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+}
+
+function startCountdowns() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  updateCountdowns();
+
+  if (document.querySelector("[data-release-at]")) {
+    countdownTimer = setInterval(updateCountdowns, 1000);
+  }
 }
 
 async function loadGames() {
