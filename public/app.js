@@ -3,6 +3,7 @@ const downloadsEl = document.getElementById("downloadGrid");
 const RELEASE_TIME_ZONE = "Europe/Berlin";
 let countdownTimer = null;
 let nextReleaseRefreshAt = 0;
+let releaseRefreshTimer = null;
 
 function escapeHtml(value = "") {
   return String(value)
@@ -16,6 +17,7 @@ function escapeHtml(value = "") {
 function releaseText(game) {
   const releaseAt = releaseDate(game);
   if (game.is_released && game.download_url) return "Download bereit";
+  if (game.is_released) return "Noch kein Download";
   if (releaseAt) return `Erscheint am ${formatReleaseDate(releaseAt)}`;
   if (game.release_label) return `Erscheint am ${game.release_label}`;
   return "Noch kein Download";
@@ -50,12 +52,14 @@ function formatCountdown(diffMs) {
 
 function countdownText(date) {
   const diff = date.getTime() - Date.now();
-  if (diff <= 0) return "jetzt";
+  if (diff <= 0) return "";
   return formatCountdown(diff);
 }
 
 function releaseInfo(game, compact = false) {
   const date = releaseDate(game);
+  if (!game.is_released && date && date.getTime() <= Date.now()) return "";
+
   const countdown = !game.is_released && date
     ? `<span class="countdown-pill" data-release-at="${escapeHtml(date.toISOString())}">Countdown: ${escapeHtml(countdownText(date))}</span>`
     : "";
@@ -98,10 +102,10 @@ function renderGames(games) {
     .map((game) => {
       const canDownload = game.is_released && game.download_url;
       return `
-        <article class="download-tile">
-          <button class="download-icon" ${canDownload ? `data-url="${escapeHtml(game.download_url)}"` : "disabled"} title="${escapeHtml(game.title)}">
+        <article class="download-tile ${canDownload ? "is-ready" : "is-locked"}" ${canDownload ? `data-url="${escapeHtml(game.download_url)}" role="button" tabindex="0" aria-label="${escapeHtml(game.title)} herunterladen"` : ""}>
+          <span class="download-icon" title="${escapeHtml(game.title)}">
             <img src="${game.icon_url || "/assets/placeholder-orbit.svg"}" alt="${escapeHtml(game.title)}" />
-          </button>
+          </span>
           <div>
             <h3>${escapeHtml(game.title)}</h3>
             ${canDownload ? "<p>Klicken zum Herunterladen</p>" : releaseInfo(game, true)}
@@ -111,13 +115,32 @@ function renderGames(games) {
     })
     .join("");
 
-  document.querySelectorAll(".download-icon[data-url]").forEach((button) => {
-    button.addEventListener("click", () => {
-      window.location.href = button.dataset.url;
+  document.querySelectorAll(".download-tile[data-url]").forEach((tile) => {
+    tile.addEventListener("click", () => {
+      window.location.href = tile.dataset.url;
+    });
+    tile.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      window.location.href = tile.dataset.url;
     });
   });
 
+  if (games.some((game) => !game.is_released && releaseDate(game)?.getTime() <= Date.now())) {
+    scheduleReleaseRefresh(800);
+  }
+
   startCountdowns();
+}
+
+function scheduleReleaseRefresh(delay = 0) {
+  if (releaseRefreshTimer) return;
+  const waitMs = Math.max(delay, nextReleaseRefreshAt - Date.now(), 0);
+  releaseRefreshTimer = setTimeout(() => {
+    releaseRefreshTimer = null;
+    nextReleaseRefreshAt = Date.now() + 2000;
+    loadGames();
+  }, waitMs);
 }
 
 function updateCountdowns() {
@@ -132,13 +155,14 @@ function updateCountdowns() {
     const diff = date.getTime() - Date.now();
     hasActiveCountdown = hasActiveCountdown || diff > 0;
     hasExpiredCountdown = hasExpiredCountdown || diff <= 0;
-    node.textContent = `Countdown: ${diff <= 0 ? "jetzt" : formatCountdown(diff)}`;
+    if (diff <= 0) {
+      node.closest(".release-meta")?.remove();
+      return;
+    }
+    node.textContent = `Countdown: ${formatCountdown(diff)}`;
   });
 
-  if (hasExpiredCountdown && Date.now() > nextReleaseRefreshAt) {
-    nextReleaseRefreshAt = Date.now() + 30000;
-    setTimeout(loadGames, 1200);
-  }
+  if (hasExpiredCountdown) scheduleReleaseRefresh();
 
   if (!hasActiveCountdown && countdownTimer) {
     clearInterval(countdownTimer);
@@ -173,7 +197,23 @@ async function loadGames() {
     downloadsEl.innerHTML = "";
     return;
   }
-  renderGames(await response.json());
+  const text = await response.text();
+  let data = [];
+  try {
+    data = JSON.parse(text);
+  } catch {
+    gamesEl.innerHTML = `
+      <article class="game-card error-card">
+        <div class="game-content">
+          <h3>Spiele konnten nicht geladen werden</h3>
+          <p>${escapeHtml(text || "Ungueltige Serverantwort.")}</p>
+        </div>
+      </article>
+    `;
+    downloadsEl.innerHTML = "";
+    return;
+  }
+  renderGames(data);
 }
 
 loadGames();
