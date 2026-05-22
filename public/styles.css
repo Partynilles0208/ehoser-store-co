@@ -338,6 +338,28 @@ main {
   align-items: center;
   gap: 1rem;
   padding: 1rem;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+
+.download-tile.is-ready {
+  border-color: rgba(55, 214, 162, 0.48);
+  background: rgba(20, 38, 35, 0.92);
+  cursor: pointer;
+}
+
+.download-tile.is-ready:hover,
+.download-tile.is-ready:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(55, 214, 162, 0.78);
+  outline: none;
+}
+
+.download-tile.is-locked .download-icon {
+  filter: grayscale(0.9);
+  opacity: 0.55;
 }
 
 .download-icon {
@@ -348,6 +370,12 @@ main {
   padding: 0;
   background: transparent;
   border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.download-tile.is-ready .download-icon {
+  border-color: rgba(55, 214, 162, 0.68);
+  background: rgba(55, 214, 162, 0.13);
 }
 
 .download-icon img {
