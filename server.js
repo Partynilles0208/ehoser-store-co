@@ -23,6 +23,9 @@ const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "games";
 const RELEASE_TIME_ZONE = "Europe/Berlin";
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
+const PLACEHOLDER_TRAILER_URLS = new Set([
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+]);
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -66,11 +69,17 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function realTrailerUrl(value = "") {
+  const url = String(value || "").trim();
+  return PLACEHOLDER_TRAILER_URLS.has(url) ? "" : url;
+}
+
 function publicGame(game) {
   const releaseAt = game.release_at ? new Date(game.release_at) : null;
   const isReleased = !releaseAt || releaseAt <= new Date();
   return {
     ...game,
+    trailer_url: realTrailerUrl(game.trailer_url),
     download_url: isReleased && game.download_url ? `/api/games/${encodeURIComponent(game.id)}/download` : "",
     download_count: Number(game.download_count || 0),
     is_released: isReleased,
@@ -89,7 +98,7 @@ async function ensureLocalStore() {
         id: createId(10),
         title: "Neon Drift",
         icon_url: "/assets/placeholder-neon.svg",
-        trailer_url: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+        trailer_url: "",
         image_urls: ["/assets/hero-art.svg"],
         description: "Ein schneller Arcade-Racer mit futuristischen Strecken, klarer Steuerung und Zeitrennen.",
         release_at: new Date().toISOString(),
@@ -154,7 +163,7 @@ async function saveGame(payload) {
     id: payload.id || createId(10),
     title: payload.title?.trim() || "Unbenanntes Spiel",
     icon_url: payload.icon_url || "",
-    trailer_url: payload.trailer_url || "",
+    trailer_url: realTrailerUrl(payload.trailer_url),
     image_urls: Array.isArray(payload.image_urls) ? payload.image_urls.filter(Boolean) : [],
     description: payload.description || "",
     release_at: payload.release_at || null,
