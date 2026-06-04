@@ -21,6 +21,8 @@ const DATA_FILE = path.join(WRITABLE_ROOT, "data", "games.json");
 const UPLOAD_DIR = path.join(WRITABLE_ROOT, "uploads");
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "games";
 const RELEASE_TIME_ZONE = "Europe/Berlin";
+const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
 
 const supabase =
   process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -144,7 +146,7 @@ async function saveGame(payload) {
   const now = new Date().toISOString();
   const existingGame = payload.id ? await getGame(payload.id) : null;
   if (!payload.download_url && !payload.release_at) {
-    const error = new Error("Wenn keine EXE hinterlegt ist, muss ein Veroeffentlichungsdatum gesetzt werden.");
+    const error = new Error("Wenn keine EXE/ZIP hinterlegt ist, muss ein Veroeffentlichungsdatum gesetzt werden.");
     error.status = 400;
     throw error;
   }
@@ -229,6 +231,63 @@ async function uploadFile(file, folder) {
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, file.buffer);
   return `/uploads/${objectName.replaceAll("\\", "/")}`;
+}
+
+function findZipEndOfCentralDirectory(buffer) {
+  const minRecordSize = 22;
+  const maxCommentSize = 0xffff;
+  const start = Math.max(0, buffer.length - minRecordSize - maxCommentSize);
+
+  for (let offset = buffer.length - minRecordSize; offset >= start; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === ZIP_EOCD_SIGNATURE) return offset;
+  }
+
+  return -1;
+}
+
+function zipContainsExecutable(buffer) {
+  const eocdOffset = findZipEndOfCentralDirectory(buffer);
+  if (eocdOffset < 0) return false;
+
+  const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+  const centralDirectorySize = buffer.readUInt32LE(eocdOffset + 12);
+  const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  const centralDirectoryEnd = centralDirectoryOffset + centralDirectorySize;
+  if (centralDirectoryOffset < 0 || centralDirectoryEnd > buffer.length) return false;
+
+  let offset = centralDirectoryOffset;
+  for (let entryIndex = 0; entryIndex < entryCount; entryIndex += 1) {
+    if (offset + 46 > centralDirectoryEnd) return false;
+    if (buffer.readUInt32LE(offset) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) return false;
+
+    const flags = buffer.readUInt16LE(offset + 8);
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const nameStart = offset + 46;
+    const nameEnd = nameStart + nameLength;
+    if (nameEnd > centralDirectoryEnd) return false;
+
+    const encoding = flags & 0x0800 ? "utf8" : "latin1";
+    const entryName = buffer.toString(encoding, nameStart, nameEnd).replaceAll("\\", "/");
+    const fileName = entryName.split("/").pop() || "";
+    if (fileName.toLowerCase().endsWith(".exe")) return true;
+
+    offset = nameEnd + extraLength + commentLength;
+  }
+
+  return false;
+}
+
+function validateExecutableUpload(file) {
+  const extension = path.extname(file.originalname || "").toLowerCase();
+
+  if (extension === ".exe") return "";
+  if (extension === ".zip") {
+    return zipContainsExecutable(file.buffer) ? "" : "ZIP-Dateien muessen mindestens eine EXE-Datei enthalten.";
+  }
+
+  return "Bitte lade eine .exe-Datei oder eine .zip-Datei mit enthaltener EXE hoch.";
 }
 
 app.get("/", (req, res) => {
@@ -324,6 +383,10 @@ app.post("/api/admin/upload", requireAdmin, upload.single("file"), async (req, r
   try {
     if (!req.file) return res.status(400).json({ error: "Keine Datei erhalten." });
     const type = req.body.type || "misc";
+    if (type === "executables") {
+      const uploadError = validateExecutableUpload(req.file);
+      if (uploadError) return res.status(400).json({ error: uploadError });
+    }
     const url = await uploadFile(req.file, type);
     res.json({ url });
   } catch (error) {
@@ -335,7 +398,7 @@ app.use((error, req, res, next) => {
   console.error(error);
   if (error.code === "LIMIT_FILE_SIZE") {
     return res.status(413).json({
-      error: "Datei ist zu gross. Lade grosse EXE-Dateien extern hoch und trage den Link bei EXE Download URL ein.",
+      error: "Datei ist zu gross. Lade grosse EXE/ZIP-Dateien extern hoch und trage den Link bei EXE/ZIP Download URL ein.",
     });
   }
   res.status(error.status || 500).json({ error: error.message || "Serverfehler" });

@@ -50,7 +50,7 @@ function uploadError(data, type) {
   const text = responseError(data, "Upload fehlgeschlagen");
   if (/request entity too large|payload too large|datei ist zu gross|file too large/i.test(text)) {
     if (type === "executables") {
-      return "Die EXE ist fuer den direkten Upload zu gross. Lade sie extern hoch und trage den Link unten bei EXE Download URL ein.";
+      return "Die EXE/ZIP ist fuer den direkten Upload zu gross. Lade sie extern hoch und trage den Link unten bei EXE/ZIP Download URL ein.";
     }
     return "Die Datei ist fuer den direkten Upload zu gross.";
   }
@@ -134,7 +134,7 @@ function renderAdminGames(games) {
           <img src="${game.icon_url || "/assets/placeholder-neon.svg"}" alt="" />
           <div>
             <h3>${escapeHtml(game.title)}</h3>
-            <p>${escapeHtml(formatReleaseDate(game.release_at))} · ${game.download_url ? "EXE hinterlegt" : "Keine EXE"}</p>
+            <p>${escapeHtml(formatReleaseDate(game.release_at))} · ${game.download_url ? "EXE/ZIP hinterlegt" : "Keine EXE/ZIP"}</p>
             <p>${formatDownloadCount(game.download_count)}</p>
           </div>
           <button data-edit="${game.id}" class="secondary">Bearbeiten</button>

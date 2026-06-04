@@ -32,12 +32,12 @@
           </div>
           <div class="file-row">
             <label>Bilder <input id="imageFiles" type="file" accept="image/*" multiple /></label>
-            <label>EXE <input id="exeFile" type="file" accept=".exe,application/x-msdownload,application/octet-stream" /></label>
+            <label>EXE oder ZIP <input id="exeFile" type="file" accept=".exe,.zip,application/x-msdownload,application/octet-stream,application/zip,application/x-zip-compressed" /></label>
           </div>
           <label>Icon URL <input id="iconUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
           <label>Trailer URL <input id="trailerUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
           <label>Bilder URLs <textarea id="imageUrls" rows="3" placeholder="Eine URL pro Zeile"></textarea></label>
-          <label>EXE Download URL <input id="downloadUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
+          <label>EXE/ZIP Download URL <input id="downloadUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
           <div class="form-actions">
             <button type="submit">Speichern</button>
             <button type="button" id="resetForm" class="secondary">Neu</button>
@@ -57,6 +57,6 @@
       </section>
     </main>
 
-    <script src="/assets/admin.js?v=exe-upload-message"></script>
+    <script src="/assets/admin.js?v=exe-zip-upload"></script>
   </body>
 </html>
