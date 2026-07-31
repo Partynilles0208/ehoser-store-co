@@ -3,42 +3,60 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ehoser Update</title>
+    <title>Ehoser Store</title>
     <link rel="stylesheet" href="/assets/styles.css" />
   </head>
-  <body class="update-body">
-    <main class="update-shell">
-      <section class="update-card" aria-live="polite">
-        <p class="badge">Systemupdate</p>
-        <h1>Ehoser wird gerade aktualisiert</h1>
-        <p class="lead">
-          Wir sind bald wieder online. Der Countdown laeuft bis
-          <strong>30.07.2026, 22:00 Uhr</strong>.
-        </p>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="Ehoser Startseite">
+        <span class="brand-mark">E</span>
+        <span>Ehoser</span>
+      </a>
+      <nav class="nav-actions" aria-label="Hauptnavigation">
+        <a href="#home" title="Start">Start</a>
+        <a href="#downloads" title="Downloads">Downloads</a>
+        <a href="/admin" title="Admin">Admin</a>
+      </nav>
+    </header>
 
-        <div class="countdown" role="timer" aria-atomic="true">
-          <div class="time-box">
-            <span id="days" class="time-value">0</span>
-            <span class="time-label">Tage</span>
-          </div>
-          <div class="time-box">
-            <span id="hours" class="time-value">00</span>
-            <span class="time-label">Stunden</span>
-          </div>
-          <div class="time-box">
-            <span id="minutes" class="time-value">00</span>
-            <span class="time-label">Minuten</span>
-          </div>
-          <div class="time-box">
-            <span id="seconds" class="time-value">00</span>
-            <span class="time-label">Sekunden</span>
+    <aside class="side-rail" aria-label="Schnellnavigation">
+      <a class="side-rail-link" href="#downloads" title="Downloads">
+        <span class="side-rail-icon" aria-hidden="true">↓</span>
+        <span>Download</span>
+      </a>
+    </aside>
+
+    <main>
+      <section id="home" class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Independent Games Studio</p>
+          <h1>Ehoser</h1>
+          <p>Neue Spiele, Gameplay, Bilder und Release-Termine an einem Ort. Downloads erscheinen erst, wenn ein Spiel wirklich freigegeben ist.</p>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <img src="/assets/hero-art.svg" alt="" />
+        </div>
+      </section>
+
+      <section class="section-head">
+        <div>
+          <p class="eyebrow">Hauptseite</p>
+          <h2>Spiele & Gameplay</h2>
+        </div>
+      </section>
+      <section id="games" class="game-grid" aria-live="polite"></section>
+
+      <section id="downloads" class="downloads-band">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Download-Zentrale</p>
+            <h2>Spiele herunterladen</h2>
           </div>
         </div>
-
-        <p id="countdownStatus" class="status">Update endet am 30.07.2026 um 22:00 Uhr (Europe/Berlin).</p>
+        <div id="downloadGrid" class="download-grid"></div>
       </section>
     </main>
 
-    <script src="/assets/app.js?v=update-countdown-20260730"></script>
+    <script src="/assets/app.js?v=release-download-area"></script>
   </body>
 </html>
