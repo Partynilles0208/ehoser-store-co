@@ -7,17 +7,30 @@ window.startReactorWorld = async ({ token, prompt, image }) => {
     const canvas = document.getElementById('worldCanvas');
     if (!video || !token) throw new Error('Reactor-Session konnte nicht gestartet werden.');
 
+    const setStatus = (message) => {
+        const title = document.getElementById('worldTitle');
+        if (title) title.textContent = message;
+    };
+    setStatus('Verbinde mit LingBot ...');
     reactor = new Reactor({ modelName: 'reactor/lingbot' });
     reactor.on('trackReceived', (name, track) => {
         if (name !== 'main_video') return;
+        setStatus('LingBot-Welt läuft');
         video.srcObject = new MediaStream([track]);
         video.play().catch(() => {});
     });
+    reactor.on('command_error', (data) => setStatus(`LingBot-Fehler: ${data?.reason || 'Befehl abgelehnt'}`));
     reactor.on('statusChanged', async (status) => {
         if (status !== 'ready') return;
-        await reactor.sendCommand('set_prompt', { prompt });
-        await reactor.sendCommand('set_image', { image });
-        await reactor.sendCommand('start', {});
+        try {
+            await reactor.sendCommand('set_prompt', { prompt });
+            await reactor.sendCommand('set_image', { image });
+            await reactor.sendCommand('start', {});
+            setStatus('LingBot generiert die Welt ...');
+        } catch (error) {
+            setStatus(`LingBot-Fehler: ${error.message}`);
+            throw error;
+        }
     });
     await reactor.connect(token);
 
