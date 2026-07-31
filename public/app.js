@@ -2102,11 +2102,7 @@ async function generateWorld() {
 
     button.disabled = true;
     status.textContent = 'Lingabot 2 erstellt deine Welt ...';
-    const game = document.getElementById('worldGame');
-    const canvas = document.getElementById('worldCanvas');
-    document.getElementById('worldSetup').hidden = true;
-    game.hidden = false;
-    game.requestFullscreen?.().catch(() => {});
+    document.documentElement.requestFullscreen?.().catch(() => {});
     try {
         const image = await worldFileAsDataUrl(imageFile);
         const response = await fetch('/api/world/session', {
@@ -2117,8 +2113,12 @@ async function generateWorld() {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Die Welt konnte nicht generiert werden.');
 
+        const game = document.getElementById('worldGame');
+        const canvas = document.getElementById('worldCanvas');
         if (window.startReactorWorld) await window.startReactorWorld({ token: data.jwt, prompt, file: imageFile });
         document.getElementById('worldTitle').textContent = prompt.slice(0, 70);
+        document.getElementById('worldSetup').hidden = true;
+        game.hidden = false;
         worldSecondsLeft = Math.min(WORLD_LIMIT_SECONDS, Number(data.seconds || WORLD_LIMIT_SECONDS));
         worldPlayer = { x: 50, y: 50 };
         updateWorldTimer();
@@ -2127,9 +2127,6 @@ async function generateWorld() {
     } catch (error) {
         status.textContent = error.message;
         button.disabled = false;
-        game.hidden = true;
-        document.getElementById('worldSetup').hidden = false;
-        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
     }
 }
 
