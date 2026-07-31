@@ -27,55 +27,6 @@ let _desktopWebLoginSessionId = null;
 let _desktopWebLoginPollInterval = null;
 let _desktopNativeAuthLoaded = false;
 
-function decodeMojibakeText(value) {
-    const text = String(value ?? '');
-    if (!/[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(text)) return text;
-    try {
-        const chars = Array.from(text);
-        if (!chars.every(ch => ch.charCodeAt(0) <= 255)) return text;
-        const bytes = Uint8Array.from(chars.map(ch => ch.charCodeAt(0)));
-        const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-        return decoded.includes('\uFFFD') ? text : decoded;
-    } catch {
-        return text;
-    }
-}
-
-function fixVisibleMojibake(root = document.body) {
-    if (!root) return;
-    const skipTags = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT']);
-    const visitText = (node) => {
-        if (!node?.nodeValue || !/[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(node.nodeValue)) return;
-        node.nodeValue = decodeMojibakeText(node.nodeValue);
-    };
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-            const parent = node.parentElement;
-            if (!parent || skipTags.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
-            return /[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(node.nodeValue || '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-        }
-    });
-    while (walker.nextNode()) visitText(walker.currentNode);
-}
-
-function startMojibakeFixer() {
-    fixVisibleMojibake();
-    const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) {
-                if (node.nodeType === Node.TEXT_NODE) {
-                    if (node.parentElement?.tagName !== 'SCRIPT') {
-                        node.nodeValue = decodeMojibakeText(node.nodeValue);
-                    }
-                } else if (node.nodeType === Node.ELEMENT_NODE) {
-                    fixVisibleMojibake(node);
-                }
-            }
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-}
-
 function isAdminGuestPreview() {
     return sessionStorage.getItem('adminGuestPreview') === '1';
 }
@@ -620,48 +571,19 @@ function getPersonalization() {
 function hasPremiumAccess() {
     const until = currentProfile?.premiumUntil || currentProfile?.settings?.premiumUntil || null;
     const untilMs = until ? Date.parse(until) : 0;
-    return currentProfile?.isPremium === true
-        || currentProfile?.capabilities?.premiumKi === true
-        || (Number.isFinite(untilMs) && untilMs > Date.now());
-}
-
-function hasVideoGeneratorAccess() {
-    return currentProfile?.isPremium === true || currentProfile?.capabilities?.videoGenerator === true;
+    return currentProfile?.isPremium === true || (Number.isFinite(untilMs) && untilMs > Date.now());
 }
 
 function hasProAccess() {
-    const until = currentProfile?.proUntil || null;
-    const untilMs = until ? Date.parse(until) : 0;
-    return currentProfile?.isPremium === true
-        || currentProfile?.capabilities?.proFeatures === true
-        || currentProfile?.isPro === true
-        || (Number.isFinite(untilMs) && untilMs > Date.now());
-}
-
-function getCreditBalance() {
-    return Number(currentProfile?.credits ?? currentProfile?.settings?.credits?.balance ?? 0);
-}
-
-function getCurrentPlanKey() {
-    if (currentProfile?.isCustom || currentProfile?.customPlan?.enabled) return 'custom';
-    if (hasPremiumAccess()) return 'premium';
-    if (hasProAccess()) return 'pro';
-    return 'free';
-}
-
-function getCurrentPlanLabel() {
-    if (getCurrentPlanKey() === 'custom') return currentProfile?.customPlan?.label || 'Individuell';
-    if (currentProfile?.isPremium === true) return 'Premium';
-    if (hasProAccess()) return 'PRO';
-    return 'Gratis';
+    return hasPremiumAccess() || currentProfile?.isPro === true;
 }
 
 function syncPlanStatus() {
     if (!currentProfile) return;
+    currentProfile.isPremium = hasPremiumAccess();
     currentProfile.isPro = hasProAccess();
-    currentProfile.credits = getCreditBalance();
     localStorage.setItem('proStatus', currentProfile.isPro ? '1' : '0');
-    localStorage.setItem('premiumStatus', hasPremiumAccess() ? '1' : '0');
+    localStorage.setItem('premiumStatus', currentProfile.isPremium ? '1' : '0');
 }
 
 async function refreshCurrentProfile() {
@@ -1322,7 +1244,60 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     updateGoogleAuthVisibility();
 
-    showCaptcha();
+    // Splash: standardmäßig nur einmal (persistiert auch über Neustarts)
+    const splash = document.getElementById('introSplash');
+    if (splash) {
+        const forceIntro = new URLSearchParams(window.location.search).get('intro') === '1';
+        const alreadyShown = !forceIntro && (
+            sessionStorage.getItem('intro_shown') === '1'
+        );
+        if (alreadyShown) {
+            splash.remove();
+            document.body.classList.remove('splash-active');
+            document.body.style.overflow = '';
+            showCaptcha();
+        } else {
+            // Neues Intro: kompaktes Reveal statt langer Splash-Sequenz
+            const compactIntro = window.matchMedia?.('(max-width: 640px)').matches;
+            const bigLogoDelay = compactIntro ? 1200 : 3000;
+            const splashEndDelay = compactIntro ? 2800 : 5200;
+            const bigLogo = document.getElementById('introBigLogo');
+            if (bigLogo) {
+                setTimeout(() => {
+                    bigLogo.style.opacity = '1';
+                    bigLogo.style.transition = 'opacity 0.18s ease, transform 0.65s cubic-bezier(.2,1.3,.3,1)';
+                    bigLogo.style.transform = 'translateY(0) scale(1)';
+                    setTimeout(() => {
+                        bigLogo.style.transition = 'transform 0.28s ease-out';
+                        bigLogo.style.transform = 'translateY(0) scale(0.98)';
+                    }, 650);
+                }, bigLogoDelay);
+            }
+
+            // Finaler Übergang auf die neue Oberfläche, auf Mobile schneller
+            setTimeout(() => {
+                splash.remove();
+                document.body.classList.remove('splash-active');
+                document.body.style.overflow = '';
+                sessionStorage.setItem('intro_shown', '1');
+                // Weißes Body-Overlay für den Blitz-Übergang (mit Fallback, damit es nie hängen bleibt)
+                const bodyFlash = document.createElement('div');
+                bodyFlash.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99998;pointer-events:none;opacity:1;transition:opacity 0.3s ease;';
+                document.body.appendChild(bodyFlash);
+                setTimeout(() => {
+                    bodyFlash.style.opacity = '0';
+                }, 30);
+                setTimeout(() => {
+                    if (bodyFlash.parentNode) bodyFlash.remove();
+                }, 500);
+                showCaptcha();
+            }, splashEndDelay);
+        }
+    } else {
+        document.body.classList.remove('splash-active');
+        document.body.style.overflow = '';
+        showCaptcha();
+    }
 });
 
 async function verifyToken(token) {
@@ -1451,7 +1426,6 @@ async function handleRegister(event) {
         showLoggedInUI();
         await loadApps();
         showSection('mode-select');
-        openWelcomeEmailModal(username);
         restoreReloadSnapshot();
         startOnlinePolling();
         document.getElementById('registerForm').reset();
@@ -1463,9 +1437,7 @@ async function handleRegister(event) {
 function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
     syncPlanStatus();
-    const plan = getCurrentPlanLabel();
-    const planKey = getCurrentPlanKey();
-    const credits = getCreditBalance();
+    const plan = hasPremiumAccess() ? 'Premium' : (hasProAccess() ? 'PRO' : 'Gratis');
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     const personalization = getPersonalization();
     const displayName = currentProfile?.settings?.displayName || currentUser.username;
@@ -1479,11 +1451,8 @@ function showLoggedInUI() {
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
         <a href="admin.html" class="nav-link">Admin</a>
-        <button onclick="showSection('emails')" class="btn-small" style="width:auto;padding:8px 12px;">Emails</button>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
-        <button onclick="openPricingModal()" class="plan-badge ${planKey === 'custom' ? 'premium' : (currentProfile?.isPremium ? 'premium' : (hasProAccess() ? 'pro' : ''))}" style="border:0;cursor:pointer;">${plan}</button>
-        <span class="plan-badge" title="KI Credits">${credits} Credits</span>
-        ${currentProfile?.isPremium !== true && planKey !== 'custom' ? '<button onclick="openPricingModal()" class="btn-small" style="width:auto;padding:8px 12px;">Pro Mitglied werden</button>' : ''}
+        <span class="plan-badge ${hasPremiumAccess() ? 'premium' : (hasProAccess() ? 'pro' : '')}">${plan}</span>
         <span style="display:flex;align-items:center;gap:8px;">${avatarNode}</span>
         <span class="hello-user">${psBadge} ${helloText}</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
@@ -1808,239 +1777,6 @@ function showSection(sectionId) {
     if (sectionId === 'games') {
         if (!gamesAllLoaded.length) loadGames();
     }
-    if (sectionId === 'emails') {
-        loadEmailCenter();
-    }
-}
-
-let emailAccounts = [];
-let activeEmailAddress = '';
-
-async function loadEmailCenter() {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        showAlert('Bitte zuerst anmelden.', 'error');
-        return;
-    }
-    const statusEl = document.getElementById('emailStatusText');
-    if (statusEl) statusEl.textContent = 'Lade...';
-    try {
-        const [statusRes, accountsRes] = await Promise.all([
-            fetch(`${API_BASE}/mail/status`, { headers: { Authorization: `Bearer ${token}` } }),
-            fetch(`${API_BASE}/mail/accounts`, { headers: { Authorization: `Bearer ${token}` } })
-        ]);
-        const status = await statusRes.json().catch(() => ({}));
-        const accountsPayload = await accountsRes.json().catch(() => ({}));
-        if (!accountsRes.ok) throw new Error(accountsPayload.error || 'Mailboxen konnten nicht geladen werden.');
-        emailAccounts = accountsPayload.accounts || [];
-        if (!activeEmailAddress && emailAccounts.length) activeEmailAddress = emailAccounts[0].address;
-        if (activeEmailAddress && !emailAccounts.some((account) => account.address === activeEmailAddress)) {
-            activeEmailAddress = emailAccounts[0]?.address || '';
-        }
-        renderEmailAccounts();
-        await loadMailMessages();
-        if (statusEl) statusEl.textContent = status.inboundConfigured ? 'Bereit zum Senden' : 'Resend/DNS noch nicht fertig eingerichtet.';
-    } catch (error) {
-        if (statusEl) statusEl.textContent = '';
-        showAlert(error.message || 'Email Center konnte nicht geladen werden.', 'error');
-    }
-}
-
-function renderEmailAccounts() {
-    const list = document.getElementById('emailAccountsList');
-    const fromDisplay = document.getElementById('emailFromDisplay');
-    if (!list || !fromDisplay) return;
-    if (!emailAccounts.length) {
-        list.innerHTML = '<div class="email-empty"><strong>Noch keine Adresse</strong><span>Erstelle deine @ehoser.de Adresse in den Account Einstellungen.</span></div>';
-        fromDisplay.textContent = 'Keine Adresse eingerichtet';
-        document.getElementById('emailActiveAddress').textContent = '';
-        return;
-    }
-    list.innerHTML = emailAccounts.map((account) => `
-        <button class="email-account ${account.address === activeEmailAddress ? 'active' : ''}" onclick="selectMailAccount('${escapeAttribute(account.address)}')">
-            <strong>${escapeHtml(account.address)}</strong>
-            <span>Standard-Absender</span>
-        </button>
-    `).join('');
-    activeEmailAddress = activeEmailAddress || emailAccounts[0].address;
-    fromDisplay.textContent = activeEmailAddress;
-    document.getElementById('emailActiveAddress').textContent = activeEmailAddress;
-}
-
-function selectMailAccount(address) {
-    activeEmailAddress = address;
-    renderEmailAccounts();
-    loadMailMessages();
-}
-
-async function createMailAccount() {
-    openSettingsModal();
-}
-
-async function saveEhoserMailAddress(localPart) {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        showAlert('Bitte zuerst anmelden.', 'error');
-        return null;
-    }
-    try {
-        const res = await fetch(`${API_BASE}/mail/accounts`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ localPart })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Adresse konnte nicht erstellt werden.');
-        showAlert(data.replaced ? 'Email-Adresse geaendert.' : 'Email-Adresse erstellt.', 'success');
-        return data.account;
-    } catch (error) {
-        showAlert(error.message || 'Adresse konnte nicht erstellt werden.', 'error');
-        return null;
-    }
-}
-
-function openWelcomeEmailModal(defaultName) {
-    const modal = document.getElementById('welcomeEmailModal');
-    const input = document.getElementById('welcomeEmailLocalPart');
-    if (!modal || !input) return;
-    input.value = String(defaultName || currentUser?.username || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9._-]/g, '')
-        .slice(0, 32);
-    modal.classList.add('show');
-    setTimeout(() => input.focus(), 50);
-}
-
-function closeWelcomeEmailModal() {
-    document.getElementById('welcomeEmailModal')?.classList.remove('show');
-}
-
-async function saveWelcomeEmailAddress() {
-    const input = document.getElementById('welcomeEmailLocalPart');
-    const localPart = input?.value?.trim();
-    if (!localPart) {
-        showAlert('Bitte Namen fuer die Adresse eingeben.', 'error');
-        return;
-    }
-    const account = await saveEhoserMailAddress(localPart);
-    if (!account) return;
-    activeEmailAddress = account.address;
-    closeWelcomeEmailModal();
-}
-
-async function loadSettingsEmailAddress() {
-    const token = localStorage.getItem('token');
-    const display = document.getElementById('ehoserEmailCurrentDisplay');
-    const input = document.getElementById('settingsEmailLocalPart');
-    if (!token || !display || !input) return;
-    display.textContent = 'Wird geladen...';
-    try {
-        const res = await fetch(`${API_BASE}/mail/accounts`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Adresse konnte nicht geladen werden.');
-        const account = data.accounts?.[0] || null;
-        if (account?.address) {
-            display.textContent = `Aktuell: ${account.address}`;
-            input.value = account.local_part || account.address.split('@')[0] || '';
-        } else {
-            display.textContent = 'Noch keine @ehoser.de Adresse erstellt.';
-            input.value = String(currentUser?.username || '').toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 32);
-        }
-    } catch {
-        display.textContent = 'Adresse konnte nicht geladen werden.';
-    }
-}
-
-async function saveSettingsEmailAddress() {
-    const input = document.getElementById('settingsEmailLocalPart');
-    const localPart = input?.value?.trim();
-    if (!localPart) {
-        showAlert('Bitte Namen fuer die Adresse eingeben.', 'error');
-        return;
-    }
-    const account = await saveEhoserMailAddress(localPart);
-    if (!account) return;
-    activeEmailAddress = account.address;
-    await loadSettingsEmailAddress();
-    if (document.getElementById('emails')?.classList.contains('active')) {
-        await loadEmailCenter();
-    }
-}
-
-async function loadMailMessages() {
-    const token = localStorage.getItem('token');
-    const list = document.getElementById('emailMessagesList');
-    if (!list) return;
-    if (!activeEmailAddress) {
-        list.innerHTML = '<div class="email-empty"><strong>Postfach bereit</strong><span>Erstelle deine @ehoser.de Adresse in den Account Einstellungen.</span></div>';
-        return;
-    }
-    try {
-        const res = await fetch(`${API_BASE}/mail/messages?address=${encodeURIComponent(activeEmailAddress)}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Nachrichten konnten nicht geladen werden.');
-        const messages = data.messages || [];
-        if (!messages.length) {
-            list.innerHTML = '<div class="email-empty"><strong>Keine Nachrichten</strong><span>Neue Mails erscheinen hier automatisch.</span></div>';
-            return;
-        }
-        list.innerHTML = messages.map((message) => {
-            const direction = message.direction === 'outbound' ? 'Gesendet' : 'Empfangen';
-            const other = message.direction === 'outbound' ? message.recipient : message.sender;
-            const date = message.created_at ? new Date(message.created_at).toLocaleString('de-DE') : '';
-            return `
-                <article class="email-message">
-                    <div class="email-message-top">
-                        <span class="email-pill">${direction}</span>
-                        <strong>${escapeHtml(message.subject || '(ohne Betreff)')}</strong>
-                        <time>${escapeHtml(date)}</time>
-                    </div>
-                    <div class="email-message-meta">${escapeHtml(other || '')}</div>
-                    <p>${escapeHtml(message.text_body || '').replace(/\n/g, '<br>')}</p>
-                    ${message.status && message.status !== 'sent' && message.status !== 'received' ? `<small>${escapeHtml(message.status)}</small>` : ''}
-                </article>
-            `;
-        }).join('');
-    } catch (error) {
-        list.innerHTML = '<div class="email-empty">Nachrichten konnten nicht geladen werden.</div>';
-    }
-}
-
-async function sendMailMessage() {
-    const token = localStorage.getItem('token');
-    const from = activeEmailAddress;
-    const to = document.getElementById('emailToInput')?.value?.trim();
-    const subject = document.getElementById('emailSubjectInput')?.value?.trim();
-    const body = document.getElementById('emailBodyInput')?.value || '';
-    const statusEl = document.getElementById('emailStatusText');
-    if (!from || !to || !body.trim()) {
-        showAlert('Bitte zuerst eine Ehoser E-Mail in den Einstellungen erstellen und Nachricht ausfuellen.', 'error');
-        return;
-    }
-    if (statusEl) statusEl.textContent = 'Sende...';
-    try {
-        const res = await fetch(`${API_BASE}/mail/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ from, to, subject, body })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Mail konnte nicht gesendet werden.');
-        document.getElementById('emailToInput').value = '';
-        document.getElementById('emailSubjectInput').value = '';
-        document.getElementById('emailBodyInput').value = '';
-        activeEmailAddress = from;
-        showAlert('Email gesendet.', 'success');
-        await loadMailMessages();
-    } catch (error) {
-        showAlert(error.message || 'Mail konnte nicht gesendet werden.', 'error');
-    } finally {
-        if (statusEl) statusEl.textContent = '';
-    }
 }
 
 function showDesktopUI() {
@@ -2305,35 +2041,35 @@ function selectMode(mode) {
 
 
 
-// WMO weather code -> icon + description (Open-Meteo)
+// WMO Wetter-Code â†’ Emoji + Beschreibung (Open-Meteo)
 function weatherCodeInfo(code) {
     const map = {
-        0:  ['&#9728;&#65039;', 'Klarer Himmel'],
-        1:  ['&#127780;&#65039;', '\u00dcberwiegend klar'],
-        2:  ['&#9925;', 'Teilweise bew\u00f6lkt'],
-        3:  ['&#9729;&#65039;', 'Bedeckt'],
-        45: ['&#127787;&#65039;', 'Nebel'],
-        48: ['&#127787;&#65039;', 'Gefrierender Nebel'],
-        51: ['&#127782;&#65039;', 'Leichter Nieselregen'],
-        53: ['&#127782;&#65039;', 'Nieselregen'],
-        55: ['&#127783;&#65039;', 'Starker Nieselregen'],
-        61: ['&#127783;&#65039;', 'Leichter Regen'],
-        63: ['&#127783;&#65039;', 'Regen'],
-        65: ['&#127783;&#65039;', 'Starker Regen'],
-        71: ['&#127784;&#65039;', 'Leichter Schneefall'],
-        73: ['&#127784;&#65039;', 'Schneefall'],
-        75: ['&#10052;&#65039;', 'Starker Schneefall'],
-        77: ['&#127784;&#65039;', 'Schneek\u00f6rner'],
-        80: ['&#127782;&#65039;', 'Leichte Schauer'],
-        81: ['&#127783;&#65039;', 'Schauer'],
-        82: ['&#9928;&#65039;', 'Starke Schauer'],
-        85: ['&#127784;&#65039;', 'Schneeschauer'],
-        86: ['&#10052;&#65039;', 'Starke Schneeschauer'],
-        95: ['&#9928;&#65039;', 'Gewitter'],
-        96: ['&#9928;&#65039;', 'Gewitter mit Hagel'],
-        99: ['&#9928;&#65039;', 'Gewitter mit starkem Hagel'],
+        0:  ['â˜€ï¸', 'Klarer Himmel'],
+        1:  ['ðŸŒ¤ï¸', 'Ãœberwiegend klar'],
+        2:  ['â›…', 'Teilweise bewÃ¶lkt'],
+        3:  ['â˜ï¸', 'Bedeckt'],
+        45: ['ðŸŒ«ï¸', 'Nebel'],
+        48: ['ðŸŒ«ï¸', 'Gefrierender Nebel'],
+        51: ['ðŸŒ¦ï¸', 'Leichter Nieselregen'],
+        53: ['ðŸŒ¦ï¸', 'Nieselregen'],
+        55: ['ðŸŒ§ï¸', 'Starker Nieselregen'],
+        61: ['ðŸŒ§ï¸', 'Leichter Regen'],
+        63: ['ðŸŒ§ï¸', 'Regen'],
+        65: ['ðŸŒ§ï¸', 'Starker Regen'],
+        71: ['ðŸŒ¨ï¸', 'Leichter Schneefall'],
+        73: ['ðŸŒ¨ï¸', 'Schneefall'],
+        75: ['â„ï¸', 'Starker Schneefall'],
+        77: ['ðŸŒ¨ï¸', 'SchneekÃ¶rner'],
+        80: ['ðŸŒ¦ï¸', 'Leichte Schauer'],
+        81: ['ðŸŒ§ï¸', 'Schauer'],
+        82: ['â›ˆï¸', 'Starke Schauer'],
+        85: ['ðŸŒ¨ï¸', 'Schneeschauer'],
+        86: ['â„ï¸', 'Starke Schneeschauer'],
+        95: ['â›ˆï¸', 'Gewitter'],
+        96: ['â›ˆï¸', 'Gewitter mit Hagel'],
+        99: ['â›ˆï¸', 'Gewitter mit starkem Hagel'],
     };
-    return map[code] || ['&#127777;&#65039;', `Wetter-Code ${code}`];
+    return map[code] || ['ðŸŒ¡ï¸', `Wetter-Code ${code}`];
 }
 
 async function runWeatherSearch() {
@@ -2347,23 +2083,23 @@ async function runWeatherSearch() {
         return;
     }
 
-    status.textContent = 'Suche Ort...';
+    status.textContent = 'Suche Ortâ€¦';
     result.innerHTML = '';
 
     try {
-        // 1. Geocoding (kein API key needed)
+        // 1. Geocoding (kein API Key nÃ¶tig)
         const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=de&format=json`);
         const geoData = await geoRes.json();
 
         if (!geoData.results?.length) {
-            status.textContent = `Ort "${city}" nicht gefunden.`;
+            status.textContent = `Ort â€ž${city}" nicht gefunden.`;
             return;
         }
 
         const { latitude, longitude, name, country, admin1 } = geoData.results[0];
-        status.textContent = 'Lade Wetterdaten...';
+        status.textContent = 'Lade Wetterdatenâ€¦';
 
-        // 2. Weather data (no API key needed)
+        // 2. Wetterdaten (kein API Key nÃ¶tig)
         const weatherRes = await fetch(
             `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
             `&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,visibility` +
@@ -2378,7 +2114,7 @@ async function runWeatherSearch() {
         const feels     = Math.round(cur.apparent_temperature);
         const humidity  = cur.relative_humidity_2m;
         const wind      = Math.round(cur.wind_speed_10m);
-        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : '-';
+        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : 'â€“';
         const [icon, desc] = weatherCodeInfo(cur.weather_code);
         const location  = [name, admin1, country].filter(Boolean).join(', ');
 
@@ -2388,19 +2124,19 @@ async function runWeatherSearch() {
                 <div class="weather-card-country">${escapeHtml([admin1, country].filter(Boolean).join(', '))}</div>
                 <div class="weather-card-icon" style="font-size:5rem;line-height:1">${icon}</div>
                 <div class="weather-card-desc">${escapeHtml(desc)}</div>
-                <div class="weather-card-temp">${temp}&deg;C</div>
-                <div class="weather-card-feels">Gef&uuml;hlt wie ${feels}&deg;C</div>
+                <div class="weather-card-temp">${temp}Â°C</div>
+                <div class="weather-card-feels">GefÃ¼hlt wie ${feels}Â°C</div>
                 <div class="weather-card-stats">
                     <div class="weather-stat">
-                        <span class="weather-stat-label">Luftfeucht.</span>
+                        <span class="weather-stat-label">ðŸ’§ Luftfeucht.</span>
                         <span class="weather-stat-value">${humidity}%</span>
                     </div>
                     <div class="weather-stat">
-                        <span class="weather-stat-label">Wind</span>
+                        <span class="weather-stat-label">ðŸ’¨ Wind</span>
                         <span class="weather-stat-value">${wind} km/h</span>
                     </div>
                     <div class="weather-stat">
-                        <span class="weather-stat-label">Sichtweite</span>
+                        <span class="weather-stat-label">ðŸ‘ï¸ Sichtweite</span>
                         <span class="weather-stat-value">${visKm}</span>
                     </div>
                 </div>
@@ -2721,8 +2457,6 @@ function closeYTPlayer() {
 let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
 let _kiModel = 'ehoser1';
-let _pendingVideoRequest = null;
-const KI_MAX_IMAGE_UPLOAD_BYTES = 2.5 * 1024 * 1024;
 
 function updateKIModelAccessUI() {
     const premiumBtn = document.getElementById('kiModelPremium');
@@ -2758,9 +2492,9 @@ function showKIChat() {
     document.getElementById('kiNameModal').style.display = 'none';
     document.getElementById('kiChatWrapper').style.display = 'flex';
 
-    // Anhang-Button fuer Datei-Analyse und Bild-Referenzen sichtbar machen
+    // Anhang-Button nur fÃ¼r PRO sichtbar
     const attachBtn = document.getElementById('kiAttachBtn');
-    if (attachBtn) attachBtn.style.display = 'flex';
+    if (attachBtn) attachBtn.style.display = localStorage.getItem('proStatus') === '1' ? 'flex' : 'none';
 
     // Nur beim ersten Mal initialisieren
     if (_kiHistory.length === 0) {
@@ -2773,76 +2507,23 @@ function showKIChat() {
     setTimeout(() => document.getElementById('kiInput')?.focus(), 50);
 }
 
-function kiBlobToDataUrl(blob) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = () => reject(reader.error || new Error('Datei konnte nicht gelesen werden'));
-        reader.readAsDataURL(blob);
-    });
-}
-
-function kiLoadImage(dataUrl) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('Bild konnte nicht geladen werden'));
-        img.src = dataUrl;
-    });
-}
-
-function kiCanvasToBlob(canvas, type, quality) {
-    return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
-}
-
-async function kiPrepareImageAttachment(file) {
-    const rawDataUrl = await kiBlobToDataUrl(file);
-    if (file.size <= KI_MAX_IMAGE_UPLOAD_BYTES) return rawDataUrl;
-
-    const img = await kiLoadImage(rawDataUrl);
-    const maxSide = 1600;
-    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(img.width * scale));
-    canvas.height = Math.max(1, Math.round(img.height * scale));
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-    for (const quality of [0.86, 0.72, 0.58]) {
-        const blob = await kiCanvasToBlob(canvas, 'image/jpeg', quality);
-        if (blob && blob.size <= KI_MAX_IMAGE_UPLOAD_BYTES) return kiBlobToDataUrl(blob);
-    }
-    const blob = await kiCanvasToBlob(canvas, 'image/jpeg', 0.5);
-    return blob ? kiBlobToDataUrl(blob) : rawDataUrl;
-}
-
-async function kiHandleFileSelect(event) {
+function kiHandleFileSelect(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    const isImage = file.type.startsWith('image/');
-    const maxSize = isImage ? 20 * 1024 * 1024 : 4 * 1024 * 1024;
-    if (file.size > maxSize) {
-        showAlert(isImage ? 'Bild zu gross (max. 20 MB).' : 'Datei zu gross (max. 4 MB).', 'error');
+    if (file.size > 4 * 1024 * 1024) {
+        showAlert('Datei zu groÃŸ (max. 4 MB).', 'error');
         event.target.value = '';
         return;
     }
-    if (isImage) {
-        try {
-            _kiAttachment = { type: 'image', data: await kiPrepareImageAttachment(file), name: file.name };
-            document.getElementById('kiAttachPreview').style.display = 'flex';
-            document.getElementById('kiAttachName').textContent = 'ðŸ“Ž ' + file.name;
-        } catch {
-            showAlert('Bild konnte nicht vorbereitet werden.', 'error');
-        }
-    } else {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            _kiAttachment = { type: 'text', data: e.target.result, name: file.name };
-            document.getElementById('kiAttachPreview').style.display = 'flex';
-            document.getElementById('kiAttachName').textContent = 'ðŸ“Ž ' + file.name;
-        };
-        reader.readAsText(file);
-    }
+    const isImage = file.type.startsWith('image/');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        _kiAttachment = { type: isImage ? 'image' : 'text', data: e.target.result, name: file.name };
+        document.getElementById('kiAttachPreview').style.display = 'flex';
+        document.getElementById('kiAttachName').textContent = 'ðŸ“Ž ' + file.name;
+    };
+    if (isImage) reader.readAsDataURL(file);
+    else reader.readAsText(file);
     event.target.value = '';
 }
 
@@ -2857,14 +2538,6 @@ function kiClearAttachment() {
 function kiReplaceNamePlaceholder(text) {
     const name = sessionStorage.getItem('kiUserName') || '';
     return name ? text.replace(/\[name\]/gi, name) : text;
-}
-
-function kiAttachmentCanBeImageReference(att) {
-    return att?.type === 'image' && typeof att.data === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.test(att.data);
-}
-
-function kiLooksLikeImageGenerationRequest(text) {
-    return /(bild|image|foto|photo|zeichnung|logo|poster|avatar|thumbnail|generier|erstelle|mach daraus|bearbeite|verwandle|style|stil|edit)/i.test(text || '');
 }
 
 function setKIModel(model) {
@@ -2920,12 +2593,11 @@ function appendKIImageBubble(prompt, imageUrl) {
     label.textContent = '\uD83C\uDFA8 Generiertes Bild: ' + prompt;
     div.appendChild(label);
     const loading = document.createElement('div');
-    loading.className = 'ki-image-loading';
     loading.style.cssText = 'color:#8ab4c9;font-size:0.9rem;padding:4px 0;';
     loading.textContent = '\u23F3 Bild wird generiert\u2026 (kann bis zu 30 Sekunden dauern)';
     div.appendChild(loading);
     const img = document.createElement('img');
-    if (imageUrl) img.src = imageUrl;
+    img.src = imageUrl;
     img.alt = prompt;
     img.style.cssText = 'max-width:100%;border-radius:10px;display:none;cursor:pointer;margin-top:6px;';
     img.title = 'Klicken zum \u00D6ffnen in neuem Tab';
@@ -2936,69 +2608,28 @@ function appendKIImageBubble(prompt, imageUrl) {
         messages.scrollTop = messages.scrollHeight;
     };
     img.onerror = () => {
-        if (!imageUrl) return;
-        const retryUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'r=';
         loading.innerHTML = '\u274C Bild konnte nicht geladen werden. '
             + '<a href="' + imageUrl + '" target="_blank" rel="noopener" style="color:#8ab4c9;text-decoration:underline;">Direkt \u00F6ffnen</a>'
-            + ' &nbsp;<button onclick="this.closest(\'.ki-bubble\').querySelector(\'img\').src=\'' + retryUrl + '\'+Date.now()" '
+            + ' &nbsp;<button onclick="this.closest(\'.ki-bubble\').querySelector(\'img\').src=\'' + imageUrl + '?r=\'+Date.now()" '
             + 'style="background:#1e3a4a;color:#8ab4c9;border:1px solid #8ab4c9;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.8rem;">'
             + '\uD83D\uDD04 Erneut versuchen</button>';
     };
     div.appendChild(img);
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
-    return div;
 }
 
-function kiHandleImageGenCommand(reply, referenceImage = null) {
+function kiHandleImageGenCommand(reply) {
     const match = reply.match(/BILD_GENERIEREN:\s*(.+)/i);
     if (!match) return false;
     const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
+    const seed = Math.floor(Math.random() * 999999);
+    // Direkt von Pollinations laden – kein Backend-Proxy, kein Vercel-Timeout
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
     const textBefore = reply.replace(/BILD_GENERIEREN:\s*.+/i, '').trim();
     if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
-    kiStartImageGeneration(prompt, referenceImage);
-    return true;
-}
-
-async function kiStartImageGeneration(prompt, referenceImage = null) {
-    if (referenceImage && kiAttachmentCanBeImageReference(referenceImage)) {
-        const bubble = appendKIImageBubble(prompt, '');
-        const img = bubble?.querySelector('img');
-        const loading = bubble?.querySelector('.ki-image-loading');
-        if (img) img.removeAttribute('src');
-        try {
-            const blob = await (await fetch(referenceImage.data)).blob();
-            const fd = new FormData();
-            fd.append('prompt', prompt);
-            fd.append('image', blob, referenceImage.name || 'reference.png');
-            const res = await fetch(`${API_BASE}/ki/image/edit`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
-                body: fd
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err?.error || 'Bildbearbeitung fehlgeschlagen');
-            }
-            const outBlob = await res.blob();
-            const objectUrl = URL.createObjectURL(outBlob);
-            if (loading) loading.remove();
-            if (img) {
-                img.src = objectUrl;
-                img.style.display = 'block';
-                img.onclick = () => window.open(objectUrl, '_blank', 'noopener');
-            }
-            await refreshCurrentProfile();
-            return;
-        } catch (err) {
-            if (loading) loading.textContent = '\u274C ' + (err?.message || 'Bildbearbeitung fehlgeschlagen');
-            await refreshCurrentProfile();
-            return;
-        }
-    }
-
-    const url = `/api/ki/image?prompt=${encodeURIComponent(prompt)}`;
     appendKIImageBubble(prompt, url);
+    return true;
 }
 
 function appendKIVideoBubble(prompt) {
@@ -3020,91 +2651,7 @@ function appendKIVideoBubble(prompt) {
     return { div, status };
 }
 
-function videoQualityLabel(quality) {
-    return ({ low: 'niedrig', medium: 'mittel', high: 'hoch' })[quality] || 'mittel';
-}
-
-function videoCreditCost(seconds, quality) {
-    const q = ({ low: 1, medium: 2, high: 3 })[quality] || 2;
-    return Number(seconds) * 10 * q;
-}
-
-function parseVideoOptions(text) {
-    const lower = String(text || '').toLowerCase();
-    const quality = lower.includes('hoch') || lower.includes('beste') || lower.includes('high')
-        ? 'high'
-        : lower.includes('niedrig') || lower.includes('klein') || lower.includes('low')
-            ? 'low'
-            : lower.includes('mittel') || lower.includes('normal') || lower.includes('medium')
-                ? 'medium'
-                : null;
-    const secMatch = lower.match(/(\d{1,2})\s*(sek|sec|s\b)/);
-    const seconds = secMatch ? Math.min(12, Math.max(4, Number(secMatch[1]))) : null;
-    return { quality, seconds: seconds ? (seconds <= 4 ? 4 : seconds <= 8 ? 8 : 12) : null };
-}
-
-function maybeStartVideoFlow(text) {
-    if (!/(video|film|clip|sora)/i.test(text || '')) return false;
-    if (!hasVideoGeneratorAccess()) {
-        appendKIBubble('ai', 'Es tut mir leid, Video KI ist ab 20 Euro im Shop erhaeltlich. Oeffne oben deinen Tarif und waehle Premium.');
-        return true;
-    }
-    _pendingVideoRequest = { prompt: text, step: 'details' };
-    appendKIBubble('ai', 'Welche Qualitaet soll das Video haben: niedrig, mittel oder hoch? Und wie viele Sekunden: 4, 8 oder 12? Je hoeher die Qualitaet, desto mehr Credits kostet es.');
-    return true;
-}
-
-function handlePendingVideoFlow(text) {
-    if (!_pendingVideoRequest) return false;
-    if (/abbrechen|stop|nein|cancel/i.test(text || '')) {
-        _pendingVideoRequest = null;
-        appendKIBubble('ai', 'Videovorgang abgelehnt.');
-        return true;
-    }
-    if (_pendingVideoRequest.step === 'details') {
-        const opts = parseVideoOptions(text);
-        if (!opts.quality || !opts.seconds) {
-            appendKIBubble('ai', 'Bitte schreibe Qualitaet und Sekunden dazu, zum Beispiel: "hoch 8 Sekunden".');
-            return true;
-        }
-        const cost = videoCreditCost(opts.seconds, opts.quality);
-        _pendingVideoRequest = { ..._pendingVideoRequest, ...opts, cost, step: 'confirm' };
-        appendKIBubble('ai', `Das kostet ${cost} Credits (${videoQualityLabel(opts.quality)}, ${opts.seconds} Sekunden). Druecke Fortfahren zum Generieren oder Abbrechen.`);
-        appendKIVideoConfirmButtons();
-        return true;
-    }
-    return true;
-}
-
-function appendKIVideoConfirmButtons() {
-    const messages = document.getElementById('kiMessages');
-    if (!messages) return;
-    const wrap = document.createElement('div');
-    wrap.className = 'ki-bubble ki-bubble-ai';
-    wrap.style.display = 'flex';
-    wrap.style.gap = '8px';
-    wrap.style.flexWrap = 'wrap';
-    wrap.innerHTML = `
-        <button class="btn-primary" onclick="confirmPendingVideoGeneration()">Fortfahren</button>
-        <button class="btn-secondary" onclick="cancelPendingVideoGeneration()">Abbrechen</button>
-    `;
-    messages.appendChild(wrap);
-    messages.scrollTop = messages.scrollHeight;
-}
-
-function cancelPendingVideoGeneration() {
-    _pendingVideoRequest = null;
-    appendKIBubble('ai', 'Videovorgang abgelehnt.');
-}
-
-async function confirmPendingVideoGeneration() {
-    if (!_pendingVideoRequest || _pendingVideoRequest.step !== 'confirm') return;
-    const req = _pendingVideoRequest;
-    _pendingVideoRequest = null;
-    await kiStartVideoGeneration(req.prompt, req);
-}
-
-async function kiStartVideoGeneration(prompt, options = {}) {
+async function kiStartVideoGeneration(prompt) {
     const bubble = appendKIVideoBubble(prompt);
     if (!bubble) return;
     const { div, status } = bubble;
@@ -3112,8 +2659,8 @@ async function kiStartVideoGeneration(prompt, options = {}) {
     try {
         const res = await fetch(`${API_BASE}/ki/video/create`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
-            body: JSON.stringify({ prompt, quality: options.quality || 'medium', seconds: options.seconds || 4 })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt })
         });
 
         if (!res.ok) {
@@ -3128,7 +2675,6 @@ async function kiStartVideoGeneration(prompt, options = {}) {
                 } catch {}
             }
             status.textContent = '\u274C ' + error;
-            await refreshCurrentProfile();
             return;
         }
 
@@ -3151,10 +2697,8 @@ async function kiStartVideoGeneration(prompt, options = {}) {
         div.appendChild(video);
         div.appendChild(link);
         if (messages) messages.scrollTop = messages.scrollHeight;
-        await refreshCurrentProfile();
     } catch (err) {
         status.textContent = '\u274C Verbindungsfehler';
-        await refreshCurrentProfile();
     }
 }
 
@@ -3164,7 +2708,7 @@ function kiHandleVideoGenCommand(reply) {
     const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
     const textBefore = reply.replace(/VIDEO_GENERIEREN:\s*.+/i, '').trim();
     if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
-    maybeStartVideoFlow(prompt);
+    kiStartVideoGeneration(prompt);
     return true;
 }
 
@@ -3188,44 +2732,6 @@ async function sendKIMessage() {
     if (!text && !_kiAttachment) return;
     if (_kiModel === 'premium' && !hasPremiumAccess()) {
         setKIModel('ehoser1');
-        return;
-    }
-    if (!_kiAttachment && _pendingVideoRequest) {
-        appendKIBubble('user', text);
-        handlePendingVideoFlow(text);
-        input.value = '';
-        input?.focus();
-        return;
-    }
-    if (!_kiAttachment && /(video|film|clip|sora)/i.test(text || '')) {
-        appendKIBubble('user', text);
-        maybeStartVideoFlow(text);
-        input.value = '';
-        input?.focus();
-        return;
-    }
-    if (_kiAttachment?.type === 'image' && kiLooksLikeImageGenerationRequest(text)) {
-        const reference = _kiAttachment;
-        const msgEl = document.getElementById('kiMessages');
-        if (msgEl) {
-            const bubble = document.createElement('div');
-            bubble.className = 'ki-bubble ki-bubble-user';
-            const img = document.createElement('img');
-            img.src = reference.data;
-            img.className = 'ki-bubble-img';
-            img.alt = reference.name;
-            bubble.appendChild(img);
-            if (text) { const t = document.createElement('div'); t.style.marginTop='6px'; t.textContent = text; bubble.appendChild(t); }
-            msgEl.appendChild(bubble);
-            msgEl.scrollTop = msgEl.scrollHeight;
-        }
-        input.value = '';
-        if (sendBtn) sendBtn.disabled = true;
-        kiClearAttachment();
-        appendKIBubble('ai', 'Ich nutze dein angehaengtes Bild als Referenz und erstelle daraus ein neues Bild.');
-        await kiStartImageGeneration(text || 'Edit this image creatively while preserving the main subject.', reference);
-        if (sendBtn) sendBtn.disabled = false;
-        input?.focus();
         return;
     }
 
@@ -3280,7 +2786,6 @@ async function sendKIMessage() {
         historyMsg = apiMessage;
     }
 
-    const attachedForThisRequest = _kiAttachment;
     kiClearAttachment();
 
     // Verlauf + API-Nachrichten aufbauen
@@ -3306,14 +2811,13 @@ async function sendKIMessage() {
             const msg = err?.error?.message || err?.error || `Fehler ${res.status}`;
             appendKIBubble('error', 'âš ï¸ ' + msg);
             _kiHistory.pop();
-            await refreshCurrentProfile();
             return;
         }
 
         const data = await res.json();
         const rawReply = data?.choices?.[0]?.message?.content || '(Keine Antwort)';
         _kiHistory.push({ role: 'assistant', content: rawReply });
-        if (!kiHandleVideoGenCommand(rawReply) && !kiHandleImageGenCommand(rawReply, attachedForThisRequest)) {
+        if (!kiHandleVideoGenCommand(rawReply) && !kiHandleImageGenCommand(rawReply)) {
             const reply = kiReplaceNamePlaceholder(rawReply);
             appendKIBubble('ai', reply);
         }
@@ -3414,6 +2918,7 @@ async function logout() {
     clearDesktopActivated();
     await clearDesktopAuthToken();
     sessionStorage.removeItem('adminGuestPreview');
+    sessionStorage.removeItem('intro_shown');
     currentUser = null;
     currentProfile = null;
     allApps = [];
@@ -3506,28 +3011,18 @@ function updatePlanBadge() {
     const el = document.getElementById('planBadge');
     if (!el) return;
 
-    if (getCurrentPlanKey() === 'custom') {
-        const features = currentProfile?.customPlan?.features || {};
-        const enabled = [
-            features.premiumKi ? 'Premium KI' : '',
-            features.videoGenerator ? 'Video' : '',
-            features.proFeatures ? 'Pro' : '',
-            features.psAccount ? 'PS' : ''
-        ].filter(Boolean).join(', ');
-        el.textContent = `Plan: Individuell${enabled ? ` (${enabled})` : ''} | ${getCreditBalance()} Credits`;
-        el.classList.add('pro', 'premium');
-    } else if (currentProfile?.isPremium === true) {
+    if (hasPremiumAccess()) {
         const premiumUntil = currentProfile?.premiumUntil || currentProfile?.settings?.premiumUntil || '';
         const until = premiumUntil ? new Date(premiumUntil).toLocaleDateString('de-DE') : '';
-        el.textContent = `${until ? `Plan: Premium bis ${until}` : 'Plan: Premium'} | ${getCreditBalance()} Credits`;
+        el.textContent = until ? `Plan: Premium bis ${until}` : 'Plan: Premium';
         el.classList.add('pro', 'premium');
     } else if (hasProAccess()) {
         const until = currentProfile.proUntil ? new Date(currentProfile.proUntil).toLocaleDateString('de-DE') : '';
-        el.textContent = `${until ? `Plan: PRO bis ${until}` : 'Plan: PRO'} | ${getCreditBalance()} Credits`;
+        el.textContent = until ? `Plan: PRO bis ${until}` : 'Plan: PRO';
         el.classList.add('pro');
         el.classList.remove('premium');
     } else {
-        el.textContent = `Plan: Gratis | ${getCreditBalance()} Credits`;
+        el.textContent = 'Plan: Gratis';
         el.classList.remove('pro', 'premium');
     }
 }
@@ -3560,7 +3055,6 @@ function openSettingsModal() {
     if (toggleBtn) toggleBtn.textContent = 'ðŸ‘ Anzeigen';
     fetchLoginCode();
     updatePlanBadge();
-    loadSettingsEmailAddress();
     // Aktuelle E-Mail laden
     const emailDisplay = document.getElementById('emailCurrentDisplay');
     if (emailDisplay) {
@@ -3642,63 +3136,6 @@ function closeSettingsModal() {
     if (emailInput) emailInput.value = '';
     if (emailCodeInput) emailCodeInput.value = '';
     if (emailCodeRow) emailCodeRow.style.display = 'none';
-}
-
-let _selectedPlanRequest = null;
-
-function openPricingModal() {
-    if (!currentUser) {
-        showAlert('Bitte zuerst anmelden.', 'error');
-        return;
-    }
-    const modal = document.getElementById('pricingModal');
-    const box = document.getElementById('planRequestBox');
-    const status = document.getElementById('planRequestStatus');
-    if (box) box.style.display = 'none';
-    if (status) status.textContent = '';
-    _selectedPlanRequest = null;
-    if (modal) modal.classList.add('show');
-}
-
-function closePricingModal() {
-    document.getElementById('pricingModal')?.classList.remove('show');
-}
-
-function selectPlanRequest(plan) {
-    _selectedPlanRequest = plan === 'premium' ? 'premium' : 'pro';
-    const box = document.getElementById('planRequestBox');
-    const status = document.getElementById('planRequestStatus');
-    if (box) box.style.display = 'block';
-    if (status) status.textContent = `${_selectedPlanRequest === 'premium' ? 'Premium 20 Euro' : 'Pro 10 Euro'}: Bar bezahlen, echten Namen eintragen und Anfrage senden.`;
-}
-
-async function sendPlanRequest() {
-    if (!_selectedPlanRequest) return;
-    const token = localStorage.getItem('token');
-    const input = document.getElementById('planRealName');
-    const status = document.getElementById('planRequestStatus');
-    const realName = (input?.value || '').trim();
-    if (!token) {
-        if (status) status.textContent = 'Bitte erst anmelden.';
-        return;
-    }
-    if (realName.length < 3) {
-        if (status) status.textContent = 'Bitte echten Namen eingeben.';
-        return;
-    }
-    try {
-        const res = await fetch(`${API_BASE}/me/plan-request`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ plan: _selectedPlanRequest, realName })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen');
-        if (status) status.textContent = 'Tarif Anfrage wurde gesendet. Bezahle bar beim Admin, danach wird freigeschaltet.';
-        if (input) input.value = '';
-    } catch (err) {
-        if (status) status.textContent = err.message || 'Anfrage fehlgeschlagen.';
-    }
 }
 
 function refreshAccountAvatarPreview() {
@@ -6337,6 +5774,7 @@ let _supportReason = '';
 let _supportHistory = [];
 let _supportConnectingTimer = null;
 let _supportIsSending = false;
+let _supportChatKitMounted = false;
 
 function supportShowStage(stage) {
     ['supportLoading', 'supportReasons', 'supportConnecting', 'supportChat'].forEach(id => {
@@ -6386,10 +5824,97 @@ function selectSupportReason(reason) {
 
 function startSupportChat() {
     supportShowStage('supportChat');
-    if (!_supportHistory.length) {
-        const greeting = `Hallo, hier ist der Ehoser Support. Ich sehe, es geht um ${_supportReason || 'Support'}. Beschreiben Sie kurz, was genau passiert ist.`;
-        appendSupportBubble('agent', greeting);
-        _supportHistory.push({ role: 'assistant', content: greeting });
+    mountSupportChatKit();
+}
+
+function getSupportClientId() {
+    const key = 'ehoserSupportClientId';
+    let id = localStorage.getItem(key);
+    if (!id) {
+        id = `support-${cryptoRandom()}`;
+        localStorage.setItem(key, id);
+    }
+    return id;
+}
+
+function waitForChatKit() {
+    return new Promise((resolve, reject) => {
+        if (!document.querySelector('script[data-ehoser-chatkit]')) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.platform.openai.com/deployments/chatkit/chatkit.js';
+            script.async = true;
+            script.dataset.ehoserChatkit = '1';
+            script.onerror = () => reject(new Error('ChatKit konnte nicht geladen werden'));
+            document.head.appendChild(script);
+        }
+        let tries = 0;
+        const tick = () => {
+            if (customElements.get('openai-chatkit')) {
+                resolve();
+                return;
+            }
+            tries += 1;
+            if (tries > 80) {
+                reject(new Error('ChatKit konnte nicht geladen werden'));
+                return;
+            }
+            setTimeout(tick, 150);
+        };
+        tick();
+    });
+}
+
+async function mountSupportChatKit() {
+    const mount = document.getElementById('supportChatKitMount');
+    if (!mount || _supportChatKitMounted) return;
+    mount.innerHTML = '<div class="support-chatkit-loading">Ehoser Support wird verbunden...</div>';
+    try {
+        await waitForChatKit();
+        const chatkit = document.createElement('openai-chatkit');
+        chatkit.className = 'support-chatkit';
+        chatkit.setOptions({
+            api: {
+                async getClientSecret(currentClientSecret) {
+                    if (currentClientSecret) return currentClientSecret;
+                    const token = localStorage.getItem('token');
+                    const res = await fetch(`${API_BASE}/support/session`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                            userId: getSupportClientId(),
+                            reason: _supportReason || 'Sonstiges',
+                            desktop: isDesktopMode()
+                        })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || !data.client_secret) {
+                        throw new Error(data.error || 'Support konnte nicht gestartet werden');
+                    }
+                    return data.client_secret;
+                }
+            },
+            theme: {
+                colorScheme: 'dark',
+                accentColor: '#22e0bf'
+            },
+            header: {
+                title: 'Ehoser Support'
+            },
+            composer: {
+                placeholder: 'Nachricht an Ehoser Support...'
+            },
+            startScreen: {
+                greeting: `Hallo, hier ist der Ehoser Support. Ich sehe, es geht um ${_supportReason || 'Support'}. Beschreiben Sie kurz, was genau passiert ist.`
+            }
+        });
+        mount.innerHTML = '';
+        mount.appendChild(chatkit);
+        _supportChatKitMounted = true;
+    } catch (error) {
+        mount.innerHTML = `<div class="support-chatkit-error">${escapeHtml(error?.message || 'Support konnte nicht geladen werden.')}</div>`;
     }
 }
 
@@ -6445,7 +5970,7 @@ async function sendSupportMessage() {
             { role: 'system', content: SUPPORT_SYSTEM_PROMPT },
             ..._supportHistory.filter(msg => msg.role !== 'system').slice(-12)
         ];
-        const res = await fetch(`${API_BASE}/support/chat`, {
+        const res = await fetch(`${API_BASE}/ki`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -6479,7 +6004,6 @@ async function sendSupportMessage() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    startMojibakeFixer();
     const modal = document.getElementById('supportModal');
     if (modal) {
         modal.addEventListener('click', (event) => {
