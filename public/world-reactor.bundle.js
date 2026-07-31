@@ -30927,29 +30927,13 @@ var ReactorContext = (0, import_react2.createContext)(
 
 // public/world-reactor.js
 var reactor = null;
-window.startReactorWorld = async ({ token, prompt, file: file2 }) => {
+window.startReactorWorld = async ({ token, prompt, image }) => {
   const video = document.getElementById("worldVideo");
   const canvas = document.getElementById("worldCanvas");
   if (!video || !token) throw new Error("Reactor-Session konnte nicht gestartet werden.");
   const setStatus = (message) => {
     const title = document.getElementById("worldTitle");
     if (title) title.textContent = message;
-  };
-  let ready = false;
-  let imageRef = null;
-  let started = false;
-  const startWhenReady = async () => {
-    if (!ready || !imageRef || started) return;
-    started = true;
-    try {
-      await reactor.sendCommand("set_prompt", { prompt });
-      await reactor.sendCommand("set_image", { image: imageRef });
-      await reactor.sendCommand("start", {});
-      setStatus("LingBot generiert die Welt ...");
-    } catch (error51) {
-      setStatus(`LingBot-Fehler: ${error51.message}`);
-      throw error51;
-    }
   };
   setStatus("Verbinde mit LingBot ...");
   reactor = new Reactor({ modelName: "reactor/lingbot" });
@@ -30963,12 +30947,17 @@ window.startReactorWorld = async ({ token, prompt, file: file2 }) => {
   reactor.on("command_error", (data) => setStatus(`LingBot-Fehler: ${data?.reason || "Befehl abgelehnt"}`));
   reactor.on("statusChanged", async (status) => {
     if (status !== "ready") return;
-    ready = true;
-    await startWhenReady();
+    try {
+      await reactor.sendCommand("set_prompt", { prompt });
+      await reactor.sendCommand("set_image", { image });
+      await reactor.sendCommand("start", {});
+      setStatus("LingBot generiert die Welt ...");
+    } catch (error51) {
+      setStatus(`LingBot-Fehler: ${error51.message}`);
+      throw error51;
+    }
   });
   await reactor.connect(token);
-  imageRef = await reactor.uploadFile(file2);
-  await startWhenReady();
   window.__worldKeys = window.__worldKeys || /* @__PURE__ */ new Set();
   canvas?.addEventListener("keydown", (event) => window.__worldKeys.add(event.key.toLowerCase()));
   canvas?.addEventListener("keyup", (event) => window.__worldKeys.delete(event.key.toLowerCase()));

@@ -2115,7 +2115,7 @@ async function generateWorld() {
 
         const game = document.getElementById('worldGame');
         const canvas = document.getElementById('worldCanvas');
-        if (window.startReactorWorld) await window.startReactorWorld({ token: data.jwt, prompt, file: imageFile });
+        if (window.startReactorWorld) await window.startReactorWorld({ token: data.jwt, prompt, image });
         document.getElementById('worldTitle').textContent = prompt.slice(0, 70);
         document.getElementById('worldSetup').hidden = true;
         game.hidden = false;
