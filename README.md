@@ -1,66 +1,207 @@
-# Ehoser Store
+# 🚀 ehoser shop - Professioneller App Store
 
-Professionelle, gesperrte Spieleseite fuer Ehoser mit Admin-Verwaltung und Supabase-Anbindung.
+Willkommen zu **ehoser shop** - ein moderner, professioneller App Store mit geschlossenem Zugang basierend auf Zugangscodes.
 
-## Start
+## 📖 Dokumentation
 
+**🎯 Anfänger? Start hier:**
+- **👉 [SUPABASE-RAILWAY-SETUP.md](SUPABASE-RAILWAY-SETUP.md)** - Komplettes Setup (Supabase + Railway, 15 Min!)
+- **👉 [SCHNELLSTART.md](SCHNELLSTART.md)** - Schnell-Übersicht aller Optionen
+
+**📊 Für Vergleiche:**
+- **[HOSTER-VERGLEICH.md](HOSTER-VERGLEICH.md)** - Railway vs Render vs Fly.io
+- **[SQLITE-VS-SUPABASE.md](SQLITE-VS-SUPABASE.md)** - SQLite oder PostgreSQL?
+
+**📚 Tiefere Infos:**
+- **[RAILWAY-GUIDE.md](RAILWAY-GUIDE.md)** - Railway.app Deployment
+- **[SUPABASE-GUIDE.md](SUPABASE-GUIDE.md)** - Supabase-spezifische Einrichtung
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Allgemeine Deployment-Optionen
+- **[SECURITY.md](SECURITY.md)** - Sicherheits-Best-Practices
+
+## 🚀 Schnellstart (5 Min)
+
+**Lokal testen (SQLite):**
 ```bash
 npm install
-copy .env.example .env
+npm start
+# Öffne http://localhost:3000
+```
+
+**Mit Supabase + Railway (Recommended):**
+```bash
+# Folge: SUPABASE-RAILWAY-SETUP.md
+npm install
+npm run start:supabase
+```
+
+**Admin-Code testen:** `Nils2014!`
+
+## ✨ Features
+
+- 🔐 **Geschlossene Community**: Nur mit Zugangscode zum Beitreten
+- 📱 **App Store**: Moderne, hübsche Benutzeroberfläche
+- 💾 **Datenbank**: SQLite mit persistenter Speicherung
+- 🎨 **Modernes Design**: Gradient-UI mit Animations
+- 🔑 **JWT Authentication**: Sichere Benutzer-Verwaltung
+- 📊 **App Management**: Installieren, verwalten und anzeigen
+- 📱 **Responsive**: Funktioniert auf allen Geräten
+
+## 🛠️ Installation
+
+### Voraussetzungen
+- Node.js (v14 oder höher)
+- npm oder yarn
+
+### Schritt 1: Dependencies installieren
+```bash
+cd "ehoser store"
+npm install
+```
+
+### Schritt 2: Server starten
+```bash
 npm start
 ```
 
-Store: `http://localhost:3000` mit Code `0208`  
-Admin: `http://localhost:3000/admin` mit Code `Nils2014!`
+Der Server läuft dann auf: `http://localhost:3000`
 
-Ohne Supabase-Keys nutzt der Server lokale Dateien in `data/` und `uploads/`. Mit Supabase setzt du `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` und optional `SUPABASE_STORAGE_BUCKET`.
+## 🔓 Zugang
 
-## Supabase
+### Test-Zugangscode
+- **Code**: `111111` (oder beliebige 6-stellige Zahl)
+- **Benutzername**: Dein gewählter Name
+- **E-Mail**: Optional
 
-1. Neues Supabase-Projekt erstellen.
-2. SQL aus `supabase/schema.sql` im Supabase SQL Editor ausfuehren.
-3. `.env` mit URL und Service-Role-Key fuellen.
-4. Server neu starten.
+## 📁 Projektstruktur
 
-Im Adminbereich kannst du Icon, Gameplay-Trailer, Bilder und EXE/ZIP hochladen. Wenn keine EXE/ZIP hinterlegt ist oder das Veroeffentlichungsdatum in der Zukunft liegt, zeigt der Store statt Download das Erscheinungsdatum.
+```
+ehoser store/
+├── server.js              # Express Backend
+├── package.json          # Abhängigkeiten
+├── .env                 # Umgebungsvariablen
+├── store.db             # SQLite Datenbank
+└── public/
+    ├── index.html       # Hauptseite
+    ├── styles.css       # Styling
+    └── app.js          # Frontend-Logik
+```
 
-## Als echte Webseite deployen
+## 🎨 Design-Features
 
-Diese App braucht einen Node.js-Webservice, nicht GitHub Pages. Vercel ist vorbereitet und nutzt `server.js` als Node.js Function.
+### Moderne UI-Elemente
+- Gradient-Backgrounds
+- Smooth Animations
+- Glassmorphism-Effekte
+- Responsive Grid-Layout
+- Hover-Effekte
+- Modal Dialoge
 
-### Vercel
+### Farbschema
+- Primär: `#6366f1` (Indigo)
+- Sekundär: `#10b981` (Grün)
+- Akzent: `#f59e0b` (Orange)
 
-1. Vercel oeffnen und das GitHub-Repository `Partynilles0208/ehoser-store-co` importieren.
-2. Framework Preset: `Other`.
-3. Build Command leer lassen oder `npm install` nutzen.
-4. Output Directory leer lassen.
-5. Diese Environment Variables setzen:
-   - `SITE_ACCESS_CODE=0208`
-   - `ADMIN_ACCESS_CODE=Nils2014!`
-   - `SUPABASE_URL=...`
-   - `SUPABASE_SERVICE_ROLE_KEY=...`
-   - `SUPABASE_STORAGE_BUCKET=games`
-6. Deploy starten.
+## 🔐 Warum Zugangscode?
 
-Wichtig fuer Vercel: Verwende Supabase fuer Datenbank und Storage. Vercel Functions sind serverless; lokale Upload-Ordner sind nicht fuer dauerhafte Dateien gedacht.
+Der Zugangscode-Schutz bietet mehrere Vorteile:
 
-### Railway
+1. **Datenschutz**: Geschlossene Community = kein öffentliches Impressum erforderlich (nach DSGVO Richtlinien)
+2. **Community-Kontrolle**: Nur autorisierte Mitglieder
+3. **Sicherheit**: Kontrollierter Zugang
+4. **Qualität**: Bessere Nutzerkontrolle
 
-1. Railway oeffnen und ein neues Projekt aus dem GitHub-Repository `Partynilles0208/ehoser-store-co` erstellen.
-2. Railway erkennt `package.json` und nutzt `npm start`.
-3. Diese Variablen setzen:
-   - `SITE_ACCESS_CODE=0208`
-   - `ADMIN_ACCESS_CODE=Nils2014!`
-   - `SUPABASE_URL=...`
-   - `SUPABASE_SERVICE_ROLE_KEY=...`
-   - `SUPABASE_STORAGE_BUCKET=games`
-4. Deploy starten. Danach gibt Railway eine oeffentliche HTTPS-Adresse aus.
+## 📚 API Endpoints
 
-### Render
+### POST `/api/register`
+Neuen Benutzer mit Zugangscode registrieren
+```json
+{
+  "accessCode": "111111",
+  "username": "max_mustermann",
+  "email": "max@example.com"
+}
+```
 
-1. New Web Service erstellen und GitHub-Repository verbinden.
-2. Build Command: `npm install`
-3. Start Command: `npm start`
-4. Environment Variables wie oben setzen.
+### GET `/api/apps`
+Alle verfügbaren Apps abrufen
 
-Der Check-Endpunkt fuer Hoster ist `/health`.
+### GET `/api/apps/:id`
+Details einer spezifischen App
+
+### POST `/api/install`
+App installieren (benötigt JWT Token)
+```json
+{
+  "appId": 1
+}
+```
+
+### GET `/api/my-apps`
+Meine installierten Apps abrufen (benötigt JWT Token)
+
+### POST `/api/verify-token`
+Token validieren
+
+## 🚀 Deployment
+
+Für Production:
+1. `.env` Datei mit echtem `JWT_SECRET` erstellen
+2. `NODE_ENV` auf `production` setzen
+3. Database regelmäßig sichern
+4. HTTPS aktivieren
+5. CORS-Einstellungen anpassen
+
+## 📱 Mobile-Optimierung
+
+Die Website ist vollständig responsive und funktioniert perfekt auf:
+- Desktop (1920px+)
+- Tablet (768px - 1024px)
+- Mobil (< 768px)
+
+## 🔧 Anpassungen
+
+### Neue Apps hinzufügen
+Apps können direkt in der Datenbank hinzugefügt werden oder über ein Admin-Panel (nicht in dieser Version).
+
+### Design ändern
+Ändere die Farben in `public/styles.css`:
+```css
+--primary-color: #6366f1;
+--secondary-color: #10b981;
+--accent-color: #f59e0b;
+```
+
+### Sicherheit erhöhen
+1. Echten JWT Secret setzen
+2. Rate Limiting hinzufügen
+3. HTTPS erzwingen
+4. CORS einschränken
+5. Input-Validierung verstärken
+
+## 🐛 Troubleshooting
+
+**Problem**: "Cannot find module 'sqlite3'"
+- Lösung: `npm install sqlite3`
+
+**Problem**: "Port 3000 ist bereits in Verwendung"
+- Lösung: PORT in `.env` ändern oder anderen Process beenden
+
+**Problem**: Frontend lädt nicht
+- Lösung: Stelle sicher, dass `npm start` ausgeführt wurde
+
+## 📄 Lizenz & Impressum
+
+**Wichtig**: Da dies eine geschlossene Community ist, kann unter deutschen Gesetzen ein Impressum wegfallen. Für professionelle Nutzung empfehlen wir, mit einem Rechtsanwalt zu klären.
+
+## 💡 Tipps
+
+- Sicherungen der Datenbank regelmäßig erstellen
+- Zugangscodes sicher verwalten
+- Token-Ablaufzeiten anpassen
+- Logging implementieren für Audit-Trail
+
+---
+
+**Viel Spaß mit ehoser shop!** 🎉
+
+Bei Fragen oder Problemen - einfach die Dokumentation überprüfen oder bei der Gemeinschaft nachfragen!

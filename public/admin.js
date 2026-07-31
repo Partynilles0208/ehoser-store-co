@@ -1,211 +1,1119 @@
-const form = document.getElementById("gameForm");
-const message = document.getElementById("adminMessage");
-const list = document.getElementById("adminGames");
-const RELEASE_TIME_ZONE = "Europe/Berlin";
+let activeAdminCode = null;
 
-const fields = {
-  id: document.getElementById("gameId"),
-  title: document.getElementById("title"),
-  description: document.getElementById("description"),
-  releaseAt: document.getElementById("releaseAt"),
-  iconUrl: document.getElementById("iconUrl"),
-  trailerUrl: document.getElementById("trailerUrl"),
-  imageUrls: document.getElementById("imageUrls"),
-  downloadUrl: document.getElementById("downloadUrl"),
-};
+const accessForm = document.getElementById('adminAccessForm');
+const secureArea = document.getElementById('adminSecureArea');
+const form = document.getElementById('uploadForm');
+const statusBox = document.getElementById('uploadStatus');
+const usersList = document.getElementById('registeredUsersList');
+const resetRequestsList = document.getElementById('resetRequestsList');
+const chatReportsList = document.getElementById('chatReportsList');
+const planRequestsList = document.getElementById('planRequestsList');
+const reportMessageContext = document.getElementById('reportMessageContext');
+const userBenefitsContext = document.getElementById('userBenefitsContext');
+const userBenefitsModal = document.getElementById('userBenefitsModal');
+let adminRefreshInterval = null;
+let _reportContextPayload = null;
+let _benefitsContextUser = null;
+let _benefitsCalculatedPrice = null;
 
-function escapeHtml(value = "") {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+setStatus('Als Gast fortfahren oeffnet die normale App zum Testen. Admin-Code ist nur fuer Verwaltung noetig.', 'info');
+
+function openMainAsGuest() {
+    sessionStorage.setItem('adminGuestPreview', '1');
+    localStorage.removeItem('token');
+    localStorage.removeItem('proStatus');
+    window.location.href = 'index.html?guest=admin';
 }
 
-function setMessage(text, ok = true) {
-  message.textContent = text;
-  message.classList.toggle("error", !ok);
-}
+accessForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const code = document.getElementById('adminJoinCode').value.trim();
+    if (!code) return;
 
-async function readResponse(response) {
-  const contentType = response.headers.get("content-type") || "";
-  const text = await response.text();
-  if (!text) return {};
-  if (contentType.includes("application/json")) {
     try {
-      return JSON.parse(text);
-    } catch {
-      return { error: text };
+        const res = await fetch(`${window.location.origin}/api/admin/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': code }
+        });
+        if (!res.ok) {
+            setStatus('Falscher Admin-Code.', 'error');
+            return;
+        }
+
+        activeAdminCode = code;
+        secureArea.style.display = '';
+        setStatus('Als Gast im Admin-Bereich. Admin-Code wurde akzeptiert.', 'success');
+        setAdminEmptyStates('Lade Admin-Daten...');
+        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadPlanRequests(), loadAdminApps(), loadVotes(), loadChatReports()]);
+        clearInterval(adminRefreshInterval);
+        adminRefreshInterval = setInterval(() => {
+            loadRegisteredUsers();
+            loadResetRequests();
+            loadPlanRequests();
+            loadAdminApps();
+            loadVotes();
+            loadChatReports();
+        }, 8000);
+    } catch (err) {
+        secureArea.style.display = '';
+        setAdminEmptyStates('Ohne Anmeldung: keine Verbindung zu den Admin-Daten.');
+        setStatus('Admin-Oberflaeche offen, aber Daten konnten nicht geladen werden.', 'error');
     }
-  }
-  return { error: text || response.statusText || "Anfrage fehlgeschlagen" };
-}
-
-function responseError(data, fallback) {
-  return data?.error || data?.message || fallback;
-}
-
-function uploadError(data, type) {
-  const text = responseError(data, "Upload fehlgeschlagen");
-  if (/request entity too large|payload too large|datei ist zu gross|file too large/i.test(text)) {
-    if (type === "executables") {
-      return "Die EXE/ZIP ist fuer den direkten Upload zu gross. Lade sie extern hoch und trage den Link unten bei EXE/ZIP Download URL ein.";
-    }
-    return "Die Datei ist fuer den direkten Upload zu gross.";
-  }
-  return text;
-}
-
-function localDateValue(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 16);
-}
-
-function formatReleaseDate(value) {
-  if (!value) return "Sofort sichtbar";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Sofort sichtbar";
-  return date.toLocaleString("de-DE", {
-    timeZone: RELEASE_TIME_ZONE,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDownloadCount(value) {
-  const count = Math.max(0, Number(value || 0));
-  return `${count.toLocaleString("de-DE")} ${count === 1 ? "Download" : "Downloads"}`;
-}
-
-async function uploadOne(input, type) {
-  if (!input.files?.[0]) return "";
-  const body = new FormData();
-  body.append("type", type);
-  body.append("file", input.files[0]);
-  const response = await fetch("/api/admin/upload", { method: "POST", body });
-  const data = await readResponse(response);
-  if (!response.ok) throw new Error(uploadError(data, type));
-  return data.url;
-}
-
-async function uploadMany(input, type) {
-  const urls = [];
-  for (const file of input.files || []) {
-    const body = new FormData();
-    body.append("type", type);
-    body.append("file", file);
-    const response = await fetch("/api/admin/upload", { method: "POST", body });
-    const data = await readResponse(response);
-    if (!response.ok) throw new Error(uploadError(data, type));
-    urls.push(data.url);
-  }
-  return urls;
-}
-
-function fillForm(game) {
-  fields.id.value = game.id || "";
-  fields.title.value = game.title || "";
-  fields.description.value = game.description || "";
-  fields.releaseAt.value = localDateValue(game.release_at);
-  fields.iconUrl.value = game.icon_url || "";
-  fields.trailerUrl.value = game.trailer_url || "";
-  fields.imageUrls.value = (game.image_urls || []).join("\n");
-  fields.downloadUrl.value = game.download_url || "";
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-function resetForm() {
-  form.reset();
-  fields.id.value = "";
-  setMessage("");
-}
-
-function renderAdminGames(games) {
-  list.innerHTML = games
-    .map(
-      (game) => `
-        <article class="admin-row">
-          <img src="${game.icon_url || "/assets/placeholder-neon.svg"}" alt="" />
-          <div>
-            <h3>${escapeHtml(game.title)}</h3>
-            <p>${escapeHtml(formatReleaseDate(game.release_at))} · ${game.download_url ? "EXE/ZIP hinterlegt" : "Keine EXE/ZIP"}</p>
-            <p>${formatDownloadCount(game.download_count)}</p>
-          </div>
-          <button data-edit="${game.id}" class="secondary">Bearbeiten</button>
-          <button data-delete="${game.id}" class="danger">Loeschen</button>
-        </article>
-      `
-    )
-    .join("");
-
-  document.querySelectorAll("[data-edit]").forEach((button) => {
-    button.addEventListener("click", () => fillForm(games.find((game) => game.id === button.dataset.edit)));
-  });
-
-  document.querySelectorAll("[data-delete]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      if (!confirm("Spiel wirklich loeschen?")) return;
-      await fetch(`/api/admin/games/${button.dataset.delete}`, { method: "DELETE" });
-      await loadAdminGames();
-    });
-  });
-}
-
-async function loadAdminGames() {
-  const response = await fetch("/api/admin/games");
-  if (response.status === 401) {
-    window.location.href = "/admin";
-    return;
-  }
-  const data = await readResponse(response);
-  if (!response.ok) {
-    list.innerHTML = `<p class="form-message error">${escapeHtml(responseError(data, "Admin-Daten konnten nicht geladen werden. Pruefe Supabase."))}</p>`;
-    return;
-  }
-  renderAdminGames(data);
-}
-
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  setMessage("Uploads werden verarbeitet...");
-  try {
-    const icon = await uploadOne(document.getElementById("iconFile"), "icons");
-    const trailer = await uploadOne(document.getElementById("trailerFile"), "trailers");
-    const exe = await uploadOne(document.getElementById("exeFile"), "executables");
-    const images = await uploadMany(document.getElementById("imageFiles"), "screenshots");
-
-    const existingImages = fields.imageUrls.value.split("\n").map((url) => url.trim()).filter(Boolean);
-    const payload = {
-      id: fields.id.value || undefined,
-      title: fields.title.value,
-      description: fields.description.value,
-      release_at: fields.releaseAt.value ? new Date(fields.releaseAt.value).toISOString() : null,
-      icon_url: icon || fields.iconUrl.value,
-      trailer_url: trailer || fields.trailerUrl.value,
-      image_urls: [...existingImages, ...images],
-      download_url: exe || fields.downloadUrl.value,
-    };
-
-    const response = await fetch("/api/admin/games", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await readResponse(response);
-    if (!response.ok) throw new Error(responseError(data, "Speichern fehlgeschlagen"));
-    fillForm(data);
-    setMessage("Gespeichert.");
-    await loadAdminGames();
-  } catch (error) {
-    setMessage(error.message, false);
-  }
 });
 
-document.getElementById("resetForm").addEventListener("click", resetForm);
-loadAdminGames();
+function setAdminEmptyStates(message) {
+    const text = escapeHtml(message || 'Ohne Anmeldung: keine Daten geladen.');
+    [
+        usersList,
+        resetRequestsList,
+        chatReportsList,
+        planRequestsList,
+        document.getElementById('adminAppsList'),
+        document.getElementById('votesAdminList')
+    ].forEach((list) => {
+        if (list) list.innerHTML = `<li>${text}</li>`;
+    });
+}
+
+function setListFallback(list, message) {
+    if (list) list.innerHTML = `<li>${escapeHtml(message || 'Ohne Anmeldung: keine Daten vorhanden.')}</li>`;
+}
+
+form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    setStatus('', '');
+
+    if (!activeAdminCode) {
+        setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
+        return;
+    }
+
+    const name = document.getElementById('name').value.trim();
+    const version = document.getElementById('version').value.trim();
+    const category = document.getElementById('category').value;
+    const description = document.getElementById('description').value.trim();
+    const sourceUrl = document.getElementById('sourceUrl').value.trim();
+    const iconFile = document.getElementById('icon').files[0];
+    const apkFile = document.getElementById('apk').files[0];
+
+    if (!iconFile || !apkFile) {
+        setStatus('Bitte Icon und APK auswählen.', 'error');
+        return;
+    }
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Wird hochgeladen...';
+
+    try {
+        setStatus('Schritt 1/3: Upload-URLs werden erstellt...', 'info');
+        const urlResponse = await fetch(`${window.location.origin}/api/admin/upload-url`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ iconName: iconFile.name, apkName: apkFile.name })
+        });
+
+        const urls = await urlResponse.json();
+        if (!urlResponse.ok) {
+            setStatus(`Fehler: ${urls.error || 'Upload-URLs konnten nicht erstellt werden.'}`, 'error');
+            return;
+        }
+
+        setStatus('Schritt 2/3: Dateien werden direkt zu Supabase hochgeladen...', 'info');
+        const iconUpload = await fetch(urls.icon.signedUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': iconFile.type || 'application/octet-stream' },
+            body: iconFile
+        });
+
+        if (!iconUpload.ok) {
+            setStatus('Icon-Upload fehlgeschlagen.', 'error');
+            return;
+        }
+
+        const apkUpload = await fetch(urls.apk.signedUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: apkFile
+        });
+
+        if (!apkUpload.ok) {
+            setStatus('APK-Upload fehlgeschlagen.', 'error');
+            return;
+        }
+
+        setStatus('Schritt 3/3: App wird gespeichert...', 'info');
+        const saveResponse = await fetch(`${window.location.origin}/api/admin/apps`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({
+                name,
+                version,
+                category,
+                description,
+                sourceUrl,
+                iconUrl: urls.icon.publicUrl,
+                downloadUrl: urls.apk.publicUrl
+            })
+        });
+
+        const data = await saveResponse.json();
+        if (!saveResponse.ok) {
+            setStatus(`Fehler: ${data.error || 'Speichern fehlgeschlagen.'}`, 'error');
+            return;
+        }
+
+        setStatus('App erfolgreich hochgeladen und gespeichert!', 'success');
+        form.reset();
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'App veroeffentlichen';
+    }
+});
+
+async function loadRegisteredUsers() {
+    if (!activeAdminCode) return;
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+
+        const users = await response.json();
+        if (!response.ok) {
+            setListFallback(usersList, 'Ohne Anmeldung: Nutzer konnten nicht geladen werden.');
+            setStatus(users.error || 'Nutzer konnten nicht geladen werden.', 'error');
+            return;
+        }
+
+        if (!users.length) {
+            usersList.innerHTML = '<li>Ohne Anmeldung: noch keine Nutzer geladen oder registriert.</li>';
+            return;
+        }
+
+        usersList.innerHTML = users
+            .map(
+                (user) => `
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;" oncontextmenu="openUserBenefitsContext(event, ${user.id}, '${escapeJs(user.username)}')">
+                    <span>${escapeHtml(user.username)} ${user.is_custom ? '<strong style="color:#f8fafc;background:linear-gradient(135deg,#4f46e5,#0ea5e9);padding:1px 7px;border-radius:6px;font-size:0.8em;">INDIVIDUELL</strong>' : ''} ${user.is_premium ? '<strong style="color:#f8fafc;background:linear-gradient(135deg,#111827,#2563eb,#14b8a6);padding:1px 7px;border-radius:6px;font-size:0.8em;">PREMIUM</strong>' : ''} ${user.has_pro ? '<strong style="color:#b45309">PRO</strong>' : ''} ${user.update_unlocked ? '<strong style="color:#2dbe6c">UPDATE</strong>' : ''} ${user.ps_account ? '<strong style="color:#4d9fff;background:rgba(77,159,255,0.15);padding:1px 6px;border-radius:6px;font-size:0.8em;">PS</strong>' : ''}</span>
+                    <span style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button class="btn-small" onclick="toggleUserPro(${user.id}, ${user.has_pro ? 'false' : 'true'})">${user.has_pro ? 'PRO entfernen' : 'PRO geben'}</button>
+                        <button class="btn-small" style="background:${user.is_premium ? 'rgba(220,50,50,0.2)' : 'linear-gradient(135deg,rgba(37,99,235,0.32),rgba(20,184,166,0.22))'}" onclick="toggleUserPremium(${user.id}, ${user.is_premium ? 'false' : 'true'})">${user.is_premium ? 'Premium entfernen' : 'Premium geben'}</button>
+                        <button class="btn-small" onclick="addPlanMonth(${user.id}, '${user.is_premium ? 'premium' : 'pro'}')">+1 Monat</button>
+                        <button class="btn-small" style="background:linear-gradient(135deg,rgba(79,70,229,0.35),rgba(14,165,233,0.25));color:#e0f2fe;" onclick="openUserBenefitsFor(${user.id}, '${escapeJs(user.username)}')">Individuell</button>
+                        <button class="btn-small" style="background:${user.ps_account ? 'rgba(220,50,50,0.2)' : 'rgba(77,159,255,0.2)'}" onclick="toggleUserPs(${user.id}, ${user.ps_account ? 'false' : 'true'})">${user.ps_account ? '🔵 PS entfernen' : '🔵 PS geben'}</button>
+                        <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
+                        <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
+                    </span>
+                </li>`
+            )
+            .join('');
+    } catch (error) {
+        setListFallback(usersList, 'Ohne Anmeldung: Nutzerliste leer, Supabase nicht erreichbar.');
+        setStatus(`Fehler beim Laden der Nutzer: ${error.message}`, 'error');
+    }
+}
+
+async function loadPlanRequests() {
+    if (!activeAdminCode || !planRequestsList) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/plan-requests`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            planRequestsList.innerHTML = '<li>Tarif-Anfragen konnten nicht geladen werden.</li>';
+            return;
+        }
+        const requests = data.requests || [];
+        if (!requests.length) {
+            planRequestsList.innerHTML = '<li>Keine offenen Tarif-Anfragen.</li>';
+            return;
+        }
+        planRequestsList.innerHTML = requests.map((req) => `
+            <li data-plan-request-id="${req.id}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                <span><strong>${escapeHtml(req.real_name || '')}</strong> möchte für ${Number(req.price_eur || 0)} Euro ${escapeHtml(String(req.plan || '').toUpperCase())} kaufen <small style="color:#8ab4c9;">(${escapeHtml(req.username || '')})</small></span>
+                <button class="btn-small" onclick="confirmPlanPayment(${req.id})">Zahlung bestätigen</button>
+            </li>
+        `).join('');
+    } catch {
+        planRequestsList.innerHTML = '<li>Keine Verbindung zu Tarif-Anfragen.</li>';
+    }
+}
+
+async function confirmPlanPayment(requestId) {
+    if (!activeAdminCode) return;
+    const row = planRequestsList?.querySelector(`[data-plan-request-id="${requestId}"]`);
+    const oldHtml = row?.outerHTML || '';
+    row?.remove();
+    if (planRequestsList && !planRequestsList.querySelector('[data-plan-request-id]')) {
+        planRequestsList.innerHTML = '<li>Keine offenen Tarif-Anfragen.</li>';
+    }
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/plan-requests/${requestId}/confirm`, {
+            method: 'POST',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            if (oldHtml && planRequestsList) planRequestsList.insertAdjacentHTML('afterbegin', oldHtml);
+            setStatus(data.error || 'Zahlung konnte nicht bestaetigt werden.', 'error');
+            return;
+        }
+        setStatus(`Zahlung bestaetigt: ${data.username} wurde auf ${data.plan} gesetzt.`, 'success');
+        await Promise.all([loadPlanRequests(), loadRegisteredUsers()]);
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    }
+}
+
+async function addPlanMonth(userId, plan) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/add-month`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
+            body: JSON.stringify({ plan })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Monat konnte nicht hinzugefuegt werden.', 'error');
+            return;
+        }
+        setStatus(`Ein Monat fuer ${data.username} hinzugefuegt.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    }
+}
+
+async function loadVotes() {
+    if (!activeAdminCode) return;
+    const el = document.getElementById('votesAdminList');
+    if (!el) return;
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/votes`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await res.json();
+        if (!res.ok) { el.innerHTML = '<li>Ohne Anmeldung: Abstimmung konnte nicht geladen werden.</li>'; return; }
+        const { count, threshold, remaining, voters, unlocked } = data;
+        el.innerHTML = `
+            <li style="margin-bottom:12px;">
+                <strong style="font-size:1.1rem;color:${unlocked ? '#2dbe6c' : '#4d9fff'};">${unlocked ? '✅ Update freigeschaltet!' : `${count} / ${threshold} Stimmen – noch ${remaining} nötig`}</strong>
+                <div style="background:rgba(255,255,255,0.06);border-radius:99px;height:8px;margin:8px 0;overflow:hidden;">
+                    <div style="height:100%;background:linear-gradient(90deg,#0e8a9b,#4d9fff);border-radius:99px;width:${Math.min(100, count * 10)}%;transition:width 0.4s ease;"></div>
+                </div>
+            </li>
+            ${voters.length ? voters.map(v => `<li style="color:#8ab4c9;padding:3px 0;">✔ ${escapeHtml(v)}</li>`).join('') : '<li style="color:#8ab4c9;">Noch keine Stimmen.</li>'}
+        `;
+    } catch {
+        el.innerHTML = '<li>Ohne Anmeldung: keine Verbindung zu den Abstimmungsdaten.</li>';
+    }
+}
+
+async function unlockUserUpdate(userId, enabled) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/unlock-update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
+            body: JSON.stringify({ enabled })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Update-Freischaltung fehlgeschlagen.', 'error');
+            return;
+        }
+        setStatus(enabled ? `✅ Update für ${data.username} freigeschaltet.` : `🔒 Update für ${data.username} gesperrt.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    }
+}
+
+async function toggleUserPs(userId, enabled) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/ps-account`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
+            body: JSON.stringify({ enabled })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'PS-Status-Änderung fehlgeschlagen.', 'error');
+            return;
+        }
+        setStatus(enabled ? `🔵 PS-Konto für ${data.username} aktiviert.` : `PS-Konto für ${data.username} entfernt.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    }
+}
+
+async function toggleUserPro(userId, enabled) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/pro`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ enabled, days: 30 })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Pro-Status konnte nicht geändert werden.', 'error');
+            return;
+        }
+        setStatus(enabled ? 'PRO wurde aktiviert.' : 'PRO wurde entfernt.', 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler bei PRO-Update: ${error.message}`, 'error');
+    }
+}
+
+async function toggleUserPremium(userId, enabled) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/premium`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ enabled, days: 30 })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Premium-Status konnte nicht geaendert werden.', 'error');
+            return;
+        }
+        setStatus(enabled ? 'Premium wurde aktiviert. Premium enthaelt alle PRO-Rechte.' : 'Premium wurde entfernt.', 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler bei Premium-Update: ${error.message}`, 'error');
+    }
+}
+
+async function loadResetRequests() {
+    if (!activeAdminCode) return;
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/reset-requests`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+
+        const requests = await response.json();
+        if (!response.ok) {
+            setListFallback(resetRequestsList, 'Ohne Anmeldung: Reset-Anfragen konnten nicht geladen werden.');
+            setStatus(requests.error || 'Reset-Anfragen konnten nicht geladen werden.', 'error');
+            return;
+        }
+
+        if (!requests.length) {
+            resetRequestsList.innerHTML = '<li>Ohne Anmeldung: keine offenen Anfragen.</li>';
+            return;
+        }
+
+        resetRequestsList.innerHTML = requests
+            .map(
+                (item) => `
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                    <span>${escapeHtml(item.username)}</span>
+                    <span style="display:flex;gap:6px;">
+                        <button class="btn-small" onclick="approveResetRequest(${item.id}, '${escapeJs(item.username)}')">Annehmen</button>
+                        <button class="btn-small" onclick="rejectResetRequest(${item.id}, '${escapeJs(item.username)}')">Ablehnen</button>
+                    </span>
+                </li>`
+            )
+            .join('');
+    } catch (error) {
+        setListFallback(resetRequestsList, 'Ohne Anmeldung: Reset-Anfragen leer, Supabase nicht erreichbar.');
+        setStatus(`Fehler beim Laden der Anfragen: ${error.message}`, 'error');
+    }
+}
+
+async function loadChatReports() {
+    if (!activeAdminCode || !chatReportsList) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/chat-reports?status=open`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            setListFallback(chatReportsList, 'Ohne Anmeldung: Chat-Meldungen konnten nicht geladen werden.');
+            setStatus(payload.error || 'Chat-Meldungen konnten nicht geladen werden.', 'error');
+            return;
+        }
+
+        const reports = Array.isArray(payload.reports) ? payload.reports : [];
+        if (!reports.length) {
+            chatReportsList.innerHTML = '<li>Ohne Anmeldung: keine offenen Meldungen.</li>';
+            return;
+        }
+
+        chatReportsList.innerHTML = reports.map((report) => {
+            const messages = Array.isArray(report.messages) ? report.messages : [];
+            const msgHtml = messages.map((msg) => `
+                <div class="report-message-item"
+                    oncontextmenu="openReportMessageMenu(event, ${Number(report.id)}, '${escapeJs(report.target_username || '')}', '${escapeJs(msg.sender || '')}', '${escapeJs(msg.preview || '')}')">
+                    <strong>${escapeHtml(msg.sender || 'Unbekannt')}</strong>
+                    <span>${escapeHtml(msg.preview || '')}</span>
+                </div>
+            `).join('');
+
+            return `
+                <li class="report-item">
+                    <div class="report-item-head">
+                        <strong>#${report.id} · ${escapeHtml(report.group_name || 'Unbekannte Gruppe')}</strong>
+                        <span>von ${escapeHtml(report.reported_by || 'Unbekannt')}</span>
+                    </div>
+                    ${report.action_description ? `<div class="report-reason">Grund: ${escapeHtml(report.action_description)}</div>` : ''}
+                    <div class="report-messages">${msgHtml || '<em>Keine Nachrichten gefunden.</em>'}</div>
+                </li>
+            `;
+        }).join('');
+    } catch (error) {
+        setListFallback(chatReportsList, 'Ohne Anmeldung: Meldungen leer, Supabase nicht erreichbar.');
+        setStatus(`Fehler bei Meldungen: ${error.message}`, 'error');
+    }
+}
+
+function openReportMessageMenu(event, reportId, targetUsername, messageSender, messagePreview) {
+    event.preventDefault();
+    if (!reportMessageContext) return;
+    _reportContextPayload = {
+        reportId,
+        targetUsername: (targetUsername || '').trim() || (messageSender || '').trim(),
+        messagePreview: messagePreview || ''
+    };
+    reportMessageContext.style.display = 'block';
+    reportMessageContext.style.left = `${event.pageX}px`;
+    reportMessageContext.style.top = `${event.pageY}px`;
+}
+
+async function adminContinueReport() {
+    if (!_reportContextPayload || !activeAdminCode) return;
+    closeReportContextMenu();
+
+    const targetUsername = (window.prompt('Nutzername für Maßnahme:', _reportContextPayload.targetUsername || '') || '').trim();
+    if (!targetUsername) return;
+
+    const actionType = (window.prompt('Aktion wählen:\nwarn = Warnung\nban = Bann\ndelete = Account löschen\ndismiss = Meldung löschen', 'warn') || '').trim().toLowerCase();
+    if (!actionType) return;
+
+    let banHours = 24;
+    if (actionType === 'ban') {
+        banHours = Number(window.prompt('Bann-Dauer in Stunden:', '24') || '24');
+        if (!Number.isFinite(banHours) || banHours <= 0) {
+            setStatus('Ungültige Bann-Dauer.', 'error');
+            return;
+        }
+    }
+
+    const description = (window.prompt('Beschreibung / Grund:', _reportContextPayload.messagePreview || '') || '').trim();
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/chat-reports/${_reportContextPayload.reportId}/resolve`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ actionType, targetUsername, banHours, description })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Meldung konnte nicht bearbeitet werden.', 'error');
+            return;
+        }
+        setStatus('Maßnahme wurde gespeichert.', 'success');
+        await loadChatReports();
+    } catch (error) {
+        setStatus(`Fehler bei Moderation: ${error.message}`, 'error');
+    }
+}
+
+function closeReportContextMenu() {
+    if (!reportMessageContext) return;
+    reportMessageContext.style.display = 'none';
+}
+
+function openUserBenefitsContext(event, userId, username) {
+    event.preventDefault();
+    if (!userBenefitsContext) return;
+    closeReportContextMenu();
+    _benefitsContextUser = { id: userId, username };
+    userBenefitsContext.style.display = 'block';
+    userBenefitsContext.style.left = `${event.pageX}px`;
+    userBenefitsContext.style.top = `${event.pageY}px`;
+}
+
+function openUserBenefitsFor(userId, username) {
+    _benefitsContextUser = { id: userId, username };
+    openUserBenefitsModal();
+}
+
+function closeUserBenefitsContext() {
+    if (!userBenefitsContext) return;
+    userBenefitsContext.style.display = 'none';
+}
+
+function resetBenefitsForm() {
+    document.querySelectorAll('.benefit-check').forEach((input) => { input.checked = false; });
+    const all = document.getElementById('benefitAll');
+    const credits = document.getElementById('benefitCredits');
+    const result = document.getElementById('benefitPriceResult');
+    const continueBtn = document.getElementById('benefitContinueBtn');
+    if (all) all.checked = false;
+    if (credits) credits.value = '0';
+    if (result) result.textContent = 'Preis: noch nicht berechnet';
+    if (continueBtn) continueBtn.disabled = true;
+    _benefitsCalculatedPrice = null;
+}
+
+function openUserBenefitsModal() {
+    if (!_benefitsContextUser || !userBenefitsModal) return;
+    closeUserBenefitsContext();
+    resetBenefitsForm();
+    const title = document.getElementById('userBenefitsTitle');
+    if (title) title.textContent = `Vorteile geben: ${_benefitsContextUser.username}`;
+    userBenefitsModal.style.display = 'flex';
+}
+
+function closeUserBenefitsModal() {
+    if (userBenefitsModal) userBenefitsModal.style.display = 'none';
+}
+
+function toggleAllBenefits(checked) {
+    document.querySelectorAll('.benefit-check').forEach((input) => { input.checked = Boolean(checked); });
+    _benefitsCalculatedPrice = null;
+    const continueBtn = document.getElementById('benefitContinueBtn');
+    const result = document.getElementById('benefitPriceResult');
+    if (continueBtn) continueBtn.disabled = true;
+    if (result) result.textContent = 'Preis: noch nicht berechnet';
+}
+
+function getBenefitsPayload() {
+    const credits = Math.max(0, Math.trunc(Number(document.getElementById('benefitCredits')?.value || 0)));
+    return {
+        features: {
+            videoGenerator: document.getElementById('benefitVideo')?.checked === true,
+            premiumKi: document.getElementById('benefitPremiumKi')?.checked === true,
+            proFeatures: document.getElementById('benefitPro')?.checked === true,
+            psAccount: document.getElementById('benefitPs')?.checked === true,
+            updateUnlocked: document.getElementById('benefitUpdate')?.checked === true
+        },
+        creditsAdded: credits
+    };
+}
+
+function calculateBenefitsPrice() {
+    const payload = getBenefitsPayload();
+    const checkedPrice = Array.from(document.querySelectorAll('.benefit-check'))
+        .filter((input) => input.checked)
+        .reduce((sum, input) => sum + (Number(input.dataset.price) || 0), 0);
+    const creditsPrice = Math.ceil(payload.creditsAdded / 100);
+    _benefitsCalculatedPrice = checkedPrice + creditsPrice;
+    const result = document.getElementById('benefitPriceResult');
+    const continueBtn = document.getElementById('benefitContinueBtn');
+    if (result) result.textContent = `Preis: ${_benefitsCalculatedPrice} Euro`;
+    if (continueBtn) continueBtn.disabled = false;
+    return _benefitsCalculatedPrice;
+}
+
+async function saveUserBenefits() {
+    if (!_benefitsContextUser || !activeAdminCode) return;
+    calculateBenefitsPrice();
+    const payload = getBenefitsPayload();
+    const hasFeature = Object.values(payload.features).some(Boolean);
+    if (!hasFeature && payload.creditsAdded <= 0) {
+        setStatus('Bitte mindestens einen Vorteil oder Credits auswaehlen.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('benefitContinueBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Speichert...';
+    }
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${_benefitsContextUser.id}/custom-benefits`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ ...payload, priceEur: _benefitsCalculatedPrice, enabled: true })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Vorteile konnten nicht gespeichert werden.', 'error');
+            return;
+        }
+        closeUserBenefitsModal();
+        setStatus(`${data.username} hat jetzt den individuellen Plan fuer ${_benefitsCalculatedPrice} Euro.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Fortfahren';
+        }
+    }
+}
+
+async function adminUnbanUser() {
+    const input = document.getElementById('unbanUsernameInput');
+    const username = (input?.value || '').trim();
+    if (!username) {
+        setStatus('Bitte einen Benutzernamen eingeben.', 'error');
+        return;
+    }
+    if (!activeAdminCode) {
+        setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
+        return;
+    }
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/unban`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ username })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Entbannen fehlgeschlagen.', 'error');
+            return;
+        }
+        setStatus(`${username} wurde erfolgreich entbannt.`, 'success');
+        if (input) input.value = '';
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    }
+}
+
+document.addEventListener('click', () => {
+    closeReportContextMenu();
+    closeUserBenefitsContext();
+});
+
+async function deleteUser(userId, username) {
+    if (!activeAdminCode) {
+        setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
+        return;
+    }
+
+    const confirmed = window.confirm(`Nutzer "${username}" wirklich loeschen?`);
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}`, {
+            method: 'DELETE',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Nutzer konnte nicht geloescht werden.', 'error');
+            return;
+        }
+
+        setStatus(`Nutzer ${username} wurde geloescht.`, 'success');
+        await Promise.all([loadRegisteredUsers(), loadResetRequests()]);
+    } catch (error) {
+        setStatus(`Fehler beim Loeschen: ${error.message}`, 'error');
+    }
+}
+
+async function approveResetRequest(requestId, username) {
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/reset-requests/${requestId}/approve`, {
+            method: 'POST',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Anfrage konnte nicht angenommen werden.', 'error');
+            return;
+        }
+        setStatus(`Reset fuer ${username} angenommen.`, 'success');
+        await loadResetRequests();
+    } catch (error) {
+        setStatus(`Fehler beim Annehmen: ${error.message}`, 'error');
+    }
+}
+
+async function rejectResetRequest(requestId, username) {
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/reset-requests/${requestId}/reject`, {
+            method: 'POST',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Anfrage konnte nicht abgelehnt werden.', 'error');
+            return;
+        }
+        setStatus(`Reset fuer ${username} abgelehnt.`, 'success');
+        await loadResetRequests();
+    } catch (error) {
+        setStatus(`Fehler beim Ablehnen: ${error.message}`, 'error');
+    }
+}
+
+function setStatus(message, type) {
+    statusBox.innerHTML = '';
+    if (!message) return;
+    const node = document.createElement('div');
+    node.className = `alert alert-${type}`;
+    node.textContent = message;
+    statusBox.appendChild(node);
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeJs(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// ─── Apps verwalten ───────────────────────────────────────────────────────────
+async function loadAdminApps() {
+    if (!activeAdminCode) return;
+    const list = document.getElementById('adminAppsList');
+    if (!list) return;
+    list.innerHTML = '<li style="color:var(--muted)">Lade Apps…</li>';
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/apps`);
+        if (!res.ok) throw new Error('Apps konnten nicht geladen werden');
+        const apps = await res.json();
+
+        if (!apps.length) {
+            list.innerHTML = '<li style="color:var(--muted)">Keine Inhalte vorhanden.</li>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+            <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                <span style="display:flex;align-items:center;gap:8px;">
+                    ${app.icon_url ? `<img src="${escapeHtml(app.icon_url)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover;">` : ''}
+                    <span>${escapeHtml(app.name)} <span style="color:var(--muted);font-size:0.8em">v${escapeHtml(app.version || '?')} · ${escapeHtml(app.category || '')}</span></span>
+                </span>
+                <button class="btn-small" style="background:#7f1d1d;color:#fff;" onclick="deleteApp(${app.id}, '${escapeJs(app.name)}')">Entfernen</button>
+            </li>`).join('');
+    } catch (err) {
+        if (list) list.innerHTML = `<li style="color:var(--muted)">Fehler: ${escapeHtml(err.message)}</li>`;
+    }
+}
+
+async function deleteApp(appId, appName) {
+    if (!activeAdminCode) return;
+    if (!confirm(`Eintrag "${appName}" wirklich entfernen?`)) return;
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/apps/${appId}`, {
+            method: 'DELETE',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            setStatus(data.error || 'Eintrag konnte nicht entfernt werden.', 'error');
+            return;
+        }
+        setStatus(`Eintrag "${appName}" wurde entfernt.`, 'success');
+        await loadAdminApps();
+    } catch (err) {
+        setStatus(`Fehler: ${err.message}`, 'error');
+    }
+}
+
+// ─── VirusTotal Scan ──────────────────────────────────────────────────────────
+async function loadAppsForScan() {
+    const list = document.getElementById('vtAppsList');
+    list.innerHTML = '<li style="color:var(--muted)">Lade Apps…</li>';
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/apps`);
+        if (!res.ok) throw new Error('Apps konnten nicht geladen werden');
+        const apps = await res.json();
+
+        if (!apps.length) {
+            list.innerHTML = '<li style="color:var(--muted)">Keine Inhalte vorhanden.</li>';
+            return;
+        }
+
+        list.innerHTML = apps.map(app => `
+            <li class="vt-app-item" id="vt-app-${app.id}">
+                <div class="vt-app-info">
+                    <strong>${escapeHtml(app.name)}</strong>
+                    <span class="vt-app-version">v${escapeHtml(app.version || '?')}</span>
+                </div>
+                <div class="vt-app-actions">
+                    ${app.download_url ? `<button class="btn-small vt-btn" onclick="vtScanUrl('${escapeJs(app.download_url)}', 'apk', ${app.id})">APK scannen</button>` : '<span style="color:var(--muted);font-size:0.8rem">Kein APK</span>'}
+                    ${app.source_url ? `<button class="btn-small vt-btn" onclick="vtScanUrl('${escapeJs(app.source_url)}', 'url', ${app.id})">Quell-URL scannen</button>` : ''}
+                </div>
+                <div id="vt-result-${app.id}" class="vt-result-area"></div>
+            </li>
+        `).join('');
+    } catch (err) {
+        list.innerHTML = `<li style="color:var(--danger)">${escapeHtml(err.message)}</li>`;
+    }
+}
+
+async function vtScanUrl(url, type, appId) {
+    const resultArea = document.getElementById(`vt-result-${appId}`);
+    resultArea.innerHTML = '<span class="vt-badge vt-scanning">⏳ Wird eingereicht…</span>';
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/vt-scan`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            },
+            body: JSON.stringify({ url })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            resultArea.innerHTML = `<span class="vt-badge vt-error">❌ ${escapeHtml(data.error || 'Fehler')}</span>`;
+            return;
+        }
+
+        resultArea.innerHTML = '<span class="vt-badge vt-scanning">🔍 Wird gescannt… (bis 30 Sek.)</span>';
+        await pollVtResult(data.analysisId, resultArea, 0);
+    } catch (err) {
+        resultArea.innerHTML = `<span class="vt-badge vt-error">❌ ${escapeHtml(err.message)}</span>`;
+    }
+}
+
+async function pollVtResult(analysisId, resultArea, attempt) {
+    if (attempt >= 10) {
+        resultArea.innerHTML = '<span class="vt-badge vt-timeout">⏱ Timeout – VT Analyse läuft noch. Später erneut versuchen.</span>';
+        return;
+    }
+
+    await new Promise(r => setTimeout(r, 3000));
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/vt-result/${encodeURIComponent(analysisId)}`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            resultArea.innerHTML = `<span class="vt-badge vt-error">❌ ${escapeHtml(data.error || 'Fehler')}</span>`;
+            return;
+        }
+
+        if (data.status !== 'completed') {
+            resultArea.innerHTML = `<span class="vt-badge vt-scanning">🔍 Analysiert… (Versuch ${attempt + 1}/10)</span>`;
+            await pollVtResult(analysisId, resultArea, attempt + 1);
+            return;
+        }
+
+        renderVtResult(data.stats, resultArea);
+    } catch (err) {
+        resultArea.innerHTML = `<span class="vt-badge vt-error">❌ ${escapeHtml(err.message)}</span>`;
+    }
+}
+
+function renderVtResult(stats, resultArea) {
+    const total = (stats.malicious || 0) + (stats.suspicious || 0) + (stats.harmless || 0) + (stats.undetected || 0);
+    const malicious = stats.malicious || 0;
+    const suspicious = stats.suspicious || 0;
+
+    let badgeClass, icon, label;
+    if (malicious > 0) {
+        badgeClass = 'vt-malicious';
+        icon = '🔴';
+        label = `GEFÄHRLICH: ${malicious} Erkennungen`;
+    } else if (suspicious > 0) {
+        badgeClass = 'vt-suspicious';
+        icon = '🟡';
+        label = `Verdächtig: ${suspicious} Hinweise`;
+    } else {
+        badgeClass = 'vt-clean';
+        icon = '🟢';
+        label = 'Sauber';
+    }
+
+    resultArea.innerHTML = `
+        <span class="vt-badge ${badgeClass}">${icon} ${escapeHtml(label)}</span>
+        <span class="vt-stats">${malicious} bösartig · ${suspicious} verdächtig · ${stats.harmless || 0} harmlos · ${stats.undetected || 0} unbekannt (von ${total})</span>
+    `;
+}
+
+// ─── Bildschirmübertragung (Admin = Viewer / WebRTC Offerer) ──────────────────
+let svPc = null;
+let svSession = null;
+let svPoll = null;
+let svDisconnectTimer = null;
+
+async function requestScreenShare(username) {
+    if (!activeAdminCode) { setStatus('Bitte zuerst einloggen.', 'error'); return; }
+
+    const modal = document.getElementById('screenViewerModal');
+    const title = document.getElementById('screenViewerTitle');
+    const statusEl = document.getElementById('screenViewerStatus');
+    const videoWrap = document.getElementById('screenVideoWrap');
+
+    // STUN servers für NAT-Traversal
+    const pc = new RTCPeerConnection({
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+    });
+    svPc = pc;
+
+    // Eingehender Video-Stream
+    pc.ontrack = (event) => {
+        const video = document.getElementById('screenVideo');
+        if (video && event.streams[0]) {
+            video.srcObject = event.streams[0];
+            videoWrap.style.display = '';
+            statusEl.style.display = 'none';
+        }
+    };
+
+    pc.onconnectionstatechange = () => {
+        const state = pc.connectionState;
+        if (state === 'connected') {
+            if (svDisconnectTimer) { clearTimeout(svDisconnectTimer); svDisconnectTimer = null; }
+            return;
+        }
+        if (state === 'disconnected') {
+            if (!svDisconnectTimer) {
+                try { pc.restartIce && pc.restartIce(); } catch {}
+                svDisconnectTimer = setTimeout(() => {
+                    closeScreenShare();
+                }, 10000);
+            }
+            return;
+        }
+        if (state === 'failed' || state === 'closed') closeScreenShare();
+    };
+
+    pc.oniceconnectionstatechange = () => {
+        const s = pc.iceConnectionState;
+        if (s === 'connected' || s === 'completed') {
+            if (svDisconnectTimer) { clearTimeout(svDisconnectTimer); svDisconnectTimer = null; }
+        }
+    };
+
+    // Video-Empfang anfordern
+    pc.addTransceiver('video', { direction: 'recvonly' });
+
+    // Offer erstellen + auf vollständiges ICE-Gathering warten
+    await pc.setLocalDescription(await pc.createOffer());
+    const offer = await waitIce(pc);
+
+    // Anfrage an Server senden
+    title.textContent = `🖥️ ${username}`;
+    statusEl.textContent = `Warte auf ${username}…`;
+    statusEl.style.display = '';
+    videoWrap.style.display = 'none';
+    modal.style.display = 'flex';
+
+    const res = await fetch(`${window.location.origin}/api/admin/screenshare/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
+        body: JSON.stringify({ username, offer })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+        setStatus(data.error || 'Fehler beim Senden', 'error');
+        closeScreenShare();
+        return;
+    }
+    svSession = data.sessionId;
+
+    // Auf Antwort des Nutzers warten (Polling)
+    svPoll = setInterval(async () => {
+        try {
+            const r = await fetch(`${window.location.origin}/api/admin/screenshare/session/${svSession}`, {
+                headers: { 'x-admin-key': activeAdminCode }
+            });
+            const d = await r.json();
+
+            if (d.status === 'declined') {
+                clearInterval(svPoll); svPoll = null;
+                closeScreenShare();
+                setStatus(`${username} hat die Übertragung abgelehnt.`, 'error');
+            } else if (d.status === 'ended') {
+                clearInterval(svPoll); svPoll = null;
+                closeScreenShare();
+            } else if (d.status === 'active' && d.answer) {
+                clearInterval(svPoll); svPoll = null;
+                await pc.setRemoteDescription(new RTCSessionDescription(d.answer));
+            }
+        } catch {}
+    }, 1500);
+}
+
+function waitIce(pc) {
+    return new Promise((resolve) => {
+        if (pc.iceGatheringState === 'complete') return resolve(pc.localDescription);
+        pc.onicegatheringstatechange = () => {
+            if (pc.iceGatheringState === 'complete') resolve(pc.localDescription);
+        };
+        setTimeout(() => resolve(pc.localDescription), 5000);
+    });
+}
+
+async function toggleScreenFullscreen() {
+    const target = document.getElementById('screenVideoWrap') || document.getElementById('screenViewerModal');
+    if (!target) return;
+    try {
+        if (document.fullscreenElement) {
+            await document.exitFullscreen();
+        } else {
+            await target.requestFullscreen();
+        }
+    } catch {}
+}
+
+async function closeScreenShare() {
+    if (svPoll) { clearInterval(svPoll); svPoll = null; }
+    if (svDisconnectTimer) { clearTimeout(svDisconnectTimer); svDisconnectTimer = null; }
+    if (svPc) { svPc.close(); svPc = null; }
+
+    if (svSession) {
+        await fetch(`${window.location.origin}/api/admin/screenshare/end/${svSession}`, {
+            method: 'POST', headers: { 'x-admin-key': activeAdminCode }
+        }).catch(() => {});
+        svSession = null;
+    }
+
+    const modal = document.getElementById('screenViewerModal');
+    if (modal) modal.style.display = 'none';
+    const video = document.getElementById('screenVideo');
+    if (video) video.srcObject = null;
+}
+
