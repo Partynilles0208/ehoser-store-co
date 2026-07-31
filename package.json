@@ -1,25 +1,64 @@
 {
-  "name": "ehoser",
-  "version": "1.0.0",
-  "description": "Ehoser game company storefront with protected access and Supabase-backed admin publishing.",
-  "main": "server.js",
-  "engines": {
-    "node": ">=20"
-  },
+  "name": "ehoser-shop",
+  "version": "1.0.14",
+  "description": "Ehoser Control Center als Web- und Desktop-App",
+  "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
-    "check": "node --check server.js"
+    "start:supabase": "node server-supabase.js",
+    "dev": "nodemon server.js",
+    "dev:supabase": "nodemon server-supabase.js",
+    "generate-secrets": "node generate-secrets.js",
+    "desktop": "electron .",
+    "dist:win": "electron-builder --win nsis"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "build": {
+    "appId": "de.ehoser.controlcenter",
+    "productName": "Ehoser Control Center",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Ehoser-Control-Center-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.106.1",
-    "cookie-parser": "^1.4.7",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "multer": "^2.1.1"
+    "@supabase/supabase-js": "^2.38.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.10.0",
+    "qrcode-generator": "^1.4.4",
+    "sqlite3": "^5.1.6"
+  },
+  "devDependencies": {
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
+    "nodemon": "^2.0.20"
   }
 }

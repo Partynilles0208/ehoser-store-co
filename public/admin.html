@@ -1,62 +1,222 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ehoser Admin</title>
-    <link rel="stylesheet" href="/assets/styles.css" />
-  </head>
-  <body class="admin-body">
-    <header class="topbar">
-      <a class="brand" href="/store">
-        <span class="brand-mark">E</span>
-        <span>Ehoser Admin</span>
-      </a>
-      <nav class="nav-actions">
-        <a href="/store">Store</a>
-      </nav>
-    </header>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ehoser - Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20">
+</head>
+<body>
+    <div class="bg-shape bg-shape-1"></div>
+    <div class="bg-shape bg-shape-2"></div>
 
-    <main class="admin-layout">
-      <section class="admin-editor">
-        <p class="eyebrow">Spiel verwalten</p>
-        <h1>Release-Daten</h1>
-        <form id="gameForm" class="admin-form">
-          <input type="hidden" id="gameId" />
-          <label>Titel <input id="title" required placeholder="Spielname" /></label>
-          <label>Beschreibung <textarea id="description" rows="5" placeholder="Kurzbeschreibung fuer die Storeseite"></textarea></label>
-          <label>Veroeffentlichungsdatum <input id="releaseAt" type="datetime-local" /></label>
-          <div class="file-row">
-            <label>Icon <input id="iconFile" type="file" accept="image/*" /></label>
-            <label>Gameplay-Trailer <input id="trailerFile" type="file" accept="video/*" /></label>
-          </div>
-          <div class="file-row">
-            <label>Bilder <input id="imageFiles" type="file" accept="image/*" multiple /></label>
-            <label>EXE oder ZIP <input id="exeFile" type="file" accept=".exe,.zip,application/x-msdownload,application/octet-stream,application/zip,application/x-zip-compressed" /></label>
-          </div>
-          <label>Icon URL <input id="iconUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
-          <label>Gameplay-Trailer URL <input id="trailerUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
-          <label>Bilder URLs <textarea id="imageUrls" rows="3" placeholder="Eine URL pro Zeile"></textarea></label>
-          <label>EXE/ZIP Download URL <input id="downloadUrl" placeholder="Wird nach Upload automatisch gefuellt" /></label>
-          <div class="form-actions">
-            <button type="submit">Speichern</button>
-            <button type="button" id="resetForm" class="secondary">Neu</button>
-          </div>
-          <p id="adminMessage" class="form-message"></p>
-        </form>
-      </section>
+    <div class="container">
+        <nav class="navbar">
+            <div class="navbar-content">
+                <div class="logo" style="cursor:pointer" onclick="window.location.href='/'">
+                    <span class="logo-icon">E</span>
+                    <h1>ehoser admin</h1>
+                </div>
+                <div class="nav-links">
+                    <a class="nav-link" href="index.html">Startseite</a>
+                </div>
+            </div>
+        </nav>
 
-      <section class="admin-list">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Bibliothek</p>
-            <h2>Veröffentlichte Spiele</h2>
-          </div>
+        <main class="admin-wrapper">
+            <section class="admin-card">
+                <h2>Admin Bereich</h2>
+                <div id="adminNoLoginNotice" class="admin-no-login-notice">
+                    <strong>Als Gast fortfahren</strong>
+                    <span>Testet die normale ehoser Oberflaeche ohne Account, bevor du hochlaedst. Der echte Admin-Bereich braucht weiter den Admin-Code.</span>
+                </div>
+                <p class="admin-help">Zum Testen kannst du als Gast in die App. Fuer Upload, Nutzerliste und Moderation gibst du unten den Admin-Code ein.</p>
+
+                <form id="adminAccessForm">
+                    <div class="form-group">
+                        <label for="adminJoinCode">Admin-Code*</label>
+                        <input id="adminJoinCode" name="adminJoinCode" type="password" placeholder="Admin-Code eingeben" required>
+                        <small>Keine Nutzer-Anmeldung noetig. Nur dieser Code ist Pflicht.</small>
+                    </div>
+                    <div class="admin-actions">
+                        <button class="btn-primary" type="button" onclick="openMainAsGuest()">Als Gast fortfahren</button>
+                        <button class="btn-secondary" type="submit">Admin-Code pruefen</button>
+                        <a href="index.html" class="btn-secondary">Zur Startseite</a>
+                    </div>
+                </form>
+
+                <section id="adminSecureArea" style="display:none; margin-top: 22px;">
+                    <h3>Inhalte verwalten</h3>
+                    <p class="admin-help">Hier laedst du Icon, Datei, Beschreibung und Quellenlink hoch. Der Eintrag wird danach direkt veröffentlicht.</p>
+
+                    <form id="uploadForm">
+
+                    <div class="upload-row">
+                        <div class="form-group">
+                            <label for="name">App Name*</label>
+                            <input id="name" name="name" type="text" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="version">Version*</label>
+                            <input id="version" name="version" type="text" placeholder="1.0.0" required>
+                        </div>
+                    </div>
+
+                    <div class="upload-row">
+                        <div class="form-group">
+                            <label for="category">Kategorie*</label>
+                            <select id="category" name="category" required>
+                                <option value="">Bitte wählen</option>
+                                <option>Grafik</option>
+                                <option>Entwicklung</option>
+                                <option>Video</option>
+                                <option>Produktivität</option>
+                                <option>Sicherheit</option>
+                                <option>Cloud</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="sourceUrl">Quell-Seite (andere Seite)</label>
+                            <input id="sourceUrl" name="sourceUrl" type="url" placeholder="https://deine-seite.de/app-detail">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Beschreibung*</label>
+                        <textarea id="description" name="description" required></textarea>
+                    </div>
+
+                    <div class="upload-row">
+                        <div class="form-group">
+                            <label for="icon">Icon Datei*</label>
+                            <input id="icon" name="icon" type="file" accept="image/*" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="apk">APK Datei*</label>
+                            <input id="apk" name="apk" type="file" accept=".apk,application/vnd.android.package-archive" required>
+                        </div>
+                    </div>
+
+                        <div class="admin-actions">
+                            <button class="btn-primary" type="submit">App veroeffentlichen</button>
+                        </div>
+                    </form>
+
+                    <div style="margin-top: 24px;">
+                        <h3>Code-Reset Anfragen</h3>
+                        <ul id="resetRequestsList" class="online-list"></ul>
+                    </div>
+
+                    <div style="margin-top: 24px;">
+                        <h3>Tarif Anfragen</h3>
+                        <p class="admin-help">Barzahlung pruefen und danach Zahlung bestaetigen.</p>
+                        <ul id="planRequestsList" class="online-list"></ul>
+                    </div>
+
+                    <div style="margin-top: 24px;">
+                        <h3>Chat Meldungen</h3>
+                        <p class="admin-help">Rechtsklick auf eine Nachricht und dann "Bericht fortsetzen", um Warnung/Bann/Löschung festzulegen.</p>
+                        <ul id="chatReportsList" class="online-list"></ul>
+
+                                        <div style="margin-top: 16px; padding: 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);">
+                                            <h4 style="margin:0 0 8px; font-size:0.95rem;">Nutzer entbannen</h4>
+                                            <div class="admin-actions" style="gap:8px; flex-wrap:wrap;">
+                                                <input id="unbanUsernameInput" type="text" placeholder="Benutzername" style="flex:1; min-width:160px; padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.07); color:#e2e8f0; font-size:0.9rem;">
+                                                <button class="btn-secondary" onclick="adminUnbanUser()">Entbannen</button>
+                                            </div>
+                                        </div>
+                    </div>
+
+                    <div style="margin-top: 24px;">
+                        <h3>Veröffentlichte Inhalte</h3>
+                        <p class="admin-help">Hier kannst du veröffentlichte Apps entfernen.</p>
+                        <ul id="adminAppsList" class="online-list"></ul>
+                    </div>
+
+                    <div style="margin-top: 24px;">
+                        <h3>🗳️ Update-Abstimmung</h3>
+                        <p class="admin-help">Hier siehst du wie viele Nutzer für das nächste Update abgestimmt haben und wer.</p>
+                        <ul id="votesAdminList" class="online-list"></ul>
+                    </div>
+
+                    <div style="margin-top: 24px;">
+                        <h3>Registrierte Nutzer</h3>
+                        <ul id="registeredUsersList" class="online-list"></ul>
+                    </div>
+
+                    <div style="margin-top: 32px;">
+                        <h3>🛡️ VirusTotal Scan</h3>
+                        <p class="admin-help">Scanne APK-Dateien und Quell-URLs auf Viren, Malware und verdächtige Inhalte.</p>
+                        <div class="admin-actions" style="margin-bottom:16px;">
+                            <button class="btn-secondary" onclick="loadAppsForScan()">Apps für Scan laden</button>
+                        </div>
+                        <ul id="vtAppsList" class="vt-apps-list"></ul>
+                        <div id="vtStatus"></div>
+                    </div>
+                </section>
+
+                <div id="uploadStatus"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ── Bildschirmübertragung Viewer Modal ───────────────────────────── -->
+    <div id="screenViewerModal" class="sv-modal" style="display:none">
+        <div class="sv-content">
+            <div class="sv-header">
+                <span id="screenViewerTitle">🖥️ Bildschirmübertragung</span>
+                <button class="sv-close" onclick="toggleScreenFullscreen()">⛶ Vollbild</button>
+                <button class="sv-close" onclick="closeScreenShare()">✕ Beenden</button>
+            </div>
+            <div id="screenViewerStatus" class="sv-status">Warte auf Nutzer…</div>
+            <div id="screenVideoWrap" class="sv-video-wrap" style="display:none">
+                <video id="screenVideo" class="sv-video" autoplay muted playsinline></video>
+            </div>
+            <p class="sv-note">🔒 Übertragung ist Ende-zu-Ende verschlüsselt (WebRTC DTLS-SRTP)</p>
         </div>
-        <div id="adminGames" class="admin-game-list"></div>
-      </section>
-    </main>
+    </div>
 
-    <script src="/assets/admin.js?v=exe-zip-upload"></script>
-  </body>
+    <div id="reportMessageContext" class="report-context-menu" style="display:none;">
+        <button onclick="adminContinueReport()">Bericht fortsetzen</button>
+    </div>
+
+    <div id="userBenefitsContext" class="report-context-menu" style="display:none;">
+        <button onclick="openUserBenefitsModal()">Vorteile geben</button>
+    </div>
+
+    <div id="userBenefitsModal" class="sv-modal" style="display:none">
+        <div class="sv-content" style="max-width:560px;">
+            <div class="sv-header">
+                <span id="userBenefitsTitle">Vorteile geben</span>
+                <button class="sv-close" onclick="closeUserBenefitsModal()">Schliessen</button>
+            </div>
+            <div style="display:grid;gap:12px;margin-top:14px;">
+                <label style="display:flex;align-items:center;gap:10px;"><input id="benefitAll" type="checkbox" onchange="toggleAllBenefits(this.checked)"> Alles freischalten</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitVideo" type="checkbox" data-price="20"> Video Generator</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitPremiumKi" type="checkbox" data-price="20"> Professionelle KI</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitPro" type="checkbox" data-price="10"> Pro Funktionen</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitPs" type="checkbox" data-price="5"> Psychologischer Support</label>
+                <label style="display:flex;align-items:center;gap:10px;"><input class="benefit-check" id="benefitUpdate" type="checkbox" data-price="0"> Update freischalten</label>
+                <div class="form-group" style="margin:0;">
+                    <label for="benefitCredits">Credits geben</label>
+                    <input id="benefitCredits" type="number" min="0" step="1" value="0" placeholder="z.B. 500">
+                    <small>Credits werden direkt zum Konto addiert.</small>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.05);">
+                    <strong id="benefitPriceResult">Preis: noch nicht berechnet</strong>
+                    <button class="btn-secondary" onclick="calculateBenefitsPrice()">Preis berechnen</button>
+                </div>
+                <div class="admin-actions">
+                    <button id="benefitContinueBtn" class="btn-primary" onclick="saveUserBenefits()" disabled>Fortfahren</button>
+                    <button class="btn-secondary" onclick="closeUserBenefitsModal()">Abbrechen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js?v=3"></script>
+</body>
 </html>

@@ -1,62 +1,2508 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ehoser Store</title>
-    <link rel="stylesheet" href="/assets/styles.css" />
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="#home" aria-label="Ehoser Startseite">
-        <span class="brand-mark">E</span>
-        <span>Ehoser</span>
-      </a>
-      <nav class="nav-actions" aria-label="Hauptnavigation">
-        <a href="#home" title="Start">Start</a>
-        <a href="#downloads" title="Downloads">Downloads</a>
-        <a href="/admin" title="Admin">Admin</a>
-      </nav>
-    </header>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ehoser Control Center</title>
+    <meta name="description" content="Ehoser Control Center – Browser-Workspace für Spiele, KI, Karten, Medien und schnelle Tools.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="shortcut icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=24">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="vendor/qrcode-generator.js"></script>
+    <script src="vendor/qrcode-compat.js"></script>
+    <style>
+        body.captcha-active { overflow: hidden !important; }
+    </style>
+</head>
+<body>
+    <!-- ── Update-Abstimmung Overlay ──────────────────────────────────────── -->
+    <div id="voteScreen" style="display:none;position:fixed;inset:0;z-index:9999;background:#07131d;overflow-y:auto;padding:32px 16px;">
+        <div style="max-width:560px;margin:0 auto;padding-top:40px;">
+            <div style="text-align:center;margin-bottom:32px;">
+                <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#0e8a9b,#4d9fff);display:grid;place-items:center;font-size:2rem;font-weight:900;color:#fff;margin:0 auto 16px;">E</div>
+                <h1 style="font-family:'Space Grotesk',sans-serif;font-size:1.8rem;font-weight:900;color:#fff;margin:0 0 8px;">Nächstes Update abstimmen</h1>
+                <p style="color:#8ab4c9;font-size:1rem;margin:0;">Klicke unten um fortzufahren – oder stimme für das nächste Update ab!</p>
+            </div>
 
-    <aside class="side-rail" aria-label="Schnellnavigation">
-      <a class="side-rail-link" href="#downloads" title="Downloads">
-        <span class="side-rail-icon" aria-hidden="true">↓</span>
-        <span>Download</span>
-      </a>
-    </aside>
+            <!-- Info-Box was kommt -->
+            <div style="background:rgba(77,159,255,0.08);border:1px solid rgba(77,159,255,0.25);border-radius:16px;padding:20px 22px;margin-bottom:20px;">
+                <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#4d9fff;margin-bottom:12px;">📦 Was kommt mit dem Update?</div>
+                <ul style="margin:0;padding:0 0 0 18px;color:#c8e0f0;font-size:0.95rem;line-height:1.8;">
+                    <li><strong style="color:#fff;">YouTube</strong> – Videos, Playlists &amp; Kanäle direkt durchsuchen &amp; schauen</li>
+                    <li><strong style="color:#fff;">KI-Chat</strong> – Konversation mit Llama 3.3 70B, Verlauf &amp; Bildanalyse</li>
+                    <li><strong style="color:#fff;">Wetter</strong> – Live-Wetterdaten für jeden Ort weltweit</li>
+                    <li><strong style="color:#fff;">Bildersuche</strong> – Lizenzfreie Bilder via Pixabay direkt im Browser</li>
+                </ul>
+                <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(77,159,255,0.15);font-size:0.85rem;color:#6a9bb8;">
+                    Das Update wird freigeschaltet, sobald <strong style="color:#4d9fff;">10 registrierte Nutzer</strong> abgestimmt haben.
+                </div>
+            </div>
 
-    <main>
-      <section id="home" class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Independent Games Studio</p>
-          <h1>Ehoser</h1>
-          <p>Neue Spiele, Gameplay, Bilder und Release-Termine an einem Ort. Downloads erscheinen erst, wenn ein Spiel wirklich freigegeben ist.</p>
+            <!-- Fortschritt -->
+            <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px 18px;margin-bottom:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <span style="color:#8ab4c9;font-size:0.9rem;">Abstimmungen</span>
+                    <span id="voteCountDisplay" style="font-size:1.3rem;font-weight:800;color:#4d9fff;">… / 10</span>
+                </div>
+                <div style="background:rgba(255,255,255,0.07);border-radius:99px;height:8px;overflow:hidden;">
+                    <div id="voteProgressBar" style="height:100%;background:linear-gradient(90deg,#0e8a9b,#4d9fff);border-radius:99px;width:0%;transition:width 0.5s ease;"></div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <button id="voteBtn" onclick="castVote()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#0e8a9b,#4d9fff);color:#fff;font-size:1.05rem;font-weight:700;font-family:'Space Grotesk',sans-serif;cursor:pointer;">
+                    🗳️ Für Update abstimmen
+                </button>
+                <button onclick="skipVote()" style="width:100%;padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#8ab4c9;font-size:0.95rem;font-weight:500;font-family:'Space Grotesk',sans-serif;cursor:pointer;">
+                    Überspringen – App ohne Update öffnen
+                </button>
+                <div id="voteMsg" style="text-align:center;font-size:0.88rem;color:#6a9bb8;min-height:20px;"></div>
+            </div>
         </div>
-        <div class="hero-visual" aria-hidden="true">
-          <img src="/assets/hero-art.svg" alt="" />
-        </div>
-      </section>
+    </div>
 
-      <section class="section-head">
-        <div>
-          <p class="eyebrow">Hauptseite</p>
-          <h2>Spiele & Gameplay</h2>
-        </div>
-      </section>
-      <section id="games" class="game-grid" aria-live="polite"></section>
+    <div class="bg-shape bg-shape-1"></div>
+    <div class="bg-shape bg-shape-2"></div>
 
-      <section id="downloads" class="downloads-band">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Download-Zentrale</p>
-            <h2>Spiele herunterladen</h2>
+    <div id="onlineWidget" class="online-widget" style="display:none">
+        <div class="online-header">🟢 Online</div>
+        <ul id="onlineList" class="online-list"></ul>
+    </div>
+    <div class="container">
+        <nav class="navbar">
+            <div class="navbar-content">
+                <div class="logo" style="cursor:pointer" onclick="showSection('mode-select')">
+                    <span class="logo-icon">E</span>
+                    <h1>ehoser</h1>
+                </div>
+                <div class="nav-links" id="navLinks">
+                    <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
+                    <a href="admin.html" class="nav-link">Admin</a>
+                </div>
+            </div>
+        </nav>
+
+        <main class="main-content">
+
+            <!-- ── Modus-Auswahl ─────────────────────────────────── -->
+            <section id="mode-select" class="section">
+                <div class="mode-select-container">
+                    <div class="mode-hero">
+                        <span class="logo-icon mode-logo">E</span>
+                        <h1 id="modeTitle" class="mode-title">Ehoser Control Center</h1>
+                        <p id="modeSubtitle" class="mode-subtitle">Ein neu sortierter Workspace f&#252;r Spiele, KI, Karten, Medien und schnelle Tools. Alles startet direkt im Browser.</p>
+                        <div id="personalizationBanner" class="personalization-banner" style="display:none;"></div>
+                        <div class="mode-search-bar">
+                            <input type="text" id="modeSearchInput" class="mode-search-input" placeholder="Feature suchen…" oninput="filterModeCards(this.value)" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="mode-cards" id="modeCardsGrid">
+                        <button class="mode-card mode-card-games" onclick="selectMode('games')">
+                            <div class="mode-card-icon">🎮</div>
+                            <div class="mode-card-body">
+                                <h3>Online Spiele</h3>
+                                <p>Hunderte kostenlose HTML5-Spiele direkt im Browser – kein Account erforderlich.</p>
+                                <span class="mode-badge mode-badge-free">Kostenlos &amp; sofort</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-ki" onclick="selectMode('ki')" data-update-feature>
+                            <div class="mode-card-icon">🤖</div>
+                            <div class="mode-card-body">
+                                <h3>KI</h3>
+                                <p>Stell der künstlichen Intelligenz Fragen – Konversation mit Verlauf, powered by Llama.</p>
+                                <span class="mode-badge mode-badge-ki">Llama 3.3 70B</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-facewarp" onclick="selectMode('facewarp')">
+                            <div class="mode-card-icon">🎭</div>
+                            <div class="mode-card-body">
+                                <h3>Face Warp Editor</h3>
+                                <p>Verändere Gesichter mit Spezialeffekten direkt im Browser – keine App nötig.</p>
+                                <span class="mode-badge mode-badge-warp">Sofort starten</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-chat" onclick="selectMode('chat')">
+                            <div class="mode-card-icon">💬</div>
+                            <div class="mode-card-body">
+                                <h3>Chat</h3>
+                                <p>Chatte verschlüsselt mit anderen Mitgliedern – Ende-zu-Ende verschlüsselt.</p>
+                                <span class="mode-badge mode-badge-chat">🔒 E2E verschlüsselt</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-mail" onclick="selectMode('emails')">
+                            <div class="mode-card-icon">&#9993;</div>
+                            <div class="mode-card-body">
+                                <h3>Emails</h3>
+                                <p>Eigene @ehoser.de-Adresse erstellen, Postfach lesen und Nachrichten senden.</p>
+                                <span class="mode-badge mode-badge-mail">Self-hosted Mail</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-map" onclick="selectMode('map')">
+                            <div class="mode-card-icon">🗺️</div>
+                            <div class="mode-card-body">
+                                <h3>Karte</h3>
+                                <p>Erkunde die Welt mit OpenStreetMap. Normal- und Satellitenansicht – Ort live suchen.</p>
+                                <span class="mode-badge mode-badge-map">OpenStreetMap</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-youtube" onclick="selectMode('youtube')" data-update-feature>
+                            <div class="mode-card-icon">▶️</div>
+                            <div class="mode-card-body">
+                                <h3>YouTube</h3>
+                                <p>Videos, Playlists und Kanäle suchen – direkt im eingebetteten Player schauen.</p>
+                                <span class="mode-badge mode-badge-youtube">YouTube API v3</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-news" onclick="selectMode('news')" data-update-feature>
+                            <div class="mode-card-icon">📰</div>
+                            <div class="mode-card-body">
+                                <h3>Nachrichten</h3>
+                                <p>Aktuelle Top-Headlines aus Deutschland und der Welt – nach Kategorie filtern &amp; suchen.</p>
+                                <span class="mode-badge mode-badge-news">NewsAPI Live</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-images" onclick="selectMode('images')" data-update-feature>
+                            <div class="mode-card-icon">🖼️</div>
+                            <div class="mode-card-body">
+                                <h3>Bildersuche</h3>
+                                <p>Suche lizenzfreie Bilder direkt mit Pixabay und öffne sie sofort im Browser.</p>
+                                <span class="mode-badge mode-badge-images">Pixabay Suche</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-weather" onclick="selectMode('weather')" data-update-feature>
+                            <div class="mode-card-icon">⛅</div>
+                            <div class="mode-card-body">
+                                <h3>Wetter</h3>
+                                <p>Gibt einen Ort ein und sieh das aktuelle Wetter – Temperatur, Regen, Wind und mehr live.</p>
+                                <span class="mode-badge mode-badge-weather">OpenWeather Live</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-qr" onclick="selectMode('qr')">
+                            <div class="mode-card-icon">🔗</div>
+                            <div class="mode-card-body">
+                                <h3>QR-Code Generator</h3>
+                                <p>Erstelle sofort QR-Codes aus jedem Text oder Link – als Bild herunterladen.</p>
+                                <span class="mode-badge mode-badge-qr">Kostenlos &amp; Offline</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-calc" onclick="selectMode('calc')">
+                            <div class="mode-card-icon">🧮</div>
+                            <div class="mode-card-body">
+                                <h3>Taschenrechner</h3>
+                                <p>Wissenschaftlicher Taschenrechner mit sin, cos, tan, Wurzel, Potenzen und Verlauf.</p>
+                                <span class="mode-badge mode-badge-calc">Wissenschaftlich</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-notes" onclick="selectMode('notes')">
+                            <div class="mode-card-icon">📝</div>
+                            <div class="mode-card-body">
+                                <h3>Notizen</h3>
+                                <p>Erstelle Notizen die direkt im Browser gespeichert werden – keine Anmeldung nötig.</p>
+                                <span class="mode-badge mode-badge-notes">Lokal gespeichert</span>
+                            </div>
+                        </button>
+
+                        <!-- ─── 20 Neue Tech-Tools ─────────────────────────────── -->
+                        <button class="mode-card mode-card-pwd" onclick="selectMode('pwd')">
+                            <div class="mode-card-icon">🔐</div>
+                            <div class="mode-card-body">
+                                <h3>Passwort-Generator</h3>
+                                <p>Sichere Passwörter mit Symbolen, Zahlen und Längenauswahl – direkt kopieren.</p>
+                                <span class="mode-badge mode-badge-pwd">Crypto-Zufall</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-palette" onclick="selectMode('palette')">
+                            <div class="mode-card-icon">🎨</div>
+                            <div class="mode-card-body">
+                                <h3>Farbpaletten</h3>
+                                <p>Generiere harmonische Farbpaletten – kopiere HEX, RGB oder als CSS-Variable.</p>
+                                <span class="mode-badge mode-badge-palette">Color Theory</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-json" onclick="selectMode('json')">
+                            <div class="mode-card-icon">📊</div>
+                            <div class="mode-card-body">
+                                <h3>JSON Formatter</h3>
+                                <p>Formatiere, minifiziere und validiere JSON – mit Syntax-Highlighting.</p>
+                                <span class="mode-badge mode-badge-json">Dev Tool</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-stopwatch" onclick="selectMode('stopwatch')">
+                            <div class="mode-card-icon">⏱️</div>
+                            <div class="mode-card-body">
+                                <h3>Stoppuhr &amp; Timer</h3>
+                                <p>Stoppuhr mit Runden-Lap-Funktion und Countdown-Timer mit Alarm-Sound.</p>
+                                <span class="mode-badge mode-badge-stopwatch">Präzise</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-encode" onclick="selectMode('encode')">
+                            <div class="mode-card-icon">🔒</div>
+                            <div class="mode-card-body">
+                                <h3>Text Encoder</h3>
+                                <p>Base64, ROT13, URL-Encoding – kodieren und dekodieren in Echtzeit.</p>
+                                <span class="mode-badge mode-badge-encode">Instant</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-units" onclick="selectMode('units')">
+                            <div class="mode-card-icon">📐</div>
+                            <div class="mode-card-body">
+                                <h3>Einheiten-Umrechner</h3>
+                                <p>Länge, Gewicht, Temperatur, Datengrößen – sofort umrechnen ohne Suche.</p>
+                                <span class="mode-badge mode-badge-units">Alle Einheiten</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-rng" onclick="selectMode('rng')">
+                            <div class="mode-card-icon">🎲</div>
+                            <div class="mode-card-body">
+                                <h3>Zufallsgenerator</h3>
+                                <p>Würfeln, Zahlen, Namen ziehen, Münze werfen – echter Krypto-Zufall.</p>
+                                <span class="mode-badge mode-badge-rng">True Random</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-tone" onclick="selectMode('tone')">
+                            <div class="mode-card-icon">🎵</div>
+                            <div class="mode-card-body">
+                                <h3>Ton-Generator</h3>
+                                <p>Generiere Frequenzen per Web Audio API – Sinuswellen, Sägezahn, Binaural Beats.</p>
+                                <span class="mode-badge mode-badge-tone">Web Audio API</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-draw" onclick="selectMode('draw')">
+                            <div class="mode-card-icon">🖊️</div>
+                            <div class="mode-card-body">
+                                <h3>Zeichenpad</h3>
+                                <p>Zeichne frei auf einem Canvas – Farbe, Stärke, Radierer, Export als PNG.</p>
+                                <span class="mode-badge mode-badge-draw">Canvas API</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-habits" onclick="selectMode('habits')">
+                            <div class="mode-card-icon">🎯</div>
+                            <div class="mode-card-body">
+                                <h3>Habit Tracker</h3>
+                                <p>Verfolge tägliche Gewohnheiten mit Streak-Counter und Fortschrittsanzeige.</p>
+                                <span class="mode-badge mode-badge-habits">Streak-System</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-texttools" onclick="selectMode('texttools')">
+                            <div class="mode-card-icon">🔤</div>
+                            <div class="mode-card-body">
+                                <h3>Text Tools</h3>
+                                <p>Wörter zählen, Text umkehren, Groß-/Kleinschreibung, Duplikate entfernen.</p>
+                                <span class="mode-badge mode-badge-texttools">Multi-Tool</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-gradient" onclick="selectMode('gradient')">
+                            <div class="mode-card-icon">🌈</div>
+                            <div class="mode-card-body">
+                                <h3>Gradient Generator</h3>
+                                <p>Erstelle CSS-Gradients visuell – kopiere den fertigen CSS-Code.</p>
+                                <span class="mode-badge mode-badge-gradient">CSS Output</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-sandbox" onclick="selectMode('sandbox')">
+                            <div class="mode-card-icon">💻</div>
+                            <div class="mode-card-body">
+                                <h3>JS Sandbox</h3>
+                                <p>Schreibe und führe JavaScript direkt im Browser aus – mit Console-Output.</p>
+                                <span class="mode-badge mode-badge-sandbox">Live Runtime</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-regex" onclick="selectMode('regex')">
+                            <div class="mode-card-icon">🔍</div>
+                            <div class="mode-card-body">
+                                <h3>Regex Tester</h3>
+                                <p>Teste Regular Expressions live – alle Matches werden sofort hervorgehoben.</p>
+                                <span class="mode-badge mode-badge-regex">Real-time</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-wheel" onclick="selectMode('wheel')">
+                            <div class="mode-card-icon">🎰</div>
+                            <div class="mode-card-body">
+                                <h3>Glücksrad</h3>
+                                <p>Eigene Einträge hinzufügen und das Rad drehen – perfekt für Entscheidungen.</p>
+                                <span class="mode-badge mode-badge-wheel">Canvas Spin</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-hash" onclick="selectMode('hash')">
+                            <div class="mode-card-icon">🧬</div>
+                            <div class="mode-card-body">
+                                <h3>Hash Generator</h3>
+                                <p>SHA-256, SHA-1 direkt im Browser – via Web Crypto API ohne Server.</p>
+                                <span class="mode-badge mode-badge-hash">Web Crypto API</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-typing" onclick="selectMode('typing')">
+                            <div class="mode-card-icon">⌨️</div>
+                            <div class="mode-card-body">
+                                <h3>Tipp-Test</h3>
+                                <p>Miss deine Tippgeschwindigkeit in WPM – mit Genauigkeit und Highscore.</p>
+                                <span class="mode-badge mode-badge-typing">WPM Score</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-camera" onclick="selectMode('camera')">
+                            <div class="mode-card-icon">📷</div>
+                            <div class="mode-card-body">
+                                <h3>Kamera</h3>
+                                <p>Fotos direkt im Browser aufnehmen – Filter, Spiegeln, als PNG speichern.</p>
+                                <span class="mode-badge mode-badge-camera">getUserMedia</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-countdown" onclick="selectMode('countdown')">
+                            <div class="mode-card-icon">📅</div>
+                            <div class="mode-card-body">
+                                <h3>Countdown</h3>
+                                <p>Countdown bis zu einem Datum – Tage, Stunden, Minuten, Sekunden live.</p>
+                                <span class="mode-badge mode-badge-countdown">Live Timer</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-metronome" onclick="selectMode('metronome')">
+                            <div class="mode-card-icon">🥁</div>
+                            <div class="mode-card-body">
+                                <h3>Metronom</h3>
+                                <p>Präzises Web-Audio-Metronom – BPM einstellen, Taktart wählen, Klick-Sound.</p>
+                                <span class="mode-badge mode-badge-metronome">Web Audio API</span>
+                            </div>
+                        </button>
+
+                        <!-- ══ 15 NEUE TOOLS ══════════════════════════════════ -->
+                        <!-- Spiele -->
+                        <button class="mode-card mode-card-snake" onclick="selectMode('snake')"><div class="mode-card-icon">🐍</div><div class="mode-card-body"><h3>Snake</h3><p>Klassisches Snake – wachse durch Fressen, weiche den Wänden aus.</p><span class="mode-badge mode-badge-game">Canvas Game</span></div></button>
+                        <button class="mode-card mode-card-tictactoe" onclick="selectMode('tictactoe')"><div class="mode-card-icon">⭕</div><div class="mode-card-body"><h3>Tic Tac Toe</h3><p>Drei in einer Reihe gegen den Computer oder einen Freund.</p><span class="mode-badge mode-badge-game">2 Spieler</span></div></button>
+                        <button class="mode-card mode-card-memory2" onclick="selectMode('memory2')"><div class="mode-card-icon">🃏</div><div class="mode-card-body"><h3>Memory</h3><p>Emoji-Kartenpaare finden – wer die meisten Paare findet gewinnt.</p><span class="mode-badge mode-badge-game">Gedächtnis</span></div></button>
+                        <!-- Rechner -->
+                        <button class="mode-card mode-card-bmi" onclick="selectMode('bmi')"><div class="mode-card-icon">⚖️</div><div class="mode-card-body"><h3>BMI-Rechner</h3><p>Body Mass Index berechnen mit Gesundheitsbewertung und Grafik.</p><span class="mode-badge mode-badge-calc2">Gesundheit</span></div></button>
+                        <button class="mode-card mode-card-tip" onclick="selectMode('tip')"><div class="mode-card-icon">💶</div><div class="mode-card-body"><h3>Trinkgeld-Rechner</h3><p>Rechnung aufteilen, Trinkgeld berechnen – pro Person.</p><span class="mode-badge mode-badge-calc2">Finanzen</span></div></button>
+                        <!-- Text Tools -->
+                        <button class="mode-card mode-card-morse" onclick="selectMode('morse')"><div class="mode-card-icon">📡</div><div class="mode-card-body"><h3>Morse Code</h3><p>Text zu Morsecode und zurück – mit Audio-Wiedergabe.</p><span class="mode-badge mode-badge-text2">Audio</span></div></button>
+                        <button class="mode-card mode-card-caesar" onclick="selectMode('caesar')"><div class="mode-card-icon">🔐</div><div class="mode-card-body"><h3>Caesar-Chiffre</h3><p>Texte mit beliebiger Verschiebung ver- und entschlüsseln.</p><span class="mode-badge mode-badge-text2">Kryptographie</span></div></button>
+                        <!-- Dev Tools -->
+                        <button class="mode-card mode-card-uuid" onclick="selectMode('uuid')"><div class="mode-card-icon">🆔</div><div class="mode-card-body"><h3>UUID Generator</h3><p>RFC 4122 v4 UUIDs erzeugen, einzeln oder als Batch.</p><span class="mode-badge mode-badge-dev">RFC 4122</span></div></button>
+                        <button class="mode-card mode-card-boxshadow" onclick="selectMode('boxshadow')"><div class="mode-card-icon">🟫</div><div class="mode-card-body"><h3>Box-Shadow Generator</h3><p>CSS box-shadow visuell mit Schiebereglern erstellen und kopieren.</p><span class="mode-badge mode-badge-dev">CSS Tool</span></div></button>
+                        <button class="mode-card mode-card-httpstatus" onclick="selectMode('httpstatus')"><div class="mode-card-icon">🌐</div><div class="mode-card-body"><h3>HTTP Status Codes</h3><p>Alle HTTP-Statuscodes mit Erklärung auf einen Blick.</p><span class="mode-badge mode-badge-dev">Referenz</span></div></button>
+                        <!-- Produktivität -->
+                        <button class="mode-card mode-card-pomodoro" onclick="selectMode('pomodoro')"><div class="mode-card-icon">🍅</div><div class="mode-card-body"><h3>Pomodoro Timer</h3><p>25 Min Fokus, 5 Min Pause – die bewährteste Produktivitätstechnik.</p><span class="mode-badge mode-badge-prod">Fokus</span></div></button>
+                        <button class="mode-card mode-card-kanban" onclick="selectMode('kanban')"><div class="mode-card-icon">📋</div><div class="mode-card-body"><h3>Kanban Board</h3><p>Aufgaben in To-Do, In Progress und Done organisieren.</p><span class="mode-badge mode-badge-prod">Agile</span></div></button>
+                        <!-- Fun & Wellness -->
+                        <button class="mode-card mode-card-eightball" onclick="selectMode('eightball')"><div class="mode-card-icon">🎱</div><div class="mode-card-body"><h3>Magic 8-Ball</h3><p>Stelle eine Ja/Nein-Frage und erhalte eine mystische Antwort.</p><span class="mode-badge mode-badge-fun">Mystisch</span></div></button>
+                        <button class="mode-card mode-card-jokegen" onclick="selectMode('jokegen')"><div class="mode-card-icon">😂</div><div class="mode-card-body"><h3>Witz-Generator</h3><p>Deutsche Witze und Flachwitze per Zufallsgenerator.</p><span class="mode-badge mode-badge-fun">Comedy</span></div></button>
+                        <button class="mode-card mode-card-breathe" onclick="selectMode('breathe')"><div class="mode-card-icon">🫁</div><div class="mode-card-body"><h3>Atemübungen</h3><p>Box Breathing und 4-7-8 Methode – animierte Atemführung.</p><span class="mode-badge mode-badge-science">Wellness</span></div></button>
+
+                        <!-- ══ 20 WEITERE TOOLS ════════════════════════════════════ -->
+                        <button class="mode-card mode-card-sudoku" onclick="selectMode('sudoku')"><div class="mode-card-icon">🔢</div><div class="mode-card-body"><h3>Sudoku</h3><p>Klassisches 9×9-Sudoku mit drei Schwierigkeitsstufen und Tipp-Funktion.</p><span class="mode-badge mode-badge-game">Rätsel</span></div></button>
+                        <button class="mode-card mode-card-hangman" onclick="selectMode('hangman')"><div class="mode-card-icon">🪄</div><div class="mode-card-body"><h3>Hangman</h3><p>Buchstaben erraten bevor die Figur komplett gezeichnet ist – deutsche Wörter.</p><span class="mode-badge mode-badge-game">Wortspiel</span></div></button>
+                        <button class="mode-card mode-card-2048" onclick="selectMode('2048')"><div class="mode-card-icon">🧩</div><div class="mode-card-body"><h3>2048</h3><p>Schiebe Kacheln und verdopple sie bis zur 2048 – mit Highscore.</p><span class="mode-badge mode-badge-game">Puzzle</span></div></button>
+                        <button class="mode-card mode-card-reaction" onclick="selectMode('reaction')"><div class="mode-card-icon">⚡</div><div class="mode-card-body"><h3>Reaktionstest</h3><p>Miss deine Reaktionszeit in Millisekunden – wie schnell bist du?</p><span class="mode-badge mode-badge-fun">Speed Test</span></div></button>
+                        <button class="mode-card mode-card-interest" onclick="selectMode('interest')"><div class="mode-card-icon">💰</div><div class="mode-card-body"><h3>Zinsen-Rechner</h3><p>Einfache und Zinseszins-Berechnung – Kapital, Laufzeit, Zinssatz.</p><span class="mode-badge mode-badge-calc2">Finanzen</span></div></button>
+                        <button class="mode-card mode-card-quote" onclick="selectMode('quote')"><div class="mode-card-icon">💬</div><div class="mode-card-body"><h3>Zitat-Generator</h3><p>Inspirierende Zitate auf Deutsch – teilen, favorisieren, neue anzeigen.</p><span class="mode-badge mode-badge-fun">Motivation</span></div></button>
+                        <button class="mode-card mode-card-dice" onclick="selectMode('dice')"><div class="mode-card-icon">🎲</div><div class="mode-card-body"><h3>Würfelsimulator</h3><p>Bis zu 6 Würfel gleichzeitig – W4, W6, W8, W12, W20 mit Animationen.</p><span class="mode-badge mode-badge-fun">D&amp;D Ready</span></div></button>
+                        <button class="mode-card mode-card-mood" onclick="selectMode('mood')"><div class="mode-card-icon">😊</div><div class="mode-card-body"><h3>Stimmungstagebuch</h3><p>Täglich deine Stimmung mit Emoji und Notiz festhalten – Verlauf sehen.</p><span class="mode-badge mode-badge-habits">Wellness</span></div></button>
+                        <button class="mode-card mode-card-grades" onclick="selectMode('grades')"><div class="mode-card-icon">📊</div><div class="mode-card-body"><h3>Notenrechner</h3><p>Schulnoten und Gewichtungen eingeben – Durchschnitt sofort berechnen.</p><span class="mode-badge mode-badge-calc2">Schule</span></div></button>
+                        <button class="mode-card mode-card-worldclock" onclick="selectMode('worldclock')"><div class="mode-card-icon">🕐</div><div class="mode-card-body"><h3>Weltzeit-Uhr</h3><p>Aktuelle Uhrzeiten aus 12 Städten rund um den Globus live anzeigen.</p><span class="mode-badge mode-badge-prod">Live</span></div></button>
+                        <button class="mode-card mode-card-pong" onclick="selectMode('pong')"><div class="mode-card-icon">🏓</div><div class="mode-card-body"><h3>Pong</h3><p>Klassisches Pong gegen den Computer – mit steigender Schwierigkeit.</p><span class="mode-badge mode-badge-game">Retro</span></div></button>
+                        <button class="mode-card mode-card-pwdcheck" onclick="selectMode('pwdcheck')"><div class="mode-card-icon">🛡️</div><div class="mode-card-body"><h3>Passwort-Stärke</h3><p>Analysiere wie sicher dein Passwort ist – Stärkebalken und Tipps.</p><span class="mode-badge mode-badge-dev">Security</span></div></button>
+                        <button class="mode-card mode-card-agecalc" onclick="selectMode('agecalc')"><div class="mode-card-icon">🎂</div><div class="mode-card-body"><h3>Alter-Rechner</h3><p>Gib ein Geburtsdatum ein – exaktes Alter in Jahren, Monaten, Tagen.</p><span class="mode-badge mode-badge-calc2">Datum</span></div></button>
+                        <button class="mode-card mode-card-calendar" onclick="selectMode('calendar')"><div class="mode-card-icon">📆</div><div class="mode-card-body"><h3>Kalender</h3><p>Monatsansicht mit Navigation – Feiertage markiert, Tage anklicken.</p><span class="mode-badge mode-badge-prod">Offline</span></div></button>
+                        <button class="mode-card mode-card-wordle" onclick="selectMode('wordle')"><div class="mode-card-icon">🟩</div><div class="mode-card-body"><h3>Wordle</h3><p>Rate das 5-Buchstaben-Wort in 6 Versuchen – täglich wechselndes Wort.</p><span class="mode-badge mode-badge-game">Wortspiel</span></div></button>
+                        <button class="mode-card mode-card-breakout" onclick="selectMode('breakout')"><div class="mode-card-icon">🧱</div><div class="mode-card-body"><h3>Breakout</h3><p>Schlag alle Ziegel mit dem Ball kaputt – Levels werden schwerer.</p><span class="mode-badge mode-badge-game">Retro</span></div></button>
+                        <button class="mode-card mode-card-colorquiz" onclick="selectMode('colorquiz')"><div class="mode-card-icon">🎨</div><div class="mode-card-body"><h3>Farb-Quiz</h3><p>Welche Farbe zeigt dieser HEX-Code? – Schnelligkeit und Highscore.</p><span class="mode-badge mode-badge-fun">Quiz</span></div></button>
+                        <button class="mode-card mode-card-numguess" onclick="selectMode('numguess')"><div class="mode-card-icon">🔮</div><div class="mode-card-body"><h3>Zahl raten</h3><p>Denk dir eine Zahl – der Computer rät oder du errätst die Zahl der KI.</p><span class="mode-badge mode-badge-fun">Rätsel</span></div></button>
+                        <button class="mode-card mode-card-birthday" onclick="selectMode('birthday')"><div class="mode-card-icon">🎉</div><div class="mode-card-body"><h3>Geburtstags-Tracker</h3><p>Geburtstage speichern – wie viele Tage noch? Wer hat bald Geburtstag?</p><span class="mode-badge mode-badge-habits">Erinnerung</span></div></button>
+                        <button class="mode-card mode-card-minesweeper" onclick="selectMode('minesweeper')"><div class="mode-card-icon">💣</div><div class="mode-card-body"><h3>Minesweeper</h3><p>Räume das Minengitter auf ohne eine Mine zu treffen – Flags setzen.</p><span class="mode-badge mode-badge-game">Klassiker</span></div></button>
+
+                        <!-- PS-Hilfe-Karte: nur sichtbar für PS-Nutzer (via JS gesteuert) -->
+                        <button id="psModeCard" class="mode-card mode-card-ps" onclick="openPsHelp()" style="display:none;">
+                            <div class="mode-card-icon">💙</div>
+                            <div class="mode-card-body">
+                                <h3>Hilfe</h3>
+                                <p>Wenn es dir nicht so gut geht – Traurigkeit, Angst oder irgendetwas anderes – dann klick hier.</p>
+                                <span class="mode-badge" style="background:rgba(77,159,255,0.15);color:#4d9fff;border:1px solid rgba(77,159,255,0.3);">Persönliche Unterstützung</span>
+                            </div>
+                        </button>
+
+                        <!-- Spiele erstellen: nur für Pro-Nutzer -->
+                        <button id="gameCreatorCard" class="mode-card mode-card-game" onclick="openGameCreator()" style="display:none;">
+                            <div class="mode-card-icon">🎮</div>
+                            <div class="mode-card-body">
+                                <h3>Spiel erstellen</h3>
+                                <p>Beschreibe ein Spiel – die KI programmiert es für dich. Direkt im Browser spielbar und herunterladbar.</p>
+                                <span class="mode-badge" style="background:rgba(255,177,0,0.15);color:#ffb100;border:1px solid rgba(255,177,0,0.3);">PRO</span>
+                            </div>
+                        </button>
+
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── PS Overlay (Vollbild Umfrage + Chat) ──────────────────── -->
+            <section id="emails" class="section">
+                <div class="email-hero">
+                    <button class="btn-back email-back" onclick="selectMode('mode-select')">Zurueck</button>
+                    <div>
+                        <span class="email-kicker">Ehoser Mail</span>
+                        <h2>Emails</h2>
+                        <p>Verwalte deine @ehoser.de Adressen, schreibe Nachrichten und lies dein Postfach an einem Ort.</p>
+                    </div>
+                </div>
+                <div class="email-center">
+                    <aside class="email-sidebar">
+                        <div class="email-sidebar-head">
+                            <div>
+                                <span>Ehoser Mail</span>
+                                <strong>Postfach</strong>
+                            </div>
+                            <button class="btn-small" onclick="loadEmailCenter()" title="Aktualisieren">&#8635;</button>
+                        </div>
+                        <div id="emailAccountsList" class="email-account-list"></div>
+                        <div class="email-create-box email-settings-link-box">
+                            <strong>Adresse verwalten</strong>
+                            <span>Deine feste Absenderadresse aenderst du in den Einstellungen.</span>
+                            <button class="btn-secondary" onclick="openSettingsModal()">Einstellungen oeffnen</button>
+                        </div>
+                    </aside>
+                    <section class="email-main">
+                        <div class="email-compose">
+                            <div class="email-panel-title">
+                                <span>Neue Nachricht</span>
+                                <strong>Schreiben</strong>
+                            </div>
+                            <div class="email-from-fixed">
+                                <span>Von</span>
+                                <strong id="emailFromDisplay">Keine Adresse eingerichtet</strong>
+                            </div>
+                            <div class="email-compose-grid">
+                                <label><span>An</span><input id="emailToInput" type="email" placeholder="empfaenger@example.com"></label>
+                                <label class="email-compose-subject"><span>Betreff</span><input id="emailSubjectInput" type="text" maxlength="180" placeholder="Worum geht es?"></label>
+                            </div>
+                            <textarea id="emailBodyInput" rows="5" placeholder="Nachricht schreiben"></textarea>
+                            <div class="email-compose-actions">
+                                <span id="emailStatusText"></span>
+                                <button class="btn-primary" onclick="sendMailMessage()">Senden</button>
+                            </div>
+                        </div>
+                        <div class="email-inbox-head">
+                            <div>
+                                <span>Aktuelle Mailbox</span>
+                                <strong>Postfach</strong>
+                            </div>
+                            <span id="emailActiveAddress"></span>
+                        </div>
+                        <div id="emailMessagesList" class="email-message-list"></div>
+                    </section>
+                </div>
+            </section>
+
+            <div id="psOverlay" style="display:none;position:fixed;inset:0;z-index:10000;background:#07131d;overflow-y:auto;flex-direction:column;align-items:center;justify-content:center;">
+
+                <!-- Screen 1: Name eingeben -->
+                <div id="psScreenName" style="display:flex;flex-direction:column;align-items:center;gap:20px;max-width:480px;width:90%;text-align:center;padding:40px 20px;">
+                    <div style="width:72px;height:72px;border-radius:20px;background:linear-gradient(135deg,#0e4a8a,#4d9fff);display:grid;place-items:center;font-size:2.5rem;">💙</div>
+                    <h2 style="font-family:'Space Grotesk',sans-serif;font-size:1.8rem;font-weight:900;color:#fff;margin:0;">Persönliche Unterstützung</h2>
+                    <p style="color:#8ab4c9;font-size:1rem;line-height:1.6;margin:0;">Ich bin hier, um dir zuzuhören. Damit ich dir besser helfen kann, gib bitte deinen echten Vornamen ein.</p>
+                    <input id="psFirstNameInput" type="text" placeholder="Dein Vorname" maxlength="50" style="width:100%;padding:14px 18px;border-radius:12px;border:1px solid rgba(77,159,255,0.3);background:rgba(255,255,255,0.06);color:#fff;font-size:1rem;font-family:'Outfit',sans-serif;box-sizing:border-box;outline:none;" />
+                    <button onclick="startPsSurvey()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#0e4a8a,#4d9fff);color:#fff;font-size:1.05rem;font-weight:700;font-family:'Space Grotesk',sans-serif;cursor:pointer;">Starten</button>
+                    <button onclick="closePsOverlay()" style="background:none;border:none;color:#6a9bb8;cursor:pointer;font-size:0.9rem;">Abbrechen</button>
+                </div>
+
+                <!-- Screen 2: Umfrage -->
+                <div id="psScreenSurvey" style="display:none;flex-direction:column;align-items:center;gap:20px;max-width:540px;width:90%;text-align:center;padding:40px 20px;">
+                    <div style="font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#4d9fff;">Umfrage <span id="psSurveyNum">1</span> von <span id="psSurveyTotal">4</span></div>
+                    <div style="width:100%;background:rgba(255,255,255,0.07);border-radius:99px;height:6px;overflow:hidden;">
+                        <div id="psSurveyBar" style="height:100%;background:linear-gradient(90deg,#0e4a8a,#4d9fff);border-radius:99px;width:0%;transition:width 0.4s ease;"></div>
+                    </div>
+                    <h2 id="psSurveyQuestion" style="font-family:'Space Grotesk',sans-serif;font-size:1.5rem;font-weight:700;color:#fff;margin:0;line-height:1.4;"></h2>
+                    <textarea id="psSurveyAnswer" placeholder="Schreib deine Antwort hier..." rows="4" style="width:100%;padding:14px 18px;border-radius:12px;border:1px solid rgba(77,159,255,0.3);background:rgba(255,255,255,0.06);color:#fff;font-size:0.95rem;font-family:'Outfit',sans-serif;resize:vertical;box-sizing:border-box;outline:none;"></textarea>
+                    <button id="psNextBtn" style="width:100%;padding:15px;border-radius:12px;border:none;background:linear-gradient(135deg,#0e4a8a,#4d9fff);color:#fff;font-size:1rem;font-weight:700;font-family:'Space Grotesk',sans-serif;cursor:pointer;">Weiter →</button>
+                </div>
+
+                <!-- Screen 3: KI analysiert -->
+                <div id="psScreenAnalyzing" style="display:none;flex-direction:column;align-items:center;gap:20px;max-width:400px;width:90%;text-align:center;padding:60px 20px;">
+                    <div style="width:64px;height:64px;border-radius:50%;border:3px solid #4d9fff;border-top-color:transparent;animation:spin 1s linear infinite;"></div>
+                    <h3 style="font-family:'Space Grotesk',sans-serif;color:#fff;font-size:1.2rem;margin:0;">Die KI analysiert deine Antworten...</h3>
+                    <p style="color:#8ab4c9;font-size:0.9rem;margin:0;">Das dauert nur einen Moment.</p>
+                </div>
+
+                <!-- Screen 4: Ergebnis -->
+                <div id="psScreenResult" style="display:none;flex-direction:column;align-items:center;gap:20px;max-width:400px;width:90%;text-align:center;padding:60px 20px;">
+                    <div style="font-size:3rem;">💙</div>
+                    <h3 style="font-family:'Space Grotesk',sans-serif;color:#fff;font-size:1.3rem;margin:0;">Wird dem psychologischen Konto hinzugefügt...</h3>
+                    <p style="color:#8ab4c9;font-size:0.95rem;margin:0;">Ich habe deine Antworten gelesen. Jetzt öffnet sich der Chat.</p>
+                    <div style="width:40px;height:40px;border-radius:50%;border:3px solid #4d9fff;border-top-color:transparent;animation:spin 1s linear infinite;"></div>
+                </div>
+
+                <!-- Screen 5: Chat -->
+                <div id="psScreenChat" style="display:none;flex-direction:column;width:100%;max-width:640px;height:100vh;padding:0 0 0 0;box-sizing:border-box;">
+                    <!-- Header -->
+                    <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.3);">
+                        <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#0e4a8a,#4d9fff);display:grid;place-items:center;font-size:1.3rem;flex-shrink:0;">💙</div>
+                        <div>
+                            <div style="font-weight:700;color:#fff;font-size:1rem;">Persönliche KI-Unterstützung</div>
+                            <div style="font-size:0.8rem;color:#4d9fff;">Vertraulich · Einfühlsam · Jederzeit verfügbar</div>
+                        </div>
+                        <button onclick="closePsOverlay()" style="margin-left:auto;background:none;border:1px solid rgba(255,255,255,0.15);color:#8ab4c9;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:0.85rem;">✕ Schließen</button>
+                        <button onclick="resetPsChat()" style="background:none;border:1px solid rgba(220,50,50,0.3);color:#e57373;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:0.8rem;">🗑 Neu</button>
+                    </div>
+                    <!-- Messages -->
+                    <div id="psChatMessages" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:4px;"></div>
+                    <!-- Input -->
+                    <div style="padding:16px 20px;border-top:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.2);display:flex;gap:10px;align-items:flex-end;">
+                        <textarea id="psChatInput" placeholder="Schreib etwas... (Enter zum Senden)" rows="2" onkeydown="psChatKeydown(event)" style="flex:1;padding:12px 16px;border-radius:12px;border:1px solid rgba(77,159,255,0.3);background:rgba(255,255,255,0.06);color:#fff;font-size:0.95rem;font-family:'Outfit',sans-serif;resize:none;outline:none;"></textarea>
+                        <button onclick="sendPsChat()" style="padding:12px 18px;border-radius:12px;border:none;background:linear-gradient(135deg,#0e4a8a,#4d9fff);color:#fff;font-weight:700;cursor:pointer;flex-shrink:0;">Senden</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ── Chat Sektion ─────────────────────────────────────── -->
+            <section id="chat" class="section">
+                <div class="chat-wrapper">
+                    <!-- Sidebar: Gespräche -->
+                    <div class="chat-sidebar" id="chatSidebar">
+                        <div class="chat-sidebar-header">
+                            <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                            <h2 class="chat-sidebar-title">💬 Chat</h2>
+                        </div>
+                        <div class="chat-new-dm">
+                            <input type="text" id="chatDmInput" class="chat-dm-input" placeholder="Nutzer suchen oder leer lassen für alle…" oninput="chatSearchUsers(this.value)" autocomplete="off">
+                            <div class="chat-user-actions">
+                                <button class="chat-small-btn" onclick="chatSearchUsers(document.getElementById('chatDmInput').value)">Alle anzeigen</button>
+                                <button class="chat-small-btn" onclick="chatApplySelectedUsers()">Anwenden</button>
+                                <button class="chat-small-btn" onclick="inviteClassToWebsite()">Klasse einladen</button>
+                            </div>
+                            <div id="chatUserDropdown" class="chat-user-dropdown" style="display:none;"></div>
+                        </div>
+                        <div id="chatGroupList" class="chat-group-list">
+                            <div class="chat-loading">Gespräche werden geladen…</div>
+                        </div>
+                    </div>
+                    <!-- Hauptbereich: Nachrichten -->
+                    <div class="chat-main" id="chatMain">
+                        <div class="chat-empty-state" id="chatEmptyState">
+                            <div class="chat-empty-icon">💬</div>
+                            <h3>Wähle ein Gespräch</h3>
+                            <p>Suche nach einem Nutzernamen links, um ein neues Gespräch zu starten.</p>
+                        </div>
+                        <div class="chat-conv" id="chatConv" style="display:none;">
+                            <div class="chat-conv-header" id="chatConvHeader">
+                                <button class="chat-back-btn" onclick="closeChatConv()">←</button>
+                                <div class="chat-conv-name" id="chatConvName"></div>
+                                <div class="chat-conv-status" id="chatConvStatus"></div>
+                                <button class="chat-notify-btn" id="chatManageBtn" style="display:none;" onclick="chatOpenGroupManage()">Gruppe verwalten</button>
+                                <button class="chat-notify-btn" onclick="chatReportCurrentGroup()">Gruppe melden</button>
+                                <button class="chat-notify-btn" onclick="requestChatNotificationsManually()">Benachrichtigung aktivieren</button>
+                            </div>
+                            <div class="chat-messages" id="chatMessages"></div>
+                            <div class="chat-scroll-controls">
+                                <button class="chat-scroll-btn" onclick="chatScrollBy(-260)" title="Nach oben">↑</button>
+                                <button class="chat-scroll-btn" onclick="chatScrollBy(260)" title="Nach unten">↓</button>
+                            </div>
+                            <button id="chatScrollBottomBtn" class="chat-scroll-bottom-btn" onclick="chatScrollToBottom(true)" style="display:none;">⬇ Neueste</button>
+                            <div class="chat-input-row">
+                                <div class="chat-input-wrap">
+                                    <button class="chat-attach-btn" onclick="triggerChatFilePicker()">+</button>
+                                    <input id="chatFileInput" type="file" style="display:none;" onchange="chatUploadAndSendFile(this)">
+                                    <textarea id="chatMsgInput" class="chat-msg-input" placeholder="Nachricht schreiben…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg();}"></textarea>
+                                    <button class="chat-send-btn" onclick="sendChatMsg()">↩</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="ki" class="section">
+                <!-- Name-Eingabe Modal -->
+                <div id="kiNameModal" class="ki-name-modal">
+                    <div class="ki-name-box">
+                        <div class="ki-name-logo">🤖</div>
+                        <h3 class="ki-name-title">Willkommen bei ehoser KI</h3>
+                        <p class="ki-name-sub">Wie heißt du? Dein Name wird nur lokal gespeichert und nie an den Server übertragen.</p>
+                        <input
+                            type="text"
+                            id="kiNameInput"
+                            class="ki-name-input"
+                            placeholder="Dein echter Vorname..."
+                            maxlength="40"
+                            onkeydown="if(event.key==='Enter'){startKIWithName();}"
+                            autocomplete="off"
+                        >
+                        <button class="ki-name-btn" onclick="startKIWithName()">Starten →</button>
+                        <p class="ki-name-hint">Dein Name bleibt lokal auf deinem Gerät. Die KI schreibt intern [name], wir ersetzen es lokal.</p>
+                    </div>
+                </div>
+                <div class="ki-wrapper" id="kiChatWrapper" style="display:none">
+                    <div class="ki-header">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <h2 class="ki-title">🤖 ehoser KI</h2>
+                        <div class="ki-title-wrap">
+                            <span class="ki-title-kicker">Modell</span>
+                            <h2 class="ki-title" id="kiModelTitle">Ehoser 1</h2>
+                        </div>
+                        <div class="ki-model-switch" role="tablist" aria-label="KI Modell">
+                            <button class="ki-model-btn active" id="kiModelEhoser1" onclick="setKIModel('ehoser1')">Ehoser 1</button>
+                            <button class="ki-model-btn premium" id="kiModelPremium" onclick="setKIModel('premium')">Premium Ehoser</button>
+                        </div>
+                        <button class="ki-clear-btn" onclick="clearKIChat()">Verlauf leeren</button>
+                    </div>
+                    <div id="kiMessages" class="ki-messages"></div>
+                    <div class="ki-attach-preview" id="kiAttachPreview" style="display:none">
+                        <span id="kiAttachName"></span>
+                        <button class="ki-attach-remove" onclick="kiClearAttachment()" title="Entfernen">✕</button>
+                    </div>
+                    <div class="ki-input-row">
+                        <input type="file" id="kiFileInput"
+                            accept="image/*,.txt,.json,.csv,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.xml,.log,.yml,.yaml"
+                            style="display:none"
+                            onchange="kiHandleFileSelect(event)">
+                        <button class="ki-attach-btn" id="kiAttachBtn"
+                            onclick="document.getElementById('kiFileInput').click()"
+                            title="Datei anhängen (PRO)"
+                            style="display:none">📎</button>
+                        <textarea
+                            id="kiInput"
+                            class="ki-input"
+                            placeholder="Stell eine Frage..."
+                            rows="2"
+                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendKIMessage();}"
+                        ></textarea>
+                        <button class="ki-send-btn" onclick="sendKIMessage()">➤</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="images" class="section">
+                <div class="store-header">
+                    <h2>Bildersuche</h2>
+                    <div class="search-bar image-search-bar">
+                        <input
+                            type="text"
+                            id="imageSearchInput"
+                            placeholder="z.B. Katze, Auto, Landschaft..."
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();runImageSearch();}"
+                        >
+                        <button class="btn-primary image-search-btn" onclick="runImageSearch()">Suchen</button>
+                    </div>
+                    <p id="imageSearchStatus" class="image-search-status">Bereit.</p>
+                </div>
+                <div id="imageSearchResults" class="image-search-grid"></div>
+            </section>
+
+            <section id="youtube" class="section">
+                <div class="yt-wrapper">
+                    <div class="yt-controls">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <div class="yt-search-wrap">
+                            <input
+                                type="text"
+                                id="ytSearchInput"
+                                class="yt-search-input"
+                                placeholder="Videos, Playlists oder Kanäle suchen..."
+                                onkeydown="if(event.key==='Enter'){runYTSearch();}"
+                                autocomplete="off"
+                            >
+                            <button class="yt-search-btn" onclick="runYTSearch()">🔍 Suchen</button>
+                        </div>
+                    </div>
+                    <div class="yt-type-tabs">
+                        <button class="yt-tab active" id="ytTabVideo" onclick="setYTType('video')">▶ Videos</button>
+                        <button class="yt-tab" id="ytTabPlaylist" onclick="setYTType('playlist')">📋 Playlists</button>
+                        <button class="yt-tab" id="ytTabChannel" onclick="setYTType('channel')">📺 Kanäle</button>
+                    </div>
+                    <div id="ytPlayerWrap" class="yt-player-wrap" style="display:none">
+                        <div class="yt-player-header">
+                            <span id="ytPlayerTitle" class="yt-player-title"></span>
+                            <button class="yt-close-btn" onclick="closeYTPlayer()">✕ Schließen</button>
+                        </div>
+                        <div class="yt-iframe-wrap">
+                            <iframe id="ytIframe" class="yt-iframe" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+                        </div>
+                    </div>
+                    <div id="ytStatus" class="yt-status"></div>
+                    <div id="ytResults" class="yt-results"></div>
+                    <div id="ytPagination" class="yt-pagination"></div>
+                </div>
+            </section>
+
+            <!-- NACHRICHTEN -->
+            <section id="news" class="section">
+                <div class="news-wrapper">
+                    <div class="news-topbar">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <div class="news-search-wrap">
+                            <input
+                                type="text"
+                                id="newsSearchInput"
+                                class="news-search-input"
+                                placeholder="Nachrichten suchen..."
+                                onkeydown="if(event.key==='Enter'){newsSearch();}"
+                                autocomplete="off"
+                            >
+                            <button class="news-search-btn" onclick="newsSearch()">🔍</button>
+                        </div>
+                    </div>
+                    <div class="news-cat-tabs">
+                        <button class="news-tab active" id="newsTabTop" onclick="newsSetCat('top')">🏠 Top</button>
+                        <button class="news-tab" id="newsTabTech" onclick="newsSetCat('technology')">💻 Tech</button>
+                        <button class="news-tab" id="newsTabSci" onclick="newsSetCat('science')">🔬 Wissenschaft</button>
+                        <button class="news-tab" id="newsTabBiz" onclick="newsSetCat('business')">💼 Business</button>
+                        <button class="news-tab" id="newsTabSport" onclick="newsSetCat('sports')">⚽ Sport</button>
+                        <button class="news-tab" id="newsTabEnt" onclick="newsSetCat('entertainment')">🎬 Entertainment</button>
+                        <button class="news-tab" id="newsTabHealth" onclick="newsSetCat('health')">❤️ Gesundheit</button>
+                    </div>
+                    <div id="newsStatus" class="news-status"></div>
+                    <div id="newsGrid" class="news-grid"></div>
+                </div>
+            </section>
+
+            <section id="map" class="section">
+                <div class="map-wrapper">
+                    <div class="map-controls">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <div class="map-search-wrap">
+                            <input
+                                type="text"
+                                id="mapSearchInput"
+                                class="map-search-input"
+                                placeholder="Ort suchen... (z.B. Berlin, Paris, Tokyo)"
+                                oninput="onMapSearchInput()"
+                                onkeydown="if(event.key==='Escape'){closeMapDropdown()}"
+                                autocomplete="off"
+                            >
+                            <div id="mapSearchDropdown" class="map-search-dropdown"></div>
+                        </div>
+                        <div class="map-layer-toggle">
+                            <button id="mapLayerNormalBtn" class="map-layer-btn active" onclick="setMapLayer('normal')">🗺️ Normal</button>
+                            <button id="mapLayerSatBtn" class="map-layer-btn" onclick="setMapLayer('satellite')">🛰️ Satellit</button>
+                        </div>
+                    </div>
+                    <div id="mapContainer" class="map-container"></div>
+                </div>
+            </section>
+
+            <section id="weather" class="section">
+                <div class="store-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>⛅ Wetter</h2>
+                    <div class="weather-search-bar">
+                        <input
+                            type="text"
+                            id="weatherCityInput"
+                            placeholder="z.B. Berlin, München, New York..."
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();runWeatherSearch();}"
+                        >
+                        <button class="btn-primary weather-search-btn" onclick="runWeatherSearch()">Suchen</button>
+                    </div>
+                    <p id="weatherStatus" class="weather-status"></p>
+                </div>
+                <div id="weatherResult" class="weather-result-wrap"></div>
+            </section>
+
+            <section id="auth" class="section active">
+                <div class="auth-container">
+                    <div class="hero-copy">
+                        <p class="eyebrow">Private Browser-Suite</p>
+                        <h2>Eintritt ins Control Center.</h2>
+                        <p>Mit Zugangscode öffnest du deinen Workspace für Tools, Spiele, KI und Medien direkt im Browser.</p>
+                        <div class="hero-pills">
+                            <span>Access Gate</span>
+                            <span>Direkt startklar</span>
+                            <span>Workspace-Modus</span>
+                        </div>
+                        <div class="auth-dashboard-preview" aria-hidden="true">
+                            <div class="auth-preview-top">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <div class="auth-preview-row is-wide">
+                                <strong>Control Center</strong>
+                                <small>online</small>
+                            </div>
+                            <div class="auth-preview-grid">
+                                <span>KI</span>
+                                <span>Games</span>
+                                <span>Tools</span>
+                                <span>Media</span>
+                            </div>
+                            <div class="auth-preview-meter"><span></span></div>
+                        </div>
+                    </div>
+                    <div class="auth-card">
+                        <h2>Account öffnen</h2>
+                        <p class="auth-subtitle">Code eingeben, Profil erstellen und loslegen.</p>
+
+                        <div class="auth-tabs">
+                            <button class="auth-tab active" onclick="switchAuthTab('register', this)">Registrieren</button>
+                            <button class="auth-tab" onclick="switchAuthTab('login', this)">Anmelden</button>
+                        </div>
+
+                        <div id="googleAuthGate" class="google-auth-gate" style="display:none;">
+                            <div class="google-auth-gate-title">Mit Google anmelden</div>
+                            <div id="googleSignInButton"></div>
+                            <p id="googleNotConfiguredMsg" style="display:none;color:#b63f2d;font-size:0.85rem;margin-top:8px;">Google Sign-In ist noch nicht konfiguriert (GOOGLE_CLIENT_ID fehlt in den Server-Einstellungen).</p>
+                        </div>
+
+                        <form id="registerForm" onsubmit="handleRegister(event)">
+                            <input type="hidden" id="referralCode" value="">
+                            <div class="form-group">
+                                <label for="unlockCode">Entsperrcode*</label>
+                                <input 
+                                    type="password" 
+                                    id="unlockCode" 
+                                    placeholder="Dein Entsperrcode" 
+                                    required
+                                    minlength="6"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="username">Benutzername*</label>
+                                <input 
+                                    type="text" 
+                                    id="username" 
+                                    placeholder="Dein Benutzername" 
+                                    required
+                                    minlength="3"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="registerPassword">Passwort*</label>
+                                <input 
+                                    type="password" 
+                                    id="registerPassword" 
+                                    placeholder="Passwort wählen (min. 6 Zeichen)" 
+                                    required
+                                    minlength="6"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="registerPasswordConfirm">Passwort wiederholen*</label>
+                                <input 
+                                    type="password" 
+                                    id="registerPasswordConfirm" 
+                                    placeholder="Passwort bestätigen" 
+                                    required
+                                    minlength="6"
+                                >
+                            </div>
+
+                            <div class="form-group">
+                                <label for="email">E-Mail</label>
+                                <input 
+                                    type="email" 
+                                    id="email" 
+                                    placeholder="Deine E-Mail-Adresse"
+                                >
+                            </div>
+
+                            <button type="submit" class="btn-primary">Registrieren</button>
+                        </form>
+
+                        <form id="loginForm" onsubmit="handleLogin(event)" style="display:none">
+                            <div class="form-group">
+                                <label for="loginUnlockCode">Entsperrcode*</label>
+                                <input 
+                                    type="password" 
+                                    id="loginUnlockCode" 
+                                    placeholder="Entsperrcode" 
+                                    required
+                                    minlength="6"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label for="loginUsername">Benutzername*</label>
+                                <input 
+                                    type="text" 
+                                    id="loginUsername" 
+                                    placeholder="Dein Benutzername" 
+                                    required
+                                    minlength="3"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label for="loginPassword">Passwort</label>
+                                <input 
+                                    type="password" 
+                                    id="loginPassword" 
+                                    placeholder="Dein Passwort (neue Konten)"
+                                    minlength="6"
+                                >
+                            </div>
+                            <div class="form-group">
+                                <label for="loginCode">Login-Code <span style="color:var(--muted);font-size:0.8em">(ältere Konten)</span></label>
+                                <input 
+                                    type="password" 
+                                    id="loginCode" 
+                                    placeholder="Dein Login-Code"
+                                    minlength="6"
+                                >
+                                <small>Entweder Passwort oder Login-Code eingeben.</small>
+                            </div>
+                            <button type="submit" class="btn-primary">Anmelden</button>
+                        </form>
+
+                        <div class="auth-help-area">
+                            <button type="button" class="btn-secondary" onclick="toggleMoreLoginOptions()">Weitere Anmeldeoptionen</button>
+                        </div>
+
+                        <div id="moreLoginOptions" style="display:none; margin-top: 12px;">
+                            <div id="desktopWebLoginBox" class="desktop-web-login-box" style="display:none;">
+                                <div class="desktop-web-login-title">Mit Web-App anmelden</div>
+                                <p>Erzeuge einen Code, melde dich im Browser mit Google an und trage ihn in Account Einstellungen ein.</p>
+                                <button type="button" class="btn-primary" onclick="startDesktopWebLogin()">Code anzeigen</button>
+                                <div id="desktopWebLoginCodeWrap" style="display:none;">
+                                    <span id="desktopWebLoginCode">------</span>
+                                    <small id="desktopWebLoginStatus">Warte auf Bestätigung in der Web-App...</small>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-secondary" onclick="toggleResetHelp()">Login-Code Hilfe</button>
+                        </div>
+
+                        <form id="helpRequestForm" onsubmit="handleHelpRequest(event)" style="display:none; margin-top: 12px;">
+                            <div class="form-group">
+                                <label for="helpUsername">Benutzername*</label>
+                                <input type="text" id="helpUsername" placeholder="Dein Benutzername" required minlength="3">
+                            </div>
+                            <button type="submit" class="btn-primary">Senden</button>
+                        </form>
+
+                        <form id="resetCompleteForm" onsubmit="handleCompleteReset(event)" style="display:none; margin-top: 12px;">
+                            <h3>Neuen Login-Code setzen</h3>
+                            <div class="form-group">
+                                <label for="newLoginCode">Neuer Login-Code*</label>
+                                <input type="password" id="newLoginCode" required minlength="6" placeholder="Neuer Login-Code">
+                            </div>
+                            <div class="form-group">
+                                <label for="confirmLoginCode">Login-Code bestaetigen*</label>
+                                <input type="password" id="confirmLoginCode" required minlength="6" placeholder="Code erneut eingeben">
+                            </div>
+                            <button type="submit" class="btn-primary">Fertig</button>
+                        </form>
+
+                        <div class="auth-info">
+                            <h3>Warum ein Zugangscode?</h3>
+                            <p>Der Code hält den Workspace privat. Nur freigegebene Nutzer bekommen Zugriff auf die Inhalte.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Online Spiele ─────────────────────────────────── -->
+            <section id="games" class="section">
+                <div class="games-header">
+                    <div class="games-header-top">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <h2>Online Spiele</h2>
+                    </div>
+                    <div class="games-controls">
+                        <div class="search-bar">
+                            <input type="text" id="gamesSearch" placeholder="Spiele suchen..." oninput="filterGames()">
+                        </div>
+                        <div id="gamesCategoryFilter" class="category-filter">
+                            <button class="filter-btn active" onclick="filterGamesByCategory('all', this)">Alle</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="gamesGrid" class="games-grid">
+                    <div class="games-loading">Spiele werden geladen…</div>
+                </div>
+                <div class="games-pagination">
+                    <button id="gamesPrevBtn" class="btn-secondary" onclick="changeGamesPage(-1)" disabled>← Zurück</button>
+                    <span id="gamesPageInfo">Seite 1</span>
+                    <button id="gamesNextBtn" class="btn-secondary" onclick="changeGamesPage(1)">Weiter →</button>
+                </div>
+            </section>
+
+            <!-- ── QR-Code Generator ───────────────────────────────── -->
+            <section id="qr" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>QR-Code Generator</h2>
+                </div>
+                <div class="qr-container">
+                    <div class="qr-input-row">
+                        <input type="text" id="qrInput" class="qr-input" placeholder="Text oder URL eingeben…" oninput="generateQR()" autocomplete="off">
+                    </div>
+                    <div id="qrOutput" class="qr-output">
+                        <canvas id="qrCanvas"></canvas>
+                    </div>
+                    <div id="qrActions" class="qr-actions" style="display:none;">
+                        <button class="btn-primary" onclick="downloadQR()">⬇ Herunterladen (PNG)</button>
+                        <button class="btn-secondary" onclick="copyQRToClipboard()">📋 Als Bild kopieren</button>
+                    </div>
+                    <p id="qrEmpty" class="qr-empty">Gib oben Text oder eine URL ein – der QR-Code erscheint sofort.</p>
+                </div>
+            </section>
+
+            <!-- ── Taschenrechner ──────────────────────────────────── -->
+            <section id="calc" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>Taschenrechner</h2>
+                </div>
+                <div class="calc-wrapper">
+                    <div class="calc-display">
+                        <div id="calcExpression" class="calc-expression"></div>
+                        <div id="calcResult" class="calc-result">0</div>
+                    </div>
+                    <div class="calc-grid">
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('sin(')">sin</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('cos(')">cos</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('tan(')">tan</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('sqrt(')">√</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('Math.PI')">π</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('Math.E')">e</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('log(')">log</button>
+                        <button class="calc-btn calc-btn-fn" onclick="calcInput('**')">xⁿ</button>
+
+                        <button class="calc-btn calc-btn-clear" onclick="calcClear()">AC</button>
+                        <button class="calc-btn calc-btn-del" onclick="calcDel()">⌫</button>
+                        <button class="calc-btn" onclick="calcInput('(')">(</button>
+                        <button class="calc-btn" onclick="calcInput(')')">)</button>
+
+                        <button class="calc-btn" onclick="calcInput('7')">7</button>
+                        <button class="calc-btn" onclick="calcInput('8')">8</button>
+                        <button class="calc-btn" onclick="calcInput('9')">9</button>
+                        <button class="calc-btn calc-btn-op" onclick="calcInput('/')">÷</button>
+
+                        <button class="calc-btn" onclick="calcInput('4')">4</button>
+                        <button class="calc-btn" onclick="calcInput('5')">5</button>
+                        <button class="calc-btn" onclick="calcInput('6')">6</button>
+                        <button class="calc-btn calc-btn-op" onclick="calcInput('*')">×</button>
+
+                        <button class="calc-btn" onclick="calcInput('1')">1</button>
+                        <button class="calc-btn" onclick="calcInput('2')">2</button>
+                        <button class="calc-btn" onclick="calcInput('3')">3</button>
+                        <button class="calc-btn calc-btn-op" onclick="calcInput('-')">−</button>
+
+                        <button class="calc-btn calc-btn-zero" onclick="calcInput('0')">0</button>
+                        <button class="calc-btn" onclick="calcInput('.')">.</button>
+                        <button class="calc-btn calc-btn-op" onclick="calcInput('+')">+</button>
+                        <button class="calc-btn calc-btn-eq" onclick="calcEquals()">=</button>
+                    </div>
+                    <div id="calcHistory" class="calc-history"></div>
+                </div>
+            </section>
+
+            <!-- ── Notizen ─────────────────────────────────────────── -->
+            <section id="notes" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>Notizen</h2>
+                    <button class="btn-primary" onclick="notesAddNew()" style="margin-left:auto;">+ Neue Notiz</button>
+                </div>
+                <div id="notesGrid" class="notes-grid"></div>
+                <div id="notesEmpty" class="notes-empty" style="display:none;">
+                    <div style="font-size:3rem;">📝</div>
+                    <p>Noch keine Notizen. Klicke oben auf <strong>+ Neue Notiz</strong>.</p>
+                </div>
+            </section>
+
+            <!-- ── Passwort-Generator ────────────────────────────── -->
+            <section id="pwd" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🔐 Passwort-Generator</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="pwd-output" id="pwdOutput">Passwort erscheint hier…</div>
+                    <div class="pwd-strength" id="pwdStrength"></div>
+                    <div class="tool-row">
+                        <label>Länge: <strong id="pwdLenLabel">16</strong></label>
+                        <input type="range" id="pwdLen" min="6" max="64" value="16" oninput="document.getElementById('pwdLenLabel').textContent=this.value;pwdGenerate()">
+                    </div>
+                    <div class="tool-checkboxes">
+                        <label><input type="checkbox" id="pwdUpper" checked onchange="pwdGenerate()"> A–Z</label>
+                        <label><input type="checkbox" id="pwdLower" checked onchange="pwdGenerate()"> a–z</label>
+                        <label><input type="checkbox" id="pwdNums" checked onchange="pwdGenerate()"> 0–9</label>
+                        <label><input type="checkbox" id="pwdSyms" checked onchange="pwdGenerate()"> !@#$…</label>
+                    </div>
+                    <div class="tool-actions">
+                        <button class="btn-primary" onclick="pwdGenerate()">🔄 Neu generieren</button>
+                        <button class="btn-secondary" onclick="pwdCopy()">📋 Kopieren</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Farbpaletten ──────────────────────────────────── -->
+            <section id="palette" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎨 Farbpaletten-Generator</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="palette-grid" id="paletteGrid"></div>
+                    <div class="tool-actions">
+                        <button class="btn-primary" onclick="paletteGenerate()">🎲 Neue Palette</button>
+                        <button class="btn-secondary" onclick="paletteCopyCSS()">📋 CSS kopieren</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── JSON Formatter ────────────────────────────────── -->
+            <section id="json" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>📊 JSON Formatter</h2>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <label class="tool-label">Eingabe</label>
+                        <textarea id="jsonInput" class="tool-textarea" placeholder='{"name":"ehoser","cool":true}' oninput="jsonFormat()"></textarea>
+                        <div class="tool-actions">
+                            <button class="btn-primary" onclick="jsonFormat()">✨ Formatieren</button>
+                            <button class="btn-secondary" onclick="jsonMinify()">📦 Minify</button>
+                            <button class="btn-secondary" onclick="jsonClear()">✕ Leeren</button>
+                        </div>
+                    </div>
+                    <div class="split-right">
+                        <label class="tool-label">Ausgabe</label>
+                        <pre id="jsonOutput" class="tool-pre"></pre>
+                        <div id="jsonStatus" class="tool-status"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Stoppuhr & Timer ──────────────────────────────── -->
+            <section id="stopwatch" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>⏱️ Stoppuhr &amp; Timer</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="sw-tabs">
+                        <button class="sw-tab active" onclick="swSwitchTab('sw')">Stoppuhr</button>
+                        <button class="sw-tab" onclick="swSwitchTab('cd')">Countdown</button>
+                    </div>
+                    <div id="swPanel">
+                        <div class="sw-display" id="swDisplay">00:00:00.0</div>
+                        <div class="tool-actions" style="justify-content:center;">
+                            <button class="btn-primary" id="swStartBtn" onclick="swToggle()">▶ Start</button>
+                            <button class="btn-secondary" onclick="swLap()">🏁 Runde</button>
+                            <button class="btn-secondary" onclick="swReset()">↺ Reset</button>
+                        </div>
+                        <div id="swLaps" class="sw-laps"></div>
+                    </div>
+                    <div id="cdPanel" style="display:none;">
+                        <div class="sw-display" id="cdDisplay">00:00</div>
+                        <div class="tool-row" style="justify-content:center;gap:12px;">
+                            <input type="number" id="cdMin" min="0" max="99" value="1" class="tool-input-sm" style="width:70px;"> min
+                            <input type="number" id="cdSec" min="0" max="59" value="0" class="tool-input-sm" style="width:70px;"> sec
+                        </div>
+                        <div class="tool-actions" style="justify-content:center;">
+                            <button class="btn-primary" id="cdStartBtn" onclick="cdToggle()">▶ Start</button>
+                            <button class="btn-secondary" onclick="cdReset()">↺ Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Text Encoder ──────────────────────────────────── -->
+            <section id="encode" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🔒 Text Encoder / Decoder</h2>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <label class="tool-label">Eingabe</label>
+                        <textarea id="encInput" class="tool-textarea" placeholder="Text eingeben…" oninput="encUpdate()"></textarea>
+                        <div class="tool-checkboxes">
+                            <label><input type="radio" name="encMode" value="b64e" checked onchange="encUpdate()"> Base64 Encode</label>
+                            <label><input type="radio" name="encMode" value="b64d" onchange="encUpdate()"> Base64 Decode</label>
+                            <label><input type="radio" name="encMode" value="rot13" onchange="encUpdate()"> ROT13</label>
+                            <label><input type="radio" name="encMode" value="url" onchange="encUpdate()"> URL Encode</label>
+                            <label><input type="radio" name="encMode" value="urld" onchange="encUpdate()"> URL Decode</label>
+                        </div>
+                    </div>
+                    <div class="split-right">
+                        <label class="tool-label">Ausgabe</label>
+                        <textarea id="encOutput" class="tool-textarea" readonly></textarea>
+                        <div class="tool-actions">
+                            <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('encOutput').value)">📋 Kopieren</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Einheiten-Umrechner ───────────────────────────── -->
+            <section id="units" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>📐 Einheiten-Umrechner</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="tool-row">
+                        <select id="unitsCat" class="tool-select" onchange="unitsUpdateCat()">
+                            <option value="length">Länge</option>
+                            <option value="weight">Gewicht</option>
+                            <option value="temp">Temperatur</option>
+                            <option value="data">Datengröße</option>
+                            <option value="speed">Geschwindigkeit</option>
+                        </select>
+                    </div>
+                    <div class="tool-row units-row">
+                        <input type="number" id="unitsFrom" class="tool-input" value="1" oninput="unitsConvert()">
+                        <select id="unitsFromUnit" class="tool-select" onchange="unitsConvert()"></select>
+                        <span style="color:#8ab4c9;font-size:1.4rem;">→</span>
+                        <input type="number" id="unitsTo" class="tool-input" readonly>
+                        <select id="unitsToUnit" class="tool-select" onchange="unitsConvert()"></select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Zufallsgenerator ──────────────────────────────── -->
+            <section id="rng" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎲 Zufallsgenerator</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="rng-grid">
+                        <div class="rng-card">
+                            <div class="rng-label">Würfel (1–6)</div>
+                            <div class="rng-result" id="rngDice">🎲</div>
+                            <button class="btn-primary" onclick="rngRollDice()">Würfeln</button>
+                        </div>
+                        <div class="rng-card">
+                            <div class="rng-label">Zahl</div>
+                            <div class="rng-result" id="rngNum">–</div>
+                            <div class="tool-row" style="gap:6px;">
+                                <input type="number" id="rngMin" value="1" class="tool-input-sm">
+                                <span style="color:#8ab4c9;">bis</span>
+                                <input type="number" id="rngMax" value="100" class="tool-input-sm">
+                            </div>
+                            <button class="btn-primary" onclick="rngRollNum()">Ziehen</button>
+                        </div>
+                        <div class="rng-card">
+                            <div class="rng-label">Münze</div>
+                            <div class="rng-result" id="rngCoin">🪙</div>
+                            <button class="btn-primary" onclick="rngFlipCoin()">Werfen</button>
+                        </div>
+                        <div class="rng-card">
+                            <div class="rng-label">Name ziehen</div>
+                            <div class="rng-result" id="rngName" style="font-size:1.2rem;">–</div>
+                            <textarea id="rngNameList" class="tool-textarea" rows="3" placeholder="Namen (eine pro Zeile)">Alice\nBob\nCharlie\nDave</textarea>
+                            <button class="btn-primary" onclick="rngPickName()">Ziehen</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Ton-Generator ─────────────────────────────────── -->
+            <section id="tone" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎵 Ton-Generator</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="tool-row" style="justify-content:center;flex-wrap:wrap;gap:16px;">
+                        <div>
+                            <label class="tool-label">Frequenz (Hz)</label>
+                            <input type="range" id="toneFreq" min="20" max="2000" value="440" oninput="toneUpdate()">
+                            <div id="toneFreqLabel" style="color:#4d9fff;font-size:1.4rem;font-weight:700;">440 Hz</div>
+                        </div>
+                        <div>
+                            <label class="tool-label">Lautstärke</label>
+                            <input type="range" id="toneVol" min="0" max="1" step="0.01" value="0.3" oninput="toneUpdate()">
+                        </div>
+                        <div>
+                            <label class="tool-label">Wellenform</label>
+                            <select id="toneWave" class="tool-select" onchange="toneUpdate()">
+                                <option value="sine">Sinus</option>
+                                <option value="square">Rechteck</option>
+                                <option value="sawtooth">Sägezahn</option>
+                                <option value="triangle">Dreieck</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-top:20px;">
+                        <div class="tone-notes">
+                            <button class="tone-note-btn" onclick="toneSetFreq(261.63)">C4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(293.66)">D4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(329.63)">E4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(349.23)">F4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(392.00)">G4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(440.00)">A4</button>
+                            <button class="tone-note-btn" onclick="toneSetFreq(493.88)">B4</button>
+                        </div>
+                    </div>
+                    <div class="tool-actions" style="justify-content:center;">
+                        <button class="btn-primary" id="tonePlayBtn" onclick="toneToggle()">▶ Play</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Zeichenpad ─────────────────────────────────────── -->
+            <section id="draw" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🖊️ Zeichenpad</h2>
+                    <div class="draw-controls">
+                        <input type="color" id="drawColor" value="#0e8a9b" title="Farbe">
+                        <input type="range" id="drawSize" min="1" max="40" value="4" title="Stärke">
+                        <button class="btn-secondary" onclick="drawSetTool('pen')" id="drawPenBtn">✏️ Stift</button>
+                        <button class="btn-secondary" onclick="drawSetTool('eraser')" id="drawEraserBtn">🧹 Radierer</button>
+                        <button class="btn-secondary" onclick="drawClear()">🗑 Löschen</button>
+                        <button class="btn-primary" onclick="drawExport()">⬇ PNG</button>
+                    </div>
+                </div>
+                <canvas id="drawCanvas" class="draw-canvas"></canvas>
+            </section>
+
+            <!-- ── Habit Tracker ──────────────────────────────────── -->
+            <section id="habits" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎯 Habit Tracker</h2>
+                    <button class="btn-primary" onclick="habitAdd()" style="margin-left:auto;">+ Gewohnheit</button>
+                </div>
+                <div id="habitsGrid" class="habits-grid"></div>
+                <div id="habitsEmpty" class="notes-empty" style="display:none;">
+                    <div style="font-size:3rem;">🎯</div>
+                    <p>Noch keine Gewohnheiten. Klicke oben auf <strong>+ Gewohnheit</strong>.</p>
+                </div>
+            </section>
+
+            <!-- ── Text Tools ─────────────────────────────────────── -->
+            <section id="texttools" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🔤 Text Tools</h2>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <textarea id="ttInput" class="tool-textarea" rows="8" placeholder="Text hier eingeben…" oninput="ttUpdate()"></textarea>
+                        <div class="tt-stats" id="ttStats">Wörter: 0 · Zeichen: 0 · Zeilen: 0</div>
+                    </div>
+                    <div class="split-right">
+                        <div class="tool-checkboxes" style="flex-direction:column;gap:8px;">
+                            <button class="btn-secondary" onclick="ttTransform('upper')">GROSSBUCHSTABEN</button>
+                            <button class="btn-secondary" onclick="ttTransform('lower')">kleinbuchstaben</button>
+                            <button class="btn-secondary" onclick="ttTransform('title')">Titelschreibweise</button>
+                            <button class="btn-secondary" onclick="ttTransform('reverse')">txeT nerkemhU</button>
+                            <button class="btn-secondary" onclick="ttTransform('trim')">Leerzeichen entfernen</button>
+                            <button class="btn-secondary" onclick="ttTransform('nodup')">Duplikate entfernen</button>
+                            <button class="btn-secondary" onclick="ttTransform('slug')">URL-Slug erstellen</button>
+                            <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('ttInput').value)">📋 Kopieren</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Gradient Generator ────────────────────────────── -->
+            <section id="gradient" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🌈 Gradient Generator</h2>
+                </div>
+                <div class="tool-body">
+                    <div id="gradPreview" class="grad-preview"></div>
+                    <div class="tool-row" style="flex-wrap:wrap;gap:16px;">
+                        <div><label class="tool-label">Typ</label>
+                            <select id="gradType" class="tool-select" onchange="gradUpdate()">
+                                <option value="linear">Linear</option>
+                                <option value="radial">Radial</option>
+                                <option value="conic">Conic</option>
+                            </select>
+                        </div>
+                        <div><label class="tool-label">Winkel (linear)</label>
+                            <input type="range" id="gradAngle" min="0" max="360" value="135" oninput="gradUpdate()">
+                            <span id="gradAngleLabel" style="color:#4d9fff;">135°</span>
+                        </div>
+                        <div><label class="tool-label">Farbe 1</label><input type="color" id="gradC1" value="#0e8a9b" oninput="gradUpdate()"></div>
+                        <div><label class="tool-label">Farbe 2</label><input type="color" id="gradC2" value="#f47c2a" oninput="gradUpdate()"></div>
+                        <div><label class="tool-label">Farbe 3</label><input type="color" id="gradC3" value="#a855f7" oninput="gradUpdate()"></div>
+                    </div>
+                    <div class="tool-row">
+                        <code id="gradCode" class="grad-code"></code>
+                        <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('gradCode').textContent)">📋 Kopieren</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── JS Sandbox ─────────────────────────────────────── -->
+            <section id="sandbox" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>💻 JS Sandbox</h2>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <label class="tool-label">JavaScript Code</label>
+                        <textarea id="sandboxInput" class="tool-textarea code-font" rows="12" placeholder="// Code hier schreiben&#10;console.log('Hallo ehoser!');&#10;const x = 2 + 2;&#10;x;"></textarea>
+                        <div class="tool-actions">
+                            <button class="btn-primary" onclick="sandboxRun()">▶ Ausführen</button>
+                            <button class="btn-secondary" onclick="sandboxClear()">✕ Leeren</button>
+                        </div>
+                    </div>
+                    <div class="split-right">
+                        <label class="tool-label">Output</label>
+                        <div id="sandboxOutput" class="sandbox-output"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Regex Tester ───────────────────────────────────── -->
+            <section id="regex" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🔍 Regex Tester</h2>
+                </div>
+                <div class="tool-body">
+                    <div class="tool-row">
+                        <input type="text" id="regexPattern" class="tool-input" placeholder="Regex Pattern z.B. \d+" oninput="regexTest()">
+                        <select id="regexFlags" class="tool-select" onchange="regexTest()">
+                            <option value="g">g</option>
+                            <option value="gi">gi</option>
+                            <option value="gm">gm</option>
+                            <option value="gim">gim</option>
+                        </select>
+                    </div>
+                    <textarea id="regexInput" class="tool-textarea" rows="5" placeholder="Testtext hier eingeben…" oninput="regexTest()"></textarea>
+                    <div id="regexHighlight" class="regex-highlight"></div>
+                    <div id="regexMatches" class="regex-matches"></div>
+                </div>
+            </section>
+
+            <!-- ── Glücksrad ──────────────────────────────────────── -->
+            <section id="wheel" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🎰 Glücksrad</h2>
+                </div>
+                <div class="tool-body" style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">
+                    <div style="flex:0 0 auto;text-align:center;">
+                        <canvas id="wheelCanvas" width="320" height="320" class="wheel-canvas"></canvas>
+                        <button class="btn-primary" onclick="wheelSpin()" id="wheelSpinBtn" style="margin-top:16px;width:200px;">🎰 Drehen!</button>
+                        <div id="wheelResult" class="wheel-result"></div>
+                    </div>
+                    <div style="flex:1;min-width:200px;">
+                        <label class="tool-label">Einträge (einer pro Zeile)</label>
+                        <textarea id="wheelEntries" class="tool-textarea" rows="8" oninput="wheelDraw()">Pizza
+Burger
+Sushi
+Döner
+Pasta
+Ramen</textarea>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Hash Generator ─────────────────────────────────── -->
+            <section id="hash" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🧬 Hash Generator</h2>
+                </div>
+                <div class="tool-body">
+                    <textarea id="hashInput" class="tool-textarea" rows="4" placeholder="Text eingeben um Hash zu generieren…" oninput="hashUpdate()"></textarea>
+                    <div class="hash-results" id="hashResults"></div>
+                </div>
+            </section>
+
+            <!-- ── Tipp-Test ──────────────────────────────────────── -->
+            <section id="typing" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>⌨️ Tipp-Test</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div id="typingStats" class="typing-stats">
+                        <span>⏱️ <strong id="typingTime">60</strong>s</span>
+                        <span>⌨️ <strong id="typingWPM">0</strong> WPM</span>
+                        <span>✅ <strong id="typingAcc">100</strong>% Genauigkeit</span>
+                    </div>
+                    <div id="typingWords" class="typing-words"></div>
+                    <input type="text" id="typingInput" class="typing-input" placeholder="Hier tippen…" oninput="typingCheck()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    <button class="btn-secondary" onclick="typingReset()">↺ Neu starten</button>
+                    <div id="typingResult" class="typing-result"></div>
+                </div>
+            </section>
+
+            <!-- ── Kamera ──────────────────────────────────────────── -->
+            <section id="camera" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>📷 Kamera</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="camera-wrapper">
+                        <video id="cameraVideo" class="camera-video" autoplay muted playsinline></video>
+                        <canvas id="cameraCanvas" class="camera-canvas" style="display:none;"></canvas>
+                    </div>
+                    <div class="tool-actions" style="justify-content:center;">
+                        <button class="btn-primary" id="cameraSnapBtn" onclick="cameraSnap()">📸 Foto aufnehmen</button>
+                        <button class="btn-secondary" id="cameraFlipBtn" onclick="cameraFlip()">🔄 Kamera wechseln</button>
+                        <button class="btn-secondary" id="cameraSaveBtn" onclick="cameraSave()" style="display:none;">⬇ Speichern</button>
+                    </div>
+                    <select id="cameraFilter" class="tool-select" style="max-width:200px;" onchange="cameraApplyFilter()">
+                        <option value="">Kein Filter</option>
+                        <option value="grayscale(100%)">Schwarz/Weiß</option>
+                        <option value="sepia(100%)">Sepia</option>
+                        <option value="invert(100%)">Invertiert</option>
+                        <option value="saturate(200%)">Satt</option>
+                        <option value="blur(3px)">Blur</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- ── Countdown ──────────────────────────────────────── -->
+            <section id="countdown" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>📅 Countdown</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="tool-row" style="justify-content:center;gap:12px;">
+                        <input type="text" id="cdEventName" class="tool-input" placeholder="Event-Name z.B. Geburtstag" style="max-width:240px;">
+                        <input type="datetime-local" id="cdTargetDate" class="tool-input" style="max-width:240px;">
+                        <button class="btn-primary" onclick="cdStart()">▶ Starten</button>
+                    </div>
+                    <div id="cdTimerDisplay" class="cd-display" style="display:none;"></div>
+                    <div id="cdEventLabel" style="color:#8ab4c9;margin-top:8px;font-size:1.1rem;"></div>
+                </div>
+            </section>
+
+            <!-- ── Metronom ───────────────────────────────────────── -->
+            <section id="metronome" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <h2>🥁 Metronom</h2>
+                </div>
+                <div class="tool-body" style="text-align:center;">
+                    <div class="metro-bpm-display" id="metroBpmDisplay">120 BPM</div>
+                    <input type="range" id="metroBpm" min="20" max="300" value="120" oninput="metroUpdateBpm()" style="width:min(400px,90%);margin:16px 0;">
+                    <div class="tool-row" style="justify-content:center;gap:16px;flex-wrap:wrap;">
+                        <div>
+                            <label class="tool-label">Taktart</label>
+                            <select id="metroBeats" class="tool-select" onchange="metroUpdateBeats()">
+                                <option value="4">4/4</option>
+                                <option value="3">3/4</option>
+                                <option value="2">2/4</option>
+                                <option value="6">6/8</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="metro-dots" id="metroDots"></div>
+                    <div class="tool-actions" style="justify-content:center;margin-top:20px;">
+                        <button class="btn-primary" id="metroStartBtn" onclick="metroToggle()">▶ Start</button>
+                    </div>
+                </div>
+            </section>
+
+        <div id="appModal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <div id="modalBody"></div>
+            </div>
+        </div>
+
+        <div id="welcomeEmailModal" class="modal">
+            <div class="modal-content email-setup-modal">
+                <span class="close" onclick="closeWelcomeEmailModal()">&times;</span>
+                <span class="email-kicker">Ehoser Mail</span>
+                <h3>Mach dir eine E-Mail-Adresse</h3>
+                <p>Waehle deinen Namen. Daraus wird automatisch deine Adresse mit @ehoser.de.</p>
+                <div class="ehoser-email-picker">
+                    <input id="welcomeEmailLocalPart" type="text" maxlength="32" placeholder="deinname">
+                    <span>@ehoser.de</span>
+                </div>
+                <div class="email-setup-actions">
+                    <button class="btn-primary" onclick="saveWelcomeEmailAddress()">Fertig</button>
+                    <button class="btn-secondary" onclick="closeWelcomeEmailModal()">Spaeter</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spiele-Spielen Modal (Vollbild) -->
+        <div id="gameModal" class="modal game-modal">
+            <div class="modal-content game-modal-content">
+                <div class="game-timer-badge" id="gameTimerBadge" style="display:none"></div>
+                <button id="gameCloseBtn" class="game-modal-close-btn" onclick="closeGameModal()">✕</button>
+                <iframe id="gameFrame" class="game-frame" src="" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Bildschirmübertragung: Anfrage-Popup ────────────────────────────── -->
+    <div id="shareRequestPopup" class="sr-popup" style="display:none">
+        <div class="sr-popup-content">
+            <div class="sr-popup-icon">🖥️</div>
+            <h3>Bildschirmübertragung</h3>
+            <p>Der Admin möchte deinen Bildschirm sehen.</p>
+            <p class="sr-popup-note">⚠️ <strong>Gilt nur für diese Webseite.</strong><br>Beim Annehmen wirst du gefragt, welchen Tab du teilen möchtest. Wähle nur diesen Tab.</p>
+            <div class="sr-popup-actions">
+                <button class="btn-primary" onclick="acceptShareRequest()">Annehmen</button>
+                <button class="btn-secondary" onclick="declineShareRequest()">Ablehnen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Bildschirmübertragung: Aktiv-Indikator ─────────────────────────── -->
+    <div id="shareIndicator" class="sr-indicator" style="display:none">
+        <span>🔴 Bildschirm wird übertragen</span>
+        <button onclick="endShareSession()">Beenden</button>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content settings-modal-content">
+            <span class="close" onclick="closeSettingsModal()">&times;</span>
+            <h3>Account Einstellungen</h3>
+            <div id="desktopLoginSettingsBox" style="background:rgba(34,224,191,0.08);border:1px solid rgba(34,224,191,0.24);border-radius:12px;padding:14px 16px;margin:12px 0;">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">Anmelden mit Web-App</div>
+                <div style="font-size:12px;color:var(--muted,#888);margin-bottom:10px;">Code aus der Desktop-App eingeben, um sie mit diesem Account anzumelden.</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <input id="desktopLoginCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="6-stelliger Code"
+                        style="flex:1;min-width:140px;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#111;color:#fff;font-size:16px;letter-spacing:0.2em;text-align:center;">
+                    <button onclick="applyDesktopLoginCode()" class="btn-small" style="padding:8px 14px;">Anwenden</button>
+                </div>
+                <small id="desktopLoginSettingsStatus" style="display:block;margin-top:8px;color:var(--muted,#888);font-size:11px;"></small>
+            </div>
+            <div class="form-group">
+                <label for="settingLanguage">Sprache</label>
+                <select id="settingLanguage">
+                    <option value="de">Deutsch</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="settingDesign">Design</label>
+                <select id="settingDesign">
+                    <option value="standard">Standard</option>
+                    <option value="ocean">Ocean</option>
+                    <option value="sunset">Sunset</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;">
+                    <input id="settingEnergySaver" type="checkbox" style="width:auto;"> Energiesparmodus
+                </label>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:flex-start;gap:10px;">
+                    <input id="settingPersonalizationEnabled" type="checkbox" style="width:auto;margin-top:3px;">
+                    <span>
+                        KI-Personalisierung aktivieren
+                        <small style="display:block;color:var(--muted,#888);margin-top:4px;line-height:1.5;">Wenn aktiv, darf ehoser Layout, Hinweise, Reihenfolge und Suche automatisch an dein Verhalten anpassen. Wenn aus, bleibt alles statisch.</small>
+                    </span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="accountDisplayName">Anzeigename</label>
+                <input id="accountDisplayName" type="text" maxlength="40" placeholder="Wie du angezeigt wirst">
+            </div>
+            <div class="form-group">
+                <label for="accountAvatarUrl">Profilbild</label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input id="accountAvatarUrl" type="url" placeholder="https://..." oninput="refreshAccountAvatarPreview()" style="flex:1;min-width:220px;">
+                    <input id="accountAvatarFile" type="file" accept="image/*" style="max-width:220px;">
+                    <button class="btn-small" onclick="uploadAccountAvatar()" style="width:auto;">Bild hochladen</button>
+                </div>
+                <img id="accountAvatarPreview" alt="Profilbild Vorschau" style="display:none;width:64px;height:64px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.15);margin-top:10px;">
+            </div>
+            <div class="settings-pro-box">
+                <div id="planBadge" class="plan-badge">Plan: Gratis</div>
+                <button class="btn-secondary" onclick="createReferralInvite()">Gratis Pro holen</button>
+                <small id="inviteHint">Lade 1 Person mit deinem Link ein. Nach erfolgreicher Registrierung bekommen beide 2 Tage Pro.</small>
+                <div id="inviteLinkWrap" class="invite-link-wrap" style="display:none;">
+                    <input id="inviteLinkInput" type="text" readonly>
+                    <button class="btn-small" onclick="copyInviteLink()">Kopieren</button>
+                </div>
+            </div>
+            <div class="settings-login-code-box" style="background:rgba(0,0,0,0.04);border:1px solid rgba(0,0,0,0.1);border-radius:12px;padding:14px 16px;margin-top:4px;">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">Dein Login-Code</div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <span id="myLoginCodeDisplay" style="font-family:monospace;font-size:1.4rem;font-weight:800;letter-spacing:0.2em;color:var(--primary,#333);min-width:80px;">••••••</span>
+                    <button id="toggleCodeBtn" onclick="toggleShowLoginCode()" class="btn-small" style="padding:4px 10px;font-size:12px;">👁 Anzeigen</button>
+                    <button onclick="copyLoginCode()" class="btn-small" style="padding:4px 10px;font-size:12px;">📋 Kopieren</button>
+                </div>
+                <small style="display:block;margin-top:8px;color:var(--muted,#888);font-size:11px;">⚠️ Halte diesen Code geheim. Du brauchst ihn zum Anmelden.</small>
+            </div>
+            <div class="settings-ehoser-mail-box">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">Deine Ehoser E-Mail</div>
+                <div id="ehoserEmailCurrentDisplay" class="settings-mail-current">Wird geladen...</div>
+                <div class="ehoser-email-picker">
+                    <input id="settingsEmailLocalPart" type="text" maxlength="32" placeholder="name">
+                    <span>@ehoser.de</span>
+                </div>
+                <button onclick="saveSettingsEmailAddress()" class="btn-small" style="padding:8px 14px;margin-top:10px;">Adresse speichern</button>
+                <small style="display:block;margin-top:8px;color:var(--muted,#888);font-size:11px;">Du kannst genau eine @ehoser.de Adresse haben. Beim Aendern wird deine alte Adresse ersetzt.</small>
+            </div>
+            <!-- E-Mail Verknüpfung -->
+            <div style="background:rgba(0,0,0,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-top:12px;">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">E-Mail Adresse</div>
+                <div id="emailCurrentDisplay" style="font-size:0.85rem;color:var(--muted,#888);margin-bottom:10px;"></div>
+                <div id="emailUnlinkRow" style="display:none;margin-bottom:10px;">
+                    <button onclick="unlinkEmail()" class="btn-small" style="padding:6px 12px;background:rgba(255,60,60,0.15);border:1px solid rgba(255,60,60,0.35);color:#ff6b6b;">&#x1F5D1; E-Mail entfernen</button>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <input id="emailInput" type="email" placeholder="deine@email.de"
+                        style="flex:1;min-width:0;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#111;color:#fff;font-size:14px;">
+                    <button onclick="sendEmailCode()" class="btn-small" style="padding:8px 14px;white-space:nowrap;">Code senden</button>
+                </div>
+                <div id="emailCodeRow" style="display:none;margin-top:10px;">
+                    <div style="font-size:12px;color:#4d9fff;margin-bottom:6px;">&#x2709;&#xFE0F; Code wurde gesendet. Prüfe dein Postfach:</div>
+                    <div style="display:flex;gap:8px;">
+                        <input id="emailCodeInput" type="text" maxlength="6" placeholder="6-stelliger Code"
+                            style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#111;color:#fff;font-size:16px;letter-spacing:0.3em;text-align:center;">
+                        <button onclick="verifyEmailCode()" class="btn-small" style="padding:8px 14px;">&#x2713; Bestätigen</button>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-primary" onclick="saveAccountSettings()">Speichern</button>
+
+            <!-- Chat Token -->
+            <div style="background:rgba(0,0,0,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:14px 16px;margin-top:12px;">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#888);margin-bottom:8px;">Chat Token</div>
+                <div style="font-size:12px;color:var(--muted,#888);margin-bottom:10px;">Erstelle einen Token f&#252;r die Ehoser-KI-API.</div>
+                <div id="chatTokenDisplay" style="display:none;margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <span id="chatTokenValue" style="font-family:monospace;font-size:11px;word-break:break-all;color:var(--primary,#333);flex:1;"></span>
+                        <button onclick="copyChatToken()" class="btn-small" style="padding:4px 10px;font-size:12px;">&#128203; Kopieren</button>
+                    </div>
+                </div>
+                <button onclick="createChatToken()" class="btn-small" style="padding:8px 14px;">&#128273; Chat Token erstellen</button>
+                <small id="chatTokenMsg" style="display:block;margin-top:8px;color:var(--muted,#888);font-size:11px;"></small>
+            </div>
+        </div>
+    </div>
+
+    <div id="pricingModal" class="modal">
+        <div class="modal-content settings-modal-content" style="max-width:860px;">
+            <span class="close" onclick="closePricingModal()">&times;</span>
+            <h3>Tarif wählen</h3>
+            <div class="pricing-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0;">
+                <div class="pricing-card">
+                    <h4>Gratis</h4>
+                    <strong>0 Euro</strong>
+                    <ul>
+                        <li>Einfache KI enthalten</li>
+                        <li>Paar Apps</li>
+                        <li>Kein Ehoser Mitglied</li>
+                        <li>30 Credits einmalig</li>
+                    </ul>
+                </div>
+                <div class="pricing-card">
+                    <h4>Pro</h4>
+                    <strong>10 Euro monatlich</strong>
+                    <ul>
+                        <li>Einfache KI</li>
+                        <li>Mehr Apps</li>
+                        <li>Face Warp Pro Edition</li>
+                        <li>200 Credits monatlich</li>
+                    </ul>
+                    <button class="btn-primary" onclick="selectPlanRequest('pro')">Tarif wählen</button>
+                </div>
+                <div class="pricing-card premium">
+                    <h4>Premium</h4>
+                    <strong>20 Euro monatlich</strong>
+                    <ul>
+                        <li>Fortschrittliche KI</li>
+                        <li>1000 Credits monatlich</li>
+                        <li>Video KI mit Sora</li>
+                        <li>Alle Apps</li>
+                        <li>Ehoser Mitglied</li>
+                    </ul>
+                    <button class="btn-primary" onclick="selectPlanRequest('premium')">Tarif wählen</button>
+                </div>
+            </div>
+            <div id="planRequestBox" style="display:none;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px;">
+                <div style="font-weight:800;margin-bottom:8px;">Bar bezahlen</div>
+                <label for="planRealName">Echter Name</label>
+                <input id="planRealName" type="text" placeholder="Max Mustermann" style="margin:6px 0 10px;">
+                <button class="btn-primary" onclick="sendPlanRequest()">Tarif Anfrage senden</button>
+                <small id="planRequestStatus" style="display:block;margin-top:8px;color:var(--muted,#888);"></small>
+            </div>
+        </div>
+    </div>
+
+    <div id="facewarpModeModal" class="modal">
+        <div class="modal-content settings-modal-content">
+            <span class="close" onclick="closeFacewarpModeModal()">&times;</span>
+            <h3>Face Warp auswählen</h3>
+            <p style="color:var(--muted)">Wähle zwischen Basics oder Pro Face Warp.</p>
+            <div class="admin-actions" style="margin-top:12px;">
+                <button class="btn-secondary" onclick="openFacewarpWithTier('basic')">Basics Face Warp</button>
+                <button class="btn-primary" onclick="openFacewarpWithTier('pro')">Pro Face Warp</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Game Creator Overlay ─────────────────────────────────────────── -->
+    <div id="gameCreatorOverlay" style="display:none;position:fixed;inset:0;z-index:10000;background:#07131d;flex-direction:column;">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid rgba(100,180,255,0.12);flex-shrink:0;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:1.5rem;">🎮</span>
+                <span style="font-family:'Space Grotesk',sans-serif;font-size:1.1rem;font-weight:700;color:#fff;">Spiel erstellen</span>
+                <span style="background:rgba(255,177,0,0.15);color:#ffb100;border:1px solid rgba(255,177,0,0.3);border-radius:6px;font-size:0.7rem;font-weight:700;padding:2px 8px;">PRO</span>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;">
+                <button id="gameDownloadBtn" onclick="downloadGame()" style="display:none;background:rgba(100,200,100,0.15);color:#6dc86d;border:1px solid rgba(100,200,100,0.3);border-radius:8px;padding:7px 14px;font-size:0.85rem;cursor:pointer;">⬇️ Herunterladen</button>
+                <button onclick="closeGameCreator()" style="background:rgba(255,255,255,0.07);color:#8ab4c9;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 14px;font-size:0.85rem;cursor:pointer;">✕ Schließen</button>
+            </div>
+        </div>
+
+        <!-- Body: Left Panel + Right Preview -->
+        <div style="display:flex;flex:1;overflow:hidden;min-height:0;">
+
+            <!-- Left: Prompt + Chat -->
+            <div style="width:340px;min-width:260px;display:flex;flex-direction:column;border-right:1px solid rgba(100,180,255,0.12);flex-shrink:0;">
+                <!-- Chat-Verlauf der Verbesserungsanfragen -->
+                <div id="gamePromptHistory" style="flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;"></div>
+
+                <!-- Status -->
+                <div id="gameStatus" style="padding:8px 14px;font-size:0.82rem;color:#8ab4c9;min-height:28px;border-top:1px solid rgba(100,180,255,0.07);"></div>
+
+                <!-- Input -->
+                <div style="padding:12px 14px;border-top:1px solid rgba(100,180,255,0.12);display:flex;flex-direction:column;gap:8px;">
+                    <textarea id="gamePromptInput" placeholder="Beschreibe dein Spiel… z.B. 'Ein Snake-Spiel mit Neon-Design'" style="width:100%;height:90px;background:rgba(255,255,255,0.05);border:1px solid rgba(100,180,255,0.2);border-radius:10px;color:#fff;padding:10px;font-size:0.9rem;resize:none;font-family:inherit;box-sizing:border-box;" onkeydown="if(event.ctrlKey&&event.key==='Enter')sendGamePrompt()"></textarea>
+                    <button onclick="sendGamePrompt()" id="gameSendBtn" style="background:linear-gradient(135deg,#0e4a8a,#1a6fc4);color:#fff;border:none;border-radius:10px;padding:10px;font-size:0.9rem;font-weight:600;cursor:pointer;font-family:inherit;">
+                        ✨ Spiel generieren
+                    </button>
+                    <div style="font-size:0.75rem;color:#4a7a99;text-align:center;">Strg+Enter zum Senden</div>
+                </div>
+            </div>
+
+            <!-- Right: Preview iframe -->
+            <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+                <!-- Empty state -->
+                <div id="gamePreviewEmpty" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#4a7a99;">
+                    <div style="font-size:4rem;opacity:0.4;">🎮</div>
+                    <div style="font-size:1.1rem;font-weight:600;">Noch kein Spiel generiert</div>
+                    <div style="font-size:0.85rem;text-align:center;max-width:320px;">Beschreibe links dein Wunschspiel und klicke auf „Spiel generieren"</div>
+                </div>
+                <!-- Loading -->
+                <div id="gamePreviewLoading" style="flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#8ab4c9;">
+                    <div style="width:48px;height:48px;border:3px solid rgba(100,180,255,0.2);border-top-color:#1a6fc4;border-radius:50%;animation:gameLoadSpin 0.8s linear infinite;"></div>
+                    <div style="font-size:1rem;">KI programmiert dein Spiel…</div>
+                    <div style="font-size:0.82rem;color:#4a7a99;">Das kann 20-60 Sekunden dauern</div>
+                </div>
+                <!-- Actual iframe -->
+                <iframe id="gamePreviewFrame" style="flex:1;border:none;display:none;" sandbox="allow-scripts allow-forms allow-modals" title="Spielvorschau"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ 15 NEUE TOOL-SEKTIONEN ══════════════════════════════════════ -->
+
+    <!-- SNAKE -->
+    <section id="snake" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🐍 Snake</h2></div>
+      <div class="tool-card" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;">
+          <span id="snakeScore" style="font-size:1.1rem;font-weight:700;color:var(--brand);">Punkte: 0</span>
+          <span id="snakeHi" style="font-size:0.9rem;color:var(--text-soft);">Highscore: 0</span>
+          <button class="btn-primary btn-sm" onclick="snakeStart()">Neu starten</button>
+        </div>
+        <canvas id="snakeCanvas" width="400" height="400" style="border:2px solid var(--brand);border-radius:12px;background:#0d1b2a;touch-action:none;"></canvas>
+        <p style="font-size:0.82rem;color:var(--text-soft);">Pfeiltasten oder WASD zum Steuern – auf Mobilgeräten wischen.</p>
+      </div>
+    </section>
+
+    <!-- TIC TAC TOE -->
+    <section id="tictactoe" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>⭕ Tic Tac Toe</h2></div>
+      <div class="tool-card" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <p id="tttStatus" style="font-size:1.05rem;font-weight:600;color:var(--brand);">Du bist X – fang an!</p>
+        <div id="tttBoard" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:240px;"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-primary btn-sm" onclick="tttReset()">Neues Spiel</button>
+          <button class="btn-secondary btn-sm" onclick="tttToggleMode()">Gegen: <span id="tttModeLabel">KI</span></button>
+        </div>
+        <div id="tttScores" style="font-size:0.88rem;color:var(--text-soft);">X: 0 | O: 0 | Unentschieden: 0</div>
+      </div>
+    </section>
+
+    <!-- MEMORY -->
+    <section id="memory2" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🃏 Memory</h2></div>
+      <div class="tool-card" style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center;">
+          <span id="memMoves" style="font-weight:700;color:var(--brand);">Züge: 0</span>
+          <span id="memPairs" style="color:var(--text-soft);">Paare: 0/8</span>
+          <button class="btn-primary btn-sm" onclick="memoryStart()">Neu mischen</button>
+        </div>
+        <div id="memoryBoard" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:380px;"></div>
+      </div>
+    </section>
+
+    <!-- BMI RECHNER -->
+    <section id="bmi" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>⚖️ BMI-Rechner</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Größe (cm)<input id="bmiHeight" type="number" class="input-field" placeholder="175" min="50" max="250"></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Gewicht (kg)<input id="bmiWeight" type="number" class="input-field" placeholder="70" min="20" max="300"></label>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Alter<input id="bmiAge" type="number" class="input-field" placeholder="25" min="2" max="120"></label>
+        <button class="btn-primary" onclick="bmiCalc()">Berechnen</button>
+        <div id="bmiResult" style="display:none;border-radius:14px;padding:20px;background:var(--bg-soft);text-align:center;">
+          <div id="bmiValue" style="font-size:3rem;font-weight:800;color:var(--brand);"></div>
+          <div id="bmiLabel" style="font-size:1.1rem;font-weight:600;margin:4px 0;"></div>
+          <div id="bmiBar" style="height:12px;border-radius:6px;background:linear-gradient(90deg,#3b82f6,#22c55e,#f59e0b,#ef4444);margin:12px 0;position:relative;"><div id="bmiMarker" style="position:absolute;top:-4px;width:4px;height:20px;background:#fff;border-radius:2px;transform:translateX(-50%);transition:left 0.5s;"></div></div>
+          <div id="bmiInfo" style="font-size:0.85rem;color:var(--text-soft);"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRINKGELD RECHNER -->
+    <section id="tip" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>💶 Trinkgeld-Rechner</h2></div>
+      <div class="tool-card" style="max-width:440px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Rechnungsbetrag (€)<input id="tipBill" type="number" class="input-field" placeholder="45.50" min="0"></label>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Trinkgeld % <span id="tipPctLabel" style="color:var(--brand);font-weight:700;">10%</span><input id="tipPct" type="range" min="0" max="30" value="10" oninput="document.getElementById('tipPctLabel').textContent=this.value+'%';tipCalc()"></label>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Anzahl Personen<input id="tipPersons" type="number" class="input-field" placeholder="2" min="1" max="50" value="1"></label>
+        <button class="btn-primary" onclick="tipCalc()">Berechnen</button>
+        <div id="tipResult" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-box"><div class="stat-val" id="tipTotal"></div><div class="stat-lbl">Gesamt</div></div>
+          <div class="stat-box"><div class="stat-val" id="tipPP"></div><div class="stat-lbl">Pro Person</div></div>
+          <div class="stat-box"><div class="stat-val" id="tipTipOnly"></div><div class="stat-lbl">Trinkgeld</div></div>
+          <div class="stat-box"><div class="stat-val" id="tipTipPP"></div><div class="stat-lbl">TG / Person</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MORSE CODE -->
+    <section id="morse" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>📡 Morse Code</h2></div>
+      <div class="tool-card" style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;gap:8px;"><button class="btn-secondary btn-sm" id="morseDir1" onclick="morseSetDir(1)" style="flex:1;">Text → Morse</button><button class="btn-secondary btn-sm" id="morseDir2" onclick="morseSetDir(2)" style="flex:1;">Morse → Text</button></div>
+        <textarea id="morseInput" class="input-field" rows="4" placeholder="Text eingeben…" oninput="morseConvert()" style="resize:vertical;font-family:monospace;"></textarea>
+        <div id="morseOutput" style="background:var(--bg-soft);border-radius:10px;padding:14px;font-family:monospace;min-height:60px;word-break:break-all;font-size:0.95rem;letter-spacing:0.04em;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-primary btn-sm" onclick="morsePlay()">▶ Abspielen</button>
+          <button class="btn-secondary btn-sm" onclick="morseCopy()">Kopieren</button>
+          <button class="btn-secondary btn-sm" onclick="morseStop()">⏹ Stop</button>
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-soft);">Format: . = kurz, - = lang, Leerzeichen zwischen Buchstaben, / zwischen Wörtern.</p>
+      </div>
+    </section>
+
+    <!-- CAESAR CHIFFRE -->
+    <section id="caesar" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🔐 Caesar-Chiffre</h2></div>
+      <div class="tool-card" style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Text<textarea id="caesarInput" class="input-field" rows="4" placeholder="Text eingeben…" oninput="caesarConvert()" style="resize:vertical;"></textarea></label>
+        <label style="display:flex;flex-direction:column;gap:6px;font-size:0.9rem;">Verschiebung: <span id="caesarShiftLabel" style="color:var(--brand);font-weight:700;">3</span><input id="caesarShift" type="range" min="1" max="25" value="3" oninput="document.getElementById('caesarShiftLabel').textContent=this.value;caesarConvert()"></label>
+        <div style="display:flex;gap:8px;"><button class="btn-secondary btn-sm" id="caesarMode1" onclick="caesarSetMode('enc')" style="flex:1;">Verschlüsseln</button><button class="btn-secondary btn-sm" id="caesarMode2" onclick="caesarSetMode('dec')" style="flex:1;">Entschlüsseln</button></div>
+        <div id="caesarOutput" style="background:var(--bg-soft);border-radius:10px;padding:14px;font-family:monospace;min-height:60px;font-size:0.95rem;"></div>
+        <button class="btn-secondary btn-sm" onclick="caesarCopy()">Ergebnis kopieren</button>
+        <div id="caesarBrute" style="display:none;">
+          <p style="font-size:0.85rem;font-weight:600;margin-bottom:8px;">Alle 25 Verschiebungen (Brute Force):</p>
+          <div id="caesarBruteList" style="font-family:monospace;font-size:0.8rem;background:var(--bg-soft);border-radius:10px;padding:12px;max-height:200px;overflow-y:auto;"></div>
+        </div>
+        <button class="btn-secondary btn-sm" onclick="caesarToggleBrute()">Brute Force anzeigen</button>
+      </div>
+    </section>
+
+    <!-- UUID GENERATOR -->
+    <section id="uuid" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🆔 UUID Generator</h2></div>
+      <div class="tool-card" style="max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <label style="font-size:0.9rem;">Anzahl: <input id="uuidCount" type="number" class="input-field" min="1" max="100" value="1" style="width:80px;display:inline-block;"></label>
+          <button class="btn-primary" onclick="uuidGenerate()">Generieren</button>
+          <button class="btn-secondary btn-sm" onclick="uuidCopyAll()">Alle kopieren</button>
+        </div>
+        <div id="uuidList" style="background:var(--bg-soft);border-radius:12px;padding:14px;font-family:monospace;font-size:0.9rem;display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;"></div>
+        <p style="font-size:0.8rem;color:var(--text-soft);">RFC 4122 Version 4 – kryptographisch zufällig, clientseitig generiert.</p>
+      </div>
+    </section>
+
+    <!-- BOX-SHADOW GENERATOR -->
+    <section id="boxshadow" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🟫 Box-Shadow Generator</h2></div>
+      <div class="tool-card" style="max-width:700px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <label class="slider-label">Offset X: <span id="bsXLabel">0</span>px<input type="range" id="bsX" min="-50" max="50" value="0" oninput="bsUpdate()"></label>
+          <label class="slider-label">Offset Y: <span id="bsYLabel">10</span>px<input type="range" id="bsY" min="-50" max="50" value="10" oninput="bsUpdate()"></label>
+          <label class="slider-label">Blur: <span id="bsBlurLabel">20</span>px<input type="range" id="bsBlur" min="0" max="100" value="20" oninput="bsUpdate()"></label>
+          <label class="slider-label">Spread: <span id="bsSpreadLabel">0</span>px<input type="range" id="bsSpread" min="-30" max="50" value="0" oninput="bsUpdate()"></label>
+          <label class="slider-label">Farbe<input type="color" id="bsColor" value="#000000" oninput="bsUpdate()" style="width:100%;height:36px;border-radius:8px;border:none;cursor:pointer;"></label>
+          <label class="slider-label">Deckkraft: <span id="bsOpacLabel">0.3</span><input type="range" id="bsOpac" min="0" max="100" value="30" oninput="bsUpdate()"></label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;"><input type="checkbox" id="bsInset" onchange="bsUpdate()"> Inset</label>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div id="bsPreview" style="flex:1;min-height:180px;background:var(--card);border-radius:16px;display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--text-soft);">Vorschau</div>
+          <div id="bsCode" style="background:var(--bg-soft);border-radius:10px;padding:12px;font-family:monospace;font-size:0.82rem;word-break:break-all;"></div>
+          <button class="btn-primary btn-sm" onclick="bsCopy()">CSS kopieren</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- HTTP STATUS CODES -->
+    <section id="httpstatus" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🌐 HTTP Status Codes</h2></div>
+      <div class="tool-card" style="max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
+        <input id="httpSearch" type="text" class="input-field" placeholder="Code oder Beschreibung suchen…" oninput="httpFilter()">
+        <div id="httpList" style="display:flex;flex-direction:column;gap:8px;max-height:520px;overflow-y:auto;"></div>
+      </div>
+    </section>
+
+    <!-- POMODORO TIMER -->
+    <section id="pomodoro" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🍅 Pomodoro Timer</h2></div>
+      <div class="tool-card" style="max-width:440px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" id="pomoBtnFocus" onclick="pomoSet('focus')" style="min-width:110px;">🍅 Fokus 25 Min</button>
+          <button class="btn-secondary btn-sm" id="pomoBtnShort" onclick="pomoSet('short')" style="min-width:110px;">☕ Kurze Pause</button>
+          <button class="btn-secondary btn-sm" id="pomoBtnLong" onclick="pomoSet('long')" style="min-width:110px;">🌴 Lange Pause</button>
+        </div>
+        <svg viewBox="0 0 200 200" width="200" height="200" style="transform:rotate(-90deg);">
+          <circle cx="100" cy="100" r="88" fill="none" stroke="var(--bg-soft)" stroke-width="12"/>
+          <circle id="pomoRing" cx="100" cy="100" r="88" fill="none" stroke="var(--brand)" stroke-width="12" stroke-linecap="round" stroke-dasharray="553" stroke-dashoffset="0" style="transition:stroke-dashoffset 1s linear;"/>
+        </svg>
+        <div id="pomoTime" style="font-size:3.5rem;font-weight:800;color:var(--brand);margin-top:-170px;margin-bottom:130px;letter-spacing:0.04em;">25:00</div>
+        <div id="pomoLabel" style="font-size:1rem;font-weight:600;color:var(--text-soft);">Fokus-Session</div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn-primary" id="pomoPlayBtn" onclick="pomoToggle()">▶ Start</button>
+          <button class="btn-secondary" onclick="pomoReset()">↺ Reset</button>
+        </div>
+        <div style="font-size:0.88rem;color:var(--text-soft);">Abgeschlossene Pomodoros heute: <span id="pomoDoneCount" style="font-weight:700;color:var(--brand);">0</span></div>
+      </div>
+    </section>
+
+    <!-- KANBAN BOARD -->
+    <section id="kanban" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>📋 Kanban Board</h2></div>
+      <div class="tool-card" style="padding:16px;">
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+          <input id="kanbanInput" class="input-field" placeholder="Neue Aufgabe…" style="flex:1;min-width:200px;" onkeydown="if(event.key==='Enter')kanbanAdd()">
+          <button class="btn-primary btn-sm" onclick="kanbanAdd()">Hinzufügen</button>
+          <button class="btn-secondary btn-sm" onclick="kanbanClear()">Alles löschen</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;min-height:300px;">
+          <div class="kanban-col" id="kanbanTodo" ondragover="event.preventDefault()" ondrop="kanbanDrop(event,'todo')"><h4 style="color:#f59e0b;margin:0 0 10px;">📌 To-Do</h4><div class="kanban-items" id="kanbanTodoList"></div></div>
+          <div class="kanban-col" id="kanbanProgress" ondragover="event.preventDefault()" ondrop="kanbanDrop(event,'progress')"><h4 style="color:var(--brand);margin:0 0 10px;">⚡ In Progress</h4><div class="kanban-items" id="kanbanProgressList"></div></div>
+          <div class="kanban-col" id="kanbanDone" ondragover="event.preventDefault()" ondrop="kanbanDrop(event,'done')"><h4 style="color:#22c55e;margin:0 0 10px;">✅ Done</h4><div class="kanban-items" id="kanbanDoneList"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAGIC 8-BALL -->
+    <section id="eightball" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🎱 Magic 8-Ball</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <input id="eightballQ" class="input-field" placeholder="Stelle eine Ja/Nein-Frage…" style="width:100%;" onkeydown="if(event.key==='Enter')eightballShake()">
+        <div id="eightballBall" onclick="eightballShake()" style="width:200px;height:200px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#2a2a4a,#000);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(14,138,155,0.3);transition:transform 0.1s;user-select:none;">
+          <div style="width:100px;height:100px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1a3a5c,#0a0a2a);display:flex;align-items:center;justify-content:center;padding:10px;">
+            <div id="eightballAnswer" style="color:#4af;font-size:0.7rem;text-align:center;font-weight:600;line-height:1.3;">Frage stellen und hier klicken</div>
           </div>
         </div>
-        <div id="downloadGrid" class="download-grid"></div>
-      </section>
-    </main>
+        <button class="btn-primary" onclick="eightballShake()">Schütteln!</button>
+      </div>
+    </section>
 
-    <script src="/assets/app.js?v=release-download-area"></script>
-  </body>
+    <!-- WITZ GENERATOR -->
+    <section id="jokegen" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>😂 Witz-Generator</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" id="jokeBtn1" onclick="jokeSetCat('all')" style="flex:1;">Alle</button>
+          <button class="btn-secondary btn-sm" id="jokeBtn2" onclick="jokeSetCat('flach')" style="flex:1;">Flachwitze</button>
+          <button class="btn-secondary btn-sm" id="jokeBtn3" onclick="jokeSetCat('dark')" style="flex:1;">Schwarzer Humor</button>
+        </div>
+        <div id="jokeSetup" style="font-size:1.1rem;font-weight:600;text-align:center;min-height:48px;"></div>
+        <div id="jokePunchline" style="font-size:1rem;color:var(--brand);font-weight:700;text-align:center;min-height:32px;display:none;"></div>
+        <button class="btn-primary" id="jokePunchBtn" onclick="jokeReveal()" style="display:none;">Antwort zeigen</button>
+        <button class="btn-primary" onclick="jokeNext()">Nächster Witz ▶</button>
+        <button class="btn-secondary btn-sm" onclick="jokeCopy()">Kopieren</button>
+      </div>
+    </section>
+
+    <!-- ATEMUBUNGEN -->
+    <section id="breathe" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🫁 Atemübungen</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" onclick="breatheSet('box')" style="flex:1;">Box Breathing</button>
+          <button class="btn-secondary btn-sm" onclick="breatheSet('478')" style="flex:1;">4-7-8</button>
+          <button class="btn-secondary btn-sm" onclick="breatheSet('calm')" style="flex:1;">Beruhigung</button>
+        </div>
+        <div id="breatheCircle" style="width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,var(--brand) 0%,rgba(14,138,155,0.1) 100%);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;transition:transform 4s ease,opacity 4s ease;">
+          Bereit
+        </div>
+        <div id="breathePhase" style="font-size:1.3rem;font-weight:700;color:var(--brand);"></div>
+        <div id="breatheCount" style="font-size:2.5rem;font-weight:800;font-family:monospace;color:var(--text-main);"></div>
+        <div id="breatheDesc" style="font-size:0.88rem;color:var(--text-soft);text-align:center;max-width:320px;"></div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn-primary" id="breatheBtn" onclick="breatheToggle()">▶ Start</button>
+          <button class="btn-secondary" onclick="breatheStop()">⏹ Stop</button>
+        </div>
+        <div id="breatheCycles" style="font-size:0.85rem;color:var(--text-soft);">Zyklen: <span id="breatheCycleCount" style="font-weight:700;color:var(--brand);">0</span></div>
+      </div>
+    </section>
+
+    </section>
+
+    <!-- ══ 20 NEUE TOOL-SECTIONS ════════════════════════════════════════ -->
+
+    <!-- Sudoku -->
+    <section id="sudoku" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🔢 Sudoku</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" onclick="sudokuNew('easy')">Leicht</button>
+          <button class="btn-secondary btn-sm" onclick="sudokuNew('medium')">Mittel</button>
+          <button class="btn-secondary btn-sm" onclick="sudokuNew('hard')">Schwer</button>
+          <button class="btn-secondary btn-sm" onclick="sudokuHint()">💡 Tipp</button>
+          <button class="btn-secondary btn-sm" onclick="sudokuSolve()">✅ Lösung</button>
+        </div>
+        <div id="sudokuGrid" style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px;background:#333;padding:4px;border-radius:8px;width:min(360px,90vw);"></div>
+        <div id="sudokuMsg" style="font-size:0.9rem;color:var(--brand);font-weight:700;min-height:24px;"></div>
+      </div>
+    </section>
+
+    <!-- Hangman -->
+    <section id="hangman" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🪄 Hangman</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <canvas id="hangmanCanvas" width="200" height="200" style="background:rgba(255,255,255,0.04);border-radius:12px;"></canvas>
+        <div id="hangmanWord" style="font-size:2rem;font-family:monospace;letter-spacing:8px;color:#fff;"></div>
+        <div id="hangmanLetters" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:400px;"></div>
+        <div id="hangmanMsg" style="font-size:1rem;color:var(--brand);font-weight:700;min-height:24px;"></div>
+        <button class="btn-primary" onclick="hangmanNew()">🔄 Neues Wort</button>
+      </div>
+    </section>
+
+    <!-- 2048 -->
+    <section id="2048" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🧩 2048</h2></div>
+      <div class="tool-card" style="max-width:400px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <div style="display:flex;gap:20px;align-items:center;">
+          <div>Punkte: <strong id="score2048">0</strong></div>
+          <div>Best: <strong id="best2048">0</strong></div>
+          <button class="btn-secondary btn-sm" onclick="init2048()">🔄 Neu</button>
+        </div>
+        <div id="grid2048" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:#1a2a3a;padding:8px;border-radius:12px;width:min(320px,90vw);box-sizing:border-box;"></div>
+        <div id="msg2048" style="font-size:1rem;color:var(--brand);font-weight:700;min-height:24px;"></div>
+        <p style="font-size:0.8rem;color:var(--text-soft);">Pfeiltasten oder Wischen zum Spielen</p>
+      </div>
+    </section>
+
+    <!-- Reaktionstest -->
+    <section id="reaction" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>⚡ Reaktionstest</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div id="reactionBox" onclick="reactionClick()" style="width:min(340px,90vw);height:200px;border-radius:16px;background:#1a2a3a;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;transition:background 0.3s;font-size:1.1rem;color:var(--text-soft);">Klicke zum Starten</div>
+        <div id="reactionResult" style="font-size:1.5rem;font-weight:800;color:#fff;min-height:40px;"></div>
+        <div id="reactionHistory" style="font-size:0.85rem;color:var(--text-soft);"></div>
+      </div>
+    </section>
+
+    <!-- Zinsen-Rechner -->
+    <section id="interest" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>💰 Zinsen-Rechner</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary btn-sm" onclick="interestSetMode('simple')" id="intBtnSimple">Einfach</button>
+          <button class="btn-secondary btn-sm" onclick="interestSetMode('compound')" id="intBtnCompound">Zinseszins</button>
+        </div>
+        <label style="color:var(--text-soft);font-size:0.9rem;">Startkapital (€)<input id="intCapital" type="number" class="tool-input" value="1000" min="0" oninput="interestCalc()"></label>
+        <label style="color:var(--text-soft);font-size:0.9rem;">Zinssatz (% p.a.)<input id="intRate" type="number" class="tool-input" value="5" min="0" step="0.1" oninput="interestCalc()"></label>
+        <label style="color:var(--text-soft);font-size:0.9rem;">Laufzeit (Jahre)<input id="intYears" type="number" class="tool-input" value="10" min="1" oninput="interestCalc()"></label>
+        <div id="intResult" style="background:rgba(77,159,255,0.08);border:1px solid rgba(77,159,255,0.25);border-radius:12px;padding:16px;font-size:1rem;"></div>
+      </div>
+    </section>
+
+    <!-- Zitat-Generator -->
+    <section id="quote" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>💬 Zitat-Generator</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div id="quoteCard" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:28px;text-align:center;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;width:100%;box-sizing:border-box;">
+          <div id="quoteText" style="font-size:1.15rem;color:#fff;font-style:italic;line-height:1.6;"></div>
+          <div id="quoteAuthor" style="font-size:0.9rem;color:var(--brand);font-weight:700;"></div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-primary" onclick="quoteNext()">✨ Nächstes</button>
+          <button class="btn-secondary" onclick="quoteCopy()">📋 Kopieren</button>
+          <button class="btn-secondary" onclick="quoteFav()">❤️ Favorit</button>
+        </div>
+        <div id="quoteFavs" style="width:100%;max-height:200px;overflow-y:auto;"></div>
+      </div>
+    </section>
+
+    <!-- Würfelsimulator -->
+    <section id="dice" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🎲 Würfelsimulator</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" onclick="diceSetType(4)">W4</button>
+          <button class="btn-secondary btn-sm" onclick="diceSetType(6)">W6</button>
+          <button class="btn-secondary btn-sm" onclick="diceSetType(8)">W8</button>
+          <button class="btn-secondary btn-sm" onclick="diceSetType(10)">W10</button>
+          <button class="btn-secondary btn-sm" onclick="diceSetType(12)">W12</button>
+          <button class="btn-secondary btn-sm" onclick="diceSetType(20)">W20</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <label style="color:var(--text-soft);font-size:0.9rem;">Anzahl:</label>
+          <input id="diceCount" type="number" min="1" max="10" value="1" class="tool-input" style="width:70px;">
+        </div>
+        <button class="btn-primary" style="font-size:1.1rem;padding:14px 32px;" onclick="diceRoll()">🎲 Würfeln</button>
+        <div id="diceResults" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;min-height:80px;"></div>
+        <div id="diceSum" style="font-size:1.2rem;color:var(--text-soft);font-weight:700;"></div>
+        <div id="diceHistory" style="font-size:0.82rem;color:var(--text-soft);max-height:80px;overflow-y:auto;width:100%;"></div>
+      </div>
+    </section>
+
+    <!-- Stimmungstagebuch -->
+    <section id="mood" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>😊 Stimmungstagebuch</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div style="text-align:center;">
+          <div style="font-size:0.9rem;color:var(--text-soft);margin-bottom:8px;">Wie geht es dir heute?</div>
+          <div style="display:flex;gap:8px;justify-content:center;font-size:2rem;" id="moodEmojis">
+            <button onclick="moodSelect('😄','Super')" style="background:none;border:none;cursor:pointer;transition:transform .2s;" title="Super">😄</button>
+            <button onclick="moodSelect('🙂','Gut')" style="background:none;border:none;cursor:pointer;transition:transform .2s;" title="Gut">🙂</button>
+            <button onclick="moodSelect('😐','Neutral')" style="background:none;border:none;cursor:pointer;transition:transform .2s;" title="Neutral">😐</button>
+            <button onclick="moodSelect('😕','Nicht so gut')" style="background:none;border:none;cursor:pointer;transition:transform .2s;" title="Nicht so gut">😕</button>
+            <button onclick="moodSelect('😢','Schlecht')" style="background:none;border:none;cursor:pointer;transition:transform .2s;" title="Schlecht">😢</button>
+          </div>
+        </div>
+        <textarea id="moodNote" placeholder="Notiz zum heutigen Tag (optional)…" rows="3" class="tool-input" style="resize:vertical;"></textarea>
+        <button class="btn-primary" onclick="moodSave()">💾 Speichern</button>
+        <div id="moodList" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;"></div>
+      </div>
+    </section>
+
+    <!-- Notenrechner -->
+    <section id="grades" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>📊 Notenrechner</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div id="gradesList" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary btn-sm" onclick="gradesAddRow()">+ Fach hinzufügen</button>
+          <button class="btn-secondary btn-sm" onclick="gradesClear()">🗑 Leeren</button>
+        </div>
+        <div id="gradesResult" style="background:rgba(77,159,255,0.08);border:1px solid rgba(77,159,255,0.25);border-radius:12px;padding:16px;text-align:center;font-size:1.2rem;font-weight:700;color:var(--brand);"></div>
+      </div>
+    </section>
+
+    <!-- Weltzeit-Uhr -->
+    <section id="worldclock" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🕐 Weltzeit-Uhr</h2></div>
+      <div class="tool-card" style="max-width:560px;margin:0 auto;">
+        <div id="worldclockGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;"></div>
+      </div>
+    </section>
+
+    <!-- Pong -->
+    <section id="pong" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🏓 Pong</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <canvas id="pongCanvas" width="480" height="320" style="border-radius:12px;background:#0d1f2d;width:min(480px,95vw);"></canvas>
+        <div id="pongScore" style="font-size:1rem;color:var(--text-soft);"></div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn-primary" onclick="pongStart()" id="pongStartBtn">▶ Start</button>
+          <button class="btn-secondary" onclick="pongReset()">🔄 Reset</button>
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-soft);">W/S oder ↑/↓ zum Steuern</p>
+      </div>
+    </section>
+
+    <!-- Passwort-Stärke -->
+    <section id="pwdcheck" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🛡️ Passwort-Stärke</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div style="position:relative;">
+          <input type="password" id="pwdCheckInput" class="tool-input" placeholder="Passwort eingeben…" oninput="pwdCheckAnalyze()" style="padding-right:48px;">
+          <button onclick="pwdCheckToggle()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-soft);cursor:pointer;font-size:1.1rem;" id="pwdCheckEye">👁</button>
+        </div>
+        <div style="height:8px;border-radius:99px;background:rgba(255,255,255,0.08);overflow:hidden;"><div id="pwdCheckBar" style="height:100%;border-radius:99px;width:0%;transition:width .3s,background .3s;"></div></div>
+        <div id="pwdCheckLabel" style="font-size:1.1rem;font-weight:700;color:var(--text-main);"></div>
+        <ul id="pwdCheckTips" style="padding-left:20px;color:var(--text-soft);font-size:0.9rem;line-height:1.8;"></ul>
+      </div>
+    </section>
+
+    <!-- Alter-Rechner -->
+    <section id="agecalc" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🎂 Alter-Rechner</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:16px;align-items:center;">
+        <label style="color:var(--text-soft);font-size:0.9rem;width:100%;">Geburtsdatum
+          <input type="date" id="agecalcInput" class="tool-input" oninput="agecalcCalc()">
+        </label>
+        <div id="agecalcResult" style="text-align:center;font-size:1.1rem;color:#fff;line-height:2;"></div>
+      </div>
+    </section>
+
+    <!-- Kalender -->
+    <section id="calendar" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>📆 Kalender</h2></div>
+      <div class="tool-card" style="max-width:480px;margin:0 auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <button class="btn-secondary btn-sm" onclick="calendarNav(-1)">‹</button>
+          <strong id="calendarTitle" style="font-size:1.1rem;color:#fff;"></strong>
+          <button class="btn-secondary btn-sm" onclick="calendarNav(1)">›</button>
+        </div>
+        <div id="calendarGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;"></div>
+        <div id="calendarNote" style="margin-top:12px;font-size:0.85rem;color:var(--text-soft);text-align:center;"></div>
+      </div>
+    </section>
+
+    <!-- Wordle -->
+    <section id="wordle" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🟩 Wordle</h2></div>
+      <div class="tool-card" style="max-width:380px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <div id="wordleGrid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;"></div>
+        <div id="wordleKeyboard" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <div id="wordleMsg" style="font-size:1rem;color:var(--brand);font-weight:700;min-height:24px;text-align:center;"></div>
+        <button class="btn-secondary btn-sm" onclick="wordleNew()">🔄 Neues Wort</button>
+      </div>
+    </section>
+
+    <!-- Breakout -->
+    <section id="breakout" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🧱 Breakout</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <canvas id="breakoutCanvas" width="480" height="320" style="border-radius:12px;background:#0d1f2d;width:min(480px,95vw);"></canvas>
+        <div id="breakoutHUD" style="font-size:0.95rem;color:var(--text-soft);"></div>
+        <div style="display:flex;gap:12px;">
+          <button class="btn-primary" onclick="breakoutStart()" id="breakoutStartBtn">▶ Start</button>
+          <button class="btn-secondary" onclick="breakoutReset()">🔄 Reset</button>
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-soft);">← → oder Maus/Touch zum Steuern</p>
+      </div>
+    </section>
+
+    <!-- Farb-Quiz -->
+    <section id="colorquiz" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🎨 Farb-Quiz</h2></div>
+      <div class="tool-card" style="max-width:420px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:20px;">
+        <div id="colorquizSwatch" style="width:160px;height:160px;border-radius:20px;background:#fff;"></div>
+        <div id="colorquizHex" style="font-size:1.5rem;font-family:monospace;color:#fff;font-weight:700;letter-spacing:2px;"></div>
+        <div id="colorquizBtns" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;"></div>
+        <div id="colorquizScore" style="font-size:1rem;color:var(--text-soft);">Punkte: <strong id="colorquizPts" style="color:var(--brand);">0</strong> | Streak: <strong id="colorquizStreak" style="color:#0e8a9b;">0</strong></div>
+      </div>
+    </section>
+
+    <!-- Zahl raten -->
+    <section id="numguess" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🔮 Zahl raten</h2></div>
+      <div class="tool-card" style="max-width:420px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:16px;">
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary btn-sm" onclick="numguessSetRange(50)">1–50</button>
+          <button class="btn-secondary btn-sm" onclick="numguessSetRange(100)">1–100</button>
+          <button class="btn-secondary btn-sm" onclick="numguessSetRange(500)">1–500</button>
+        </div>
+        <div id="numguessInfo" style="font-size:1rem;color:var(--text-soft);text-align:center;"></div>
+        <div style="display:flex;gap:8px;width:100%;max-width:280px;">
+          <input type="number" id="numguessInput" class="tool-input" placeholder="Dein Tipp…" style="flex:1;" onkeydown="if(event.key==='Enter')numguessGuess()">
+          <button class="btn-primary" onclick="numguessGuess()">→</button>
+        </div>
+        <div id="numguessMsg" style="font-size:1.1rem;font-weight:700;color:var(--brand);min-height:28px;text-align:center;"></div>
+        <div id="numguessHistory" style="font-size:0.85rem;color:var(--text-soft);text-align:center;"></div>
+        <button class="btn-secondary btn-sm" onclick="numguessNew()">🔄 Neu</button>
+      </div>
+    </section>
+
+    <!-- Geburtstags-Tracker -->
+    <section id="birthday" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>🎉 Geburtstags-Tracker</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="birthdayName" type="text" class="tool-input" placeholder="Name" style="flex:1;min-width:120px;">
+          <input id="birthdayDate" type="date" class="tool-input" style="flex:1;min-width:140px;">
+          <button class="btn-primary btn-sm" onclick="birthdayAdd()">+ Hinzufügen</button>
+        </div>
+        <div id="birthdayList" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;"></div>
+      </div>
+    </section>
+
+    <!-- Minesweeper -->
+    <section id="minesweeper" class="section">
+      <div class="section-header"><button class="back-btn" onclick="showSection('mode-select')">← Zurück</button><h2>💣 Minesweeper</h2></div>
+      <div class="tool-card" style="max-width:520px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-secondary btn-sm" onclick="minesweeperNew(9,9,10)">Leicht (9×9)</button>
+          <button class="btn-secondary btn-sm" onclick="minesweeperNew(16,16,40)">Mittel (16×16)</button>
+        </div>
+        <div id="minesweeperHUD" style="display:flex;gap:20px;font-size:0.95rem;color:var(--text-soft);">
+          <span>💣 <strong id="mineCount">10</strong></span>
+          <span>⏱ <strong id="mineTimer">0</strong>s</span>
+        </div>
+        <div id="minesweeperGrid" style="display:inline-grid;gap:2px;border-radius:8px;overflow:hidden;"></div>
+        <div id="minesweeperMsg" style="font-size:1rem;font-weight:700;color:var(--brand);min-height:24px;"></div>
+      </div>
+    </section>
+
+        </main>
+    </div>
+
+    <div id="moderationLock" class="ban-term-overlay" style="display:none">
+        <div class="ban-term-window">
+            <div class="ban-term-titlebar">
+                <span class="ban-term-dot" style="background:#ff5f57"></span>
+                <span class="ban-term-dot" style="background:#febc2e"></span>
+                <span class="ban-term-dot" style="background:#28c840"></span>
+                <span class="ban-term-name">bash — system@ehoser</span>
+            </div>
+            <div class="ban-term-body" id="banTermBody"></div>
+        </div>
+    </div>
+
+    <button id="supportLauncher" class="support-launcher" type="button" onclick="openSupport()">
+        <span class="support-launcher-dot"></span>
+        Support
+    </button>
+
+    <div id="supportModal" class="support-modal" aria-hidden="true">
+        <div class="support-panel" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
+            <div class="support-head">
+                <div>
+                    <div class="support-kicker">Ehoser Support</div>
+                    <h2 id="supportTitle">Wie koennen wir helfen?</h2>
+                </div>
+                <button class="support-close" type="button" onclick="closeSupport()" aria-label="Support schliessen">x</button>
+            </div>
+
+            <div id="supportLoading" class="support-stage support-loading">
+                <div class="support-spinner"></div>
+                <strong>Support wird geladen</strong>
+                <span>Einen Moment bitte...</span>
+            </div>
+
+            <div id="supportReasons" class="support-stage" style="display:none">
+                <p class="support-copy">Waehlen Sie den Grund fuer den Support aus.</p>
+                <div class="support-reason-grid">
+                    <button type="button" onclick="selectSupportReason('Anmeldung')">Anmeldung</button>
+                    <button type="button" onclick="selectSupportReason('Technik')">Technik</button>
+                    <button type="button" onclick="selectSupportReason('Bugs')">Bugs</button>
+                    <button type="button" onclick="selectSupportReason('Hilfe')">Hilfe</button>
+                    <button type="button" onclick="selectSupportReason('Sonstiges')">Sonstiges</button>
+                </div>
+            </div>
+
+            <div id="supportConnecting" class="support-stage support-connecting" style="display:none">
+                <div class="support-avatar">E</div>
+                <strong>Bitte warten Sie.</strong>
+                <span>Sie werden mit dem digitalen Ehoser Support verbunden.</span>
+                <div class="support-progress"><div id="supportConnectBar"></div></div>
+            </div>
+
+            <div id="supportChat" class="support-chat" style="display:none">
+                <div id="supportMessages" class="support-messages"></div>
+                <div id="supportTyping" class="support-typing" style="display:none" aria-label="Support schreibt">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="support-input-row">
+                    <textarea id="supportInput" rows="1" placeholder="Nachricht schreiben..." onkeydown="supportInputKey(event)"></textarea>
+                    <button id="supportSendBtn" type="button" onclick="sendSupportMessage()">Senden</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
+    <script src="app.js?v=25"></script>
+    <script src="tools.js?v=3"></script>
+</body>
 </html>
