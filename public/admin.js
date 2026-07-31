@@ -7,14 +7,9 @@ const statusBox = document.getElementById('uploadStatus');
 const usersList = document.getElementById('registeredUsersList');
 const resetRequestsList = document.getElementById('resetRequestsList');
 const chatReportsList = document.getElementById('chatReportsList');
-const planRequestsList = document.getElementById('planRequestsList');
 const reportMessageContext = document.getElementById('reportMessageContext');
-const userBenefitsContext = document.getElementById('userBenefitsContext');
-const userBenefitsModal = document.getElementById('userBenefitsModal');
 let adminRefreshInterval = null;
 let _reportContextPayload = null;
-let _benefitsContextUser = null;
-let _benefitsCalculatedPrice = null;
 
 setStatus('Als Gast fortfahren oeffnet die normale App zum Testen. Admin-Code ist nur fuer Verwaltung noetig.', 'info');
 
@@ -44,12 +39,11 @@ accessForm.addEventListener('submit', async (event) => {
         secureArea.style.display = '';
         setStatus('Als Gast im Admin-Bereich. Admin-Code wurde akzeptiert.', 'success');
         setAdminEmptyStates('Lade Admin-Daten...');
-        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadPlanRequests(), loadAdminApps(), loadVotes(), loadChatReports()]);
+        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadAdminApps(), loadVotes(), loadChatReports()]);
         clearInterval(adminRefreshInterval);
         adminRefreshInterval = setInterval(() => {
             loadRegisteredUsers();
             loadResetRequests();
-            loadPlanRequests();
             loadAdminApps();
             loadVotes();
             loadChatReports();
@@ -67,7 +61,6 @@ function setAdminEmptyStates(message) {
         usersList,
         resetRequestsList,
         chatReportsList,
-        planRequestsList,
         document.getElementById('adminAppsList'),
         document.getElementById('votesAdminList')
     ].forEach((list) => {
@@ -203,13 +196,12 @@ async function loadRegisteredUsers() {
         usersList.innerHTML = users
             .map(
                 (user) => `
-                <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;" oncontextmenu="openUserBenefitsContext(event, ${user.id}, '${escapeJs(user.username)}')">
-                    <span>${escapeHtml(user.username)} ${user.is_custom ? '<strong style="color:#f8fafc;background:linear-gradient(135deg,#4f46e5,#0ea5e9);padding:1px 7px;border-radius:6px;font-size:0.8em;">INDIVIDUELL</strong>' : ''} ${user.is_premium ? '<strong style="color:#f8fafc;background:linear-gradient(135deg,#111827,#2563eb,#14b8a6);padding:1px 7px;border-radius:6px;font-size:0.8em;">PREMIUM</strong>' : ''} ${user.has_pro ? '<strong style="color:#b45309">PRO</strong>' : ''} ${user.update_unlocked ? '<strong style="color:#2dbe6c">UPDATE</strong>' : ''} ${user.ps_account ? '<strong style="color:#4d9fff;background:rgba(77,159,255,0.15);padding:1px 6px;border-radius:6px;font-size:0.8em;">PS</strong>' : ''}</span>
+                <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                    <span>${escapeHtml(user.username)} ${user.is_premium ? '<strong style="color:#f8fafc;background:linear-gradient(135deg,#111827,#2563eb,#14b8a6);padding:1px 7px;border-radius:6px;font-size:0.8em;">PREMIUM</strong>' : ''} ${user.has_pro ? '<strong style="color:#b45309">PRO</strong>' : ''} ${user.update_unlocked ? '<strong style="color:#2dbe6c">UPDATE</strong>' : ''} ${user.ps_account ? '<strong style="color:#4d9fff;background:rgba(77,159,255,0.15);padding:1px 6px;border-radius:6px;font-size:0.8em;">PS</strong>' : ''}</span>
                     <span style="display:flex;gap:6px;flex-wrap:wrap;">
                         <button class="btn-small" onclick="toggleUserPro(${user.id}, ${user.has_pro ? 'false' : 'true'})">${user.has_pro ? 'PRO entfernen' : 'PRO geben'}</button>
                         <button class="btn-small" style="background:${user.is_premium ? 'rgba(220,50,50,0.2)' : 'linear-gradient(135deg,rgba(37,99,235,0.32),rgba(20,184,166,0.22))'}" onclick="toggleUserPremium(${user.id}, ${user.is_premium ? 'false' : 'true'})">${user.is_premium ? 'Premium entfernen' : 'Premium geben'}</button>
-                        <button class="btn-small" onclick="addPlanMonth(${user.id}, '${user.is_premium ? 'premium' : 'pro'}')">+1 Monat</button>
-                        <button class="btn-small" style="background:linear-gradient(135deg,rgba(79,70,229,0.35),rgba(14,165,233,0.25));color:#e0f2fe;" onclick="openUserBenefitsFor(${user.id}, '${escapeJs(user.username)}')">Individuell</button>
+                        <button class="btn-small" style="background:${user.update_unlocked ? 'rgba(220,50,50,0.2)' : 'rgba(45,190,108,0.2)'}" onclick="unlockUserUpdate(${user.id}, ${user.update_unlocked ? 'false' : 'true'})">${user.update_unlocked ? '🔒 Update sperren' : '🔓 Update freischalten'}</button>
                         <button class="btn-small" style="background:${user.ps_account ? 'rgba(220,50,50,0.2)' : 'rgba(77,159,255,0.2)'}" onclick="toggleUserPs(${user.id}, ${user.ps_account ? 'false' : 'true'})">${user.ps_account ? '🔵 PS entfernen' : '🔵 PS geben'}</button>
                         <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
                         <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
@@ -220,79 +212,6 @@ async function loadRegisteredUsers() {
     } catch (error) {
         setListFallback(usersList, 'Ohne Anmeldung: Nutzerliste leer, Supabase nicht erreichbar.');
         setStatus(`Fehler beim Laden der Nutzer: ${error.message}`, 'error');
-    }
-}
-
-async function loadPlanRequests() {
-    if (!activeAdminCode || !planRequestsList) return;
-    try {
-        const response = await fetch(`${window.location.origin}/api/admin/plan-requests`, {
-            headers: { 'x-admin-key': activeAdminCode }
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            planRequestsList.innerHTML = '<li>Tarif-Anfragen konnten nicht geladen werden.</li>';
-            return;
-        }
-        const requests = data.requests || [];
-        if (!requests.length) {
-            planRequestsList.innerHTML = '<li>Keine offenen Tarif-Anfragen.</li>';
-            return;
-        }
-        planRequestsList.innerHTML = requests.map((req) => `
-            <li data-plan-request-id="${req.id}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-                <span><strong>${escapeHtml(req.real_name || '')}</strong> möchte für ${Number(req.price_eur || 0)} Euro ${escapeHtml(String(req.plan || '').toUpperCase())} kaufen <small style="color:#8ab4c9;">(${escapeHtml(req.username || '')})</small></span>
-                <button class="btn-small" onclick="confirmPlanPayment(${req.id})">Zahlung bestätigen</button>
-            </li>
-        `).join('');
-    } catch {
-        planRequestsList.innerHTML = '<li>Keine Verbindung zu Tarif-Anfragen.</li>';
-    }
-}
-
-async function confirmPlanPayment(requestId) {
-    if (!activeAdminCode) return;
-    const row = planRequestsList?.querySelector(`[data-plan-request-id="${requestId}"]`);
-    const oldHtml = row?.outerHTML || '';
-    row?.remove();
-    if (planRequestsList && !planRequestsList.querySelector('[data-plan-request-id]')) {
-        planRequestsList.innerHTML = '<li>Keine offenen Tarif-Anfragen.</li>';
-    }
-    try {
-        const response = await fetch(`${window.location.origin}/api/admin/plan-requests/${requestId}/confirm`, {
-            method: 'POST',
-            headers: { 'x-admin-key': activeAdminCode }
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            if (oldHtml && planRequestsList) planRequestsList.insertAdjacentHTML('afterbegin', oldHtml);
-            setStatus(data.error || 'Zahlung konnte nicht bestaetigt werden.', 'error');
-            return;
-        }
-        setStatus(`Zahlung bestaetigt: ${data.username} wurde auf ${data.plan} gesetzt.`, 'success');
-        await Promise.all([loadPlanRequests(), loadRegisteredUsers()]);
-    } catch (error) {
-        setStatus(`Fehler: ${error.message}`, 'error');
-    }
-}
-
-async function addPlanMonth(userId, plan) {
-    if (!activeAdminCode) return;
-    try {
-        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/add-month`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
-            body: JSON.stringify({ plan })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            setStatus(data.error || 'Monat konnte nicht hinzugefuegt werden.', 'error');
-            return;
-        }
-        setStatus(`Ein Monat fuer ${data.username} hinzugefuegt.`, 'success');
-        await loadRegisteredUsers();
-    } catch (error) {
-        setStatus(`Fehler: ${error.message}`, 'error');
     }
 }
 
@@ -370,7 +289,7 @@ async function toggleUserPro(userId, enabled) {
                 'Content-Type': 'application/json',
                 'x-admin-key': activeAdminCode
             },
-            body: JSON.stringify({ enabled, days: 30 })
+            body: JSON.stringify({ enabled, days: 2 })
         });
         const data = await response.json();
         if (!response.ok) {
@@ -549,132 +468,6 @@ async function adminContinueReport() {
 function closeReportContextMenu() {
     if (!reportMessageContext) return;
     reportMessageContext.style.display = 'none';
-}
-
-function openUserBenefitsContext(event, userId, username) {
-    event.preventDefault();
-    if (!userBenefitsContext) return;
-    closeReportContextMenu();
-    _benefitsContextUser = { id: userId, username };
-    userBenefitsContext.style.display = 'block';
-    userBenefitsContext.style.left = `${event.pageX}px`;
-    userBenefitsContext.style.top = `${event.pageY}px`;
-}
-
-function openUserBenefitsFor(userId, username) {
-    _benefitsContextUser = { id: userId, username };
-    openUserBenefitsModal();
-}
-
-function closeUserBenefitsContext() {
-    if (!userBenefitsContext) return;
-    userBenefitsContext.style.display = 'none';
-}
-
-function resetBenefitsForm() {
-    document.querySelectorAll('.benefit-check').forEach((input) => { input.checked = false; });
-    const all = document.getElementById('benefitAll');
-    const credits = document.getElementById('benefitCredits');
-    const result = document.getElementById('benefitPriceResult');
-    const continueBtn = document.getElementById('benefitContinueBtn');
-    if (all) all.checked = false;
-    if (credits) credits.value = '0';
-    if (result) result.textContent = 'Preis: noch nicht berechnet';
-    if (continueBtn) continueBtn.disabled = true;
-    _benefitsCalculatedPrice = null;
-}
-
-function openUserBenefitsModal() {
-    if (!_benefitsContextUser || !userBenefitsModal) return;
-    closeUserBenefitsContext();
-    resetBenefitsForm();
-    const title = document.getElementById('userBenefitsTitle');
-    if (title) title.textContent = `Vorteile geben: ${_benefitsContextUser.username}`;
-    userBenefitsModal.style.display = 'flex';
-}
-
-function closeUserBenefitsModal() {
-    if (userBenefitsModal) userBenefitsModal.style.display = 'none';
-}
-
-function toggleAllBenefits(checked) {
-    document.querySelectorAll('.benefit-check').forEach((input) => { input.checked = Boolean(checked); });
-    _benefitsCalculatedPrice = null;
-    const continueBtn = document.getElementById('benefitContinueBtn');
-    const result = document.getElementById('benefitPriceResult');
-    if (continueBtn) continueBtn.disabled = true;
-    if (result) result.textContent = 'Preis: noch nicht berechnet';
-}
-
-function getBenefitsPayload() {
-    const credits = Math.max(0, Math.trunc(Number(document.getElementById('benefitCredits')?.value || 0)));
-    return {
-        features: {
-            videoGenerator: document.getElementById('benefitVideo')?.checked === true,
-            premiumKi: document.getElementById('benefitPremiumKi')?.checked === true,
-            proFeatures: document.getElementById('benefitPro')?.checked === true,
-            psAccount: document.getElementById('benefitPs')?.checked === true,
-            updateUnlocked: document.getElementById('benefitUpdate')?.checked === true
-        },
-        creditsAdded: credits
-    };
-}
-
-function calculateBenefitsPrice() {
-    const payload = getBenefitsPayload();
-    const checkedPrice = Array.from(document.querySelectorAll('.benefit-check'))
-        .filter((input) => input.checked)
-        .reduce((sum, input) => sum + (Number(input.dataset.price) || 0), 0);
-    const creditsPrice = Math.ceil(payload.creditsAdded / 100);
-    _benefitsCalculatedPrice = checkedPrice + creditsPrice;
-    const result = document.getElementById('benefitPriceResult');
-    const continueBtn = document.getElementById('benefitContinueBtn');
-    if (result) result.textContent = `Preis: ${_benefitsCalculatedPrice} Euro`;
-    if (continueBtn) continueBtn.disabled = false;
-    return _benefitsCalculatedPrice;
-}
-
-async function saveUserBenefits() {
-    if (!_benefitsContextUser || !activeAdminCode) return;
-    calculateBenefitsPrice();
-    const payload = getBenefitsPayload();
-    const hasFeature = Object.values(payload.features).some(Boolean);
-    if (!hasFeature && payload.creditsAdded <= 0) {
-        setStatus('Bitte mindestens einen Vorteil oder Credits auswaehlen.', 'error');
-        return;
-    }
-
-    const btn = document.getElementById('benefitContinueBtn');
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Speichert...';
-    }
-    try {
-        const response = await fetch(`${window.location.origin}/api/admin/users/${_benefitsContextUser.id}/custom-benefits`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-admin-key': activeAdminCode
-            },
-            body: JSON.stringify({ ...payload, priceEur: _benefitsCalculatedPrice, enabled: true })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            setStatus(data.error || 'Vorteile konnten nicht gespeichert werden.', 'error');
-            return;
-        }
-        closeUserBenefitsModal();
-        setStatus(`${data.username} hat jetzt den individuellen Plan fuer ${_benefitsCalculatedPrice} Euro.`, 'success');
-        await loadRegisteredUsers();
-    } catch (error) {
-        setStatus(`Fehler: ${error.message}`, 'error');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Fortfahren';
-        }
-    }
-}
 
 async function adminUnbanUser() {
     const input = document.getElementById('unbanUsernameInput');
@@ -707,10 +500,10 @@ async function adminUnbanUser() {
         setStatus(`Fehler: ${error.message}`, 'error');
     }
 }
+}
 
 document.addEventListener('click', () => {
     closeReportContextMenu();
-    closeUserBenefitsContext();
 });
 
 async function deleteUser(userId, username) {
