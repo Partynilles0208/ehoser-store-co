@@ -1,4 +1,4 @@
-import { Reactor } from '@reactor-team/js-sdk';
+import { Reactor } from 'https://esm.sh/@reactor-team/js-sdk';
 
 let reactor = null;
 
