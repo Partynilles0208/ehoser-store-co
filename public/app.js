@@ -2101,18 +2101,17 @@ async function generateWorld() {
     document.documentElement.requestFullscreen?.().catch(() => {});
     try {
         const image = await worldFileAsDataUrl(imageFile);
-        const response = await fetch('/api/world/generate', {
+        const response = await fetch('/api/world/session', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, image })
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+            body: JSON.stringify({ prompt })
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Die Welt konnte nicht generiert werden.');
 
         const game = document.getElementById('worldGame');
         const canvas = document.getElementById('worldCanvas');
-        const imageUrl = data.imageUrl || data.url || data.result?.image_url || data.result?.url || image;
-        if (imageUrl) canvas.style.backgroundImage = `linear-gradient(rgba(3, 8, 14, .15), rgba(3, 8, 14, .52)), url("${imageUrl}")`;
+        if (window.startReactorWorld) await window.startReactorWorld({ token: data.jwt, prompt, image });
         document.getElementById('worldTitle').textContent = prompt.slice(0, 70);
         document.getElementById('worldSetup').hidden = true;
         game.hidden = false;

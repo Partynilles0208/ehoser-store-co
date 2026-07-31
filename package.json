@@ -7,6 +7,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@reactor-team/js-sdk": "^2.12.2",
     "@supabase/supabase-js": "^2.38.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
