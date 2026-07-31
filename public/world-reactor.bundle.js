@@ -30935,22 +30935,10 @@ window.startReactorWorld = async ({ token, prompt, file: file2 }) => {
     const title = document.getElementById("worldTitle");
     if (title) title.textContent = message;
   };
-  let ready = false;
-  let imageRef = null;
-  let started = false;
-  const startWhenReady = async () => {
-    if (!ready || !imageRef || started) return;
-    started = true;
-    try {
-      await reactor.sendCommand("set_prompt", { prompt });
-      await reactor.sendCommand("set_image", { image: imageRef });
-      await reactor.sendCommand("start", {});
-      setStatus("LingBot generiert die Welt ...");
-    } catch (error51) {
-      setStatus(`LingBot-Fehler: ${error51.message}`);
-      throw error51;
-    }
-  };
+  let resolveReady;
+  const readyPromise = new Promise((resolve) => {
+    resolveReady = resolve;
+  });
   setStatus("Verbinde mit LingBot ...");
   reactor = new Reactor({ modelName: "reactor/lingbot" });
   reactor.on("trackReceived", (name, track) => {
@@ -30963,12 +30951,16 @@ window.startReactorWorld = async ({ token, prompt, file: file2 }) => {
   reactor.on("command_error", (data) => setStatus(`LingBot-Fehler: ${data?.reason || "Befehl abgelehnt"}`));
   reactor.on("statusChanged", async (status) => {
     if (status !== "ready") return;
-    ready = true;
-    await startWhenReady();
+    resolveReady();
   });
   await reactor.connect(token);
-  imageRef = await reactor.uploadFile(file2);
-  await startWhenReady();
+  await readyPromise;
+  setStatus("Bild wird an LingBot \xFCbertragen ...");
+  const imageRef = await reactor.uploadFile(file2);
+  await reactor.sendCommand("set_prompt", { prompt });
+  await reactor.sendCommand("set_image", { image: imageRef });
+  await reactor.sendCommand("start", {});
+  setStatus("LingBot generiert die Welt ...");
   window.__worldKeys = window.__worldKeys || /* @__PURE__ */ new Set();
   canvas?.addEventListener("keydown", (event) => window.__worldKeys.add(event.key.toLowerCase()));
   canvas?.addEventListener("keyup", (event) => window.__worldKeys.delete(event.key.toLowerCase()));
