@@ -2095,10 +2095,6 @@ async function generateWorld() {
         status.textContent = 'Bitte beschreibe zuerst deine Welt.';
         return;
     }
-    if (!imageFile) {
-        status.textContent = 'LingBot braucht ein Referenzbild. Bitte füge ein Bild hinzu.';
-        return;
-    }
 
     button.disabled = true;
     status.textContent = 'Lingabot 2 erstellt deine Welt ...';
