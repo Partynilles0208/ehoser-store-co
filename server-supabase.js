@@ -22,10 +22,6 @@ const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
 const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
 const GROQ_TEXT_MODEL = process.env.GROQ_TEXT_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_VISION_MODEL = process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
-const REACTOR_API_KEY = process.env.REACTOR_API_KEY || '';
-const REACTOR_TOKEN_URL = 'https://api.reactor.inc/tokens';
-const REACTOR_WORLD_MODEL = 'reactor/lingbot';
-const WORLD_LIMIT_SECONDS = 30;
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
 function normalizeMailDomain(value) {
@@ -1403,52 +1399,6 @@ app.get('/api/config', (req, res) => {
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
     githubRepo: process.env.GITHUB_REPO || 'Partynilles0208/ehoser-store-co'
   });
-});
-
-const worldSessions = new Map();
-
-app.post('/api/world/session', async (req, res) => {
-  const username = String(req.authUser?.username || req.ip || 'unknown');
-  const now = Date.now();
-  const current = worldSessions.get(username);
-  const usage = current && now - current.startedAt < 60 * 60 * 1000
-    ? current
-    : { startedAt: now, usedSeconds: 0 };
-
-  if (usage.usedSeconds >= WORLD_LIMIT_SECONDS) {
-    return res.status(429).json({ error: 'Deine 30 Sekunden World Generator sind für diese Stunde bereits verbraucht.' });
-  }
-
-  if (!REACTOR_API_KEY) {
-    return res.status(503).json({ error: 'REACTOR_API_KEY ist in Vercel noch nicht gesetzt.' });
-  }
-
-  try {
-    const tokenResponse = await fetch(REACTOR_TOKEN_URL, {
-      method: 'POST',
-      headers: {
-        'Reactor-API-Key': REACTOR_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        authorization_details: [{
-          type: 'session',
-          resources: { models: { match: [REACTOR_WORLD_MODEL] } }
-        }]
-      }),
-      signal: AbortSignal.timeout(10000)
-    });
-    const tokenData = await tokenResponse.json().catch(() => ({}));
-    if (!tokenResponse.ok || !tokenData.jwt) {
-      return res.status(502).json({ error: tokenData.error || 'Reactor-Token konnte nicht erstellt werden.' });
-    }
-
-    usage.usedSeconds = WORLD_LIMIT_SECONDS;
-    worldSessions.set(username, usage);
-    return res.json({ jwt: tokenData.jwt, modelName: REACTOR_WORLD_MODEL, seconds: WORLD_LIMIT_SECONDS });
-  } catch (error) {
-    return res.status(502).json({ error: `Reactor ist nicht erreichbar: ${error.message}` });
-  }
 });
 
 // News-Proxy (NewsAPI.org blockiert direkte Browser-Requests via CORS)
