@@ -164,14 +164,6 @@
                                 <span class="mode-badge mode-badge-ki">Llama 3.3 70B</span>
                             </div>
                         </button>
-                        <button class="mode-card mode-card-world" onclick="selectMode('world')">
-                            <div class="mode-card-icon">🌍</div>
-                            <div class="mode-card-body">
-                                <h3>World Generator</h3>
-                                <p>Erzeuge aus einem Prompt und einem Bild eine eigene KI-Welt und bewege dich in Vollbild mit WASD.</p>
-                                <span class="mode-badge mode-badge-world">Lingabot 2 · 30 Sekunden</span>
-                            </div>
-                        </button>
                         <button class="mode-card mode-card-facewarp" onclick="selectMode('facewarp')">
                             <div class="mode-card-icon">🎭</div>
                             <div class="mode-card-body">
@@ -659,42 +651,6 @@
                             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendKIMessage();}"
                         ></textarea>
                         <button class="ki-send-btn" onclick="sendKIMessage()">➤</button>
-                    </div>
-                </div>
-            </section>
-
-            <section id="world" class="section">
-                <div class="section-header">
-                    <div>
-                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
-                        <p class="eyebrow">Lingabot 2 · Reactor</p>
-                        <h2>World Generator</h2>
-                        <p class="section-subtitle">Beschreibe deine Welt, füge ein Bild hinzu und starte sie im Vollbild. Pro Nutzung stehen maximal 30 Sekunden zur Verfügung.</p>
-                    </div>
-                    <div class="world-quota" id="worldQuota">30s verfügbar</div>
-                </div>
-                <div id="worldSetup" class="world-setup">
-                    <label class="world-field">
-                        <span>Prompt</span>
-                        <textarea id="worldPrompt" rows="5" maxlength="1200" placeholder="Eine leuchtende Stadt auf schwimmenden Inseln, Regen, riesiger Mond und alte Tempel ..."></textarea>
-                    </label>
-                    <label class="world-upload" for="worldImage">
-                        <span>🖼️ Bild hinzufügen</span>
-                        <small id="worldImageName">Optionales Referenzbild</small>
-                        <input id="worldImage" type="file" accept="image/*">
-                    </label>
-                    <button id="worldGenerateBtn" class="btn-primary" type="button">🌍 Welt generieren</button>
-                    <p id="worldStatus" class="world-status">Bereit. Die Generierung startet erst nach deinem Klick.</p>
-                </div>
-                <div id="worldGame" class="world-game" hidden>
-                    <div class="world-game-bar">
-                        <strong id="worldTitle">Deine Welt</strong>
-                        <span id="worldTimer">30s</span>
-                        <button id="worldExitBtn" class="btn-secondary" type="button">Beenden</button>
-                    </div>
-                    <div id="worldCanvas" class="world-canvas" tabindex="0" aria-label="World Generator Spielfläche">
-                        <div id="worldPlayer" class="world-player"></div>
-                        <div class="world-controls">W A S D zum Bewegen · Leertaste zum Springen</div>
                     </div>
                 </div>
             </section>
