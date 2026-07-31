@@ -11,6 +11,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const ADMIN_UPLOAD_KEY = process.env.ADMIN_UPLOAD_KEY || 'change-this-admin-key';
+const REACTOR_API_KEY = process.env.REACTOR_API_KEY || '';
+const REACTOR_API_URL = process.env.REACTOR_API_URL || '';
+const LINGOBOT_MODEL = process.env.LINGOBOT_MODEL || 'lingabot-2';
+const WORLD_LIMIT_SECONDS = 30;
+const worldUsage = new Map();
 const isVercel = Boolean(process.env.VERCEL);
 const uploadsRoot = isVercel ? '/tmp/uploads' : path.join(__dirname, 'uploads');
 const iconsDir = path.join(uploadsRoot, 'icons');
@@ -238,6 +243,51 @@ app.get('/api/apps', (req, res) => {
     if (err) return res.status(500).json({ error: 'Datenbankfehler' });
     res.json(apps);
   });
+});
+
+app.post('/api/world/generate', async (req, res) => {
+  const clientId = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  const now = Date.now();
+  const usage = worldUsage.get(clientId) || { startedAt: now, usedSeconds: 0 };
+  if (now - usage.startedAt >= 60 * 60 * 1000) {
+    usage.startedAt = now;
+    usage.usedSeconds = 0;
+  }
+  if (usage.usedSeconds >= WORLD_LIMIT_SECONDS) {
+    return res.status(429).json({ error: 'Dieses Gerät hat die 30 Sekunden für diese Stunde bereits genutzt.' });
+  }
+
+  const prompt = String(req.body?.prompt || '').trim();
+  const image = typeof req.body?.image === 'string' ? req.body.image : '';
+  if (!prompt) return res.status(400).json({ error: 'Ein Prompt ist erforderlich.' });
+  if (!REACTOR_API_KEY || !REACTOR_API_URL) {
+    return res.status(503).json({ error: 'Reactor ist noch nicht konfiguriert. Setze REACTOR_API_KEY und REACTOR_API_URL in der Server-Umgebung.' });
+  }
+
+  usage.usedSeconds = WORLD_LIMIT_SECONDS;
+  worldUsage.set(clientId, usage);
+
+  try {
+    const upstream = await fetch(REACTOR_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${REACTOR_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: LINGOBOT_MODEL,
+        prompt,
+        image: image || undefined,
+        duration_seconds: WORLD_LIMIT_SECONDS
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const result = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) return res.status(502).json({ error: result.error || 'Reactor-API-Fehler.' });
+    res.json({ ...result, seconds: WORLD_LIMIT_SECONDS });
+  } catch (error) {
+    res.status(502).json({ error: `Reactor ist nicht erreichbar: ${error.message}` });
+  }
 });
 
 // App Details

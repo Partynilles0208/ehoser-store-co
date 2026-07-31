@@ -473,6 +473,39 @@ body[data-personalization-primary-mode="images"] .logo-icon {
         padding: 24px 18px;
     }
 
+
+.mode-card-world {
+    background: linear-gradient(135deg, rgba(15, 91, 105, .35), rgba(20, 36, 65, .72));
+    border-color: rgba(75, 214, 190, .32);
+}
+
+.mode-badge-world {
+    color: #9ff9e6;
+    background: rgba(42, 188, 163, .16);
+}
+
+.world-setup {
+    max-width: 780px;
+    display: grid;
+    gap: 16px;
+    padding: 22px;
+    border: 1px solid rgba(120, 220, 220, .2);
+    border-radius: 18px;
+    background: rgba(7, 20, 29, .72);
+}
+
+.world-field { display: grid; gap: 8px; color: #d8f5f1; font-weight: 700; }
+.world-field textarea { width: 100%; min-height: 130px; resize: vertical; box-sizing: border-box; border: 1px solid rgba(135, 226, 220, .28); border-radius: 12px; padding: 14px; background: rgba(2, 10, 17, .82); color: #fff; font: inherit; }
+.world-upload { display: grid; gap: 5px; cursor: pointer; padding: 16px; border: 1px dashed rgba(135, 226, 220, .44); border-radius: 12px; color: #d8f5f1; background: rgba(35, 157, 154, .08); }
+.world-upload small, .world-status { color: #8fb4bf; }
+.world-upload input { display: none; }
+.world-quota, #worldTimer { display: inline-flex; align-items: center; padding: 8px 12px; border: 1px solid rgba(112, 231, 202, .35); border-radius: 999px; color: #9ff9e6; background: rgba(42, 188, 163, .12); font-weight: 800; }
+.world-game { min-height: min(72vh, 700px); display: grid; gap: 10px; }
+.world-game-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: rgba(5, 13, 20, .86); }
+.world-game-bar strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.world-canvas { position: relative; min-height: min(68vh, 620px); overflow: hidden; border: 1px solid rgba(120, 220, 220, .3); border-radius: 16px; outline: none; background: radial-gradient(circle at 30% 20%, rgba(47, 182, 191, .45), transparent 30%), linear-gradient(145deg, #102632, #070b15 70%); background-position: center; background-size: cover; }
+.world-player { position: absolute; z-index: 2; width: 28px; height: 28px; transform: translate(-50%, -50%); border: 3px solid #eaffff; border-radius: 50%; background: linear-gradient(135deg, #45e0ba, #4e9cff); box-shadow: 0 0 22px rgba(69, 224, 186, .8); }
+.world-controls { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); max-width: calc(100% - 28px); padding: 8px 12px; border-radius: 999px; color: #d8f5f1; background: rgba(2, 8, 14, .7); font-size: .82rem; text-align: center; }
     .repo-update-actions {
         flex-direction: column;
     }
