@@ -30935,11 +30935,6 @@ window.startReactorWorld = async ({ token, prompt, file: file2 }) => {
     const title = document.getElementById("worldTitle");
     if (title) title.textContent = message;
   };
-  video.muted = true;
-  video.autoplay = true;
-  video.playsInline = true;
-  video.addEventListener("loadedmetadata", () => setStatus("LingBot-Stream empfangen"));
-  video.addEventListener("error", () => setStatus("Chrome konnte den LingBot-Stream nicht abspielen"));
   let resolveReady;
   const readyPromise = new Promise((resolve) => {
     resolveReady = resolve;
@@ -30950,7 +30945,8 @@ window.startReactorWorld = async ({ token, prompt, file: file2 }) => {
     if (name !== "main_video") return;
     setStatus("LingBot-Welt l\xE4uft");
     video.srcObject = stream || new MediaStream([track]);
-    video.play().catch((error51) => setStatus(`Video-Playback blockiert: ${error51.message}`));
+    video.play().catch(() => {
+    });
   });
   reactor.on("command_error", (data) => setStatus(`LingBot-Fehler: ${data?.reason || "Befehl abgelehnt"}`));
   reactor.on("statusChanged", async (status) => {
