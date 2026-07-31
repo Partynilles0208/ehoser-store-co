@@ -30941,10 +30941,10 @@ window.startReactorWorld = async ({ token, prompt, file: file2 }) => {
   });
   setStatus("Verbinde mit LingBot ...");
   reactor = new Reactor({ modelName: "reactor/lingbot" });
-  reactor.on("trackReceived", (name, track, stream) => {
+  reactor.on("trackReceived", (name, track) => {
     if (name !== "main_video") return;
     setStatus("LingBot-Welt l\xE4uft");
-    video.srcObject = stream || new MediaStream([track]);
+    video.srcObject = new MediaStream([track]);
     video.play().catch(() => {
     });
   });

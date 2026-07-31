@@ -15,10 +15,10 @@ window.startReactorWorld = async ({ token, prompt, file }) => {
     const readyPromise = new Promise((resolve) => { resolveReady = resolve; });
     setStatus('Verbinde mit LingBot ...');
     reactor = new Reactor({ modelName: 'reactor/lingbot' });
-    reactor.on('trackReceived', (name, track, stream) => {
+    reactor.on('trackReceived', (name, track) => {
         if (name !== 'main_video') return;
         setStatus('LingBot-Welt läuft');
-        video.srcObject = stream || new MediaStream([track]);
+        video.srcObject = new MediaStream([track]);
         video.play().catch(() => {});
     });
     reactor.on('command_error', (data) => setStatus(`LingBot-Fehler: ${data?.reason || 'Befehl abgelehnt'}`));
