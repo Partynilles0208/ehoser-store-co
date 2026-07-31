@@ -11,8 +11,22 @@ window.startReactorWorld = async ({ token, prompt, file }) => {
         const title = document.getElementById('worldTitle');
         if (title) title.textContent = message;
     };
-    let resolveReady;
-    const readyPromise = new Promise((resolve) => { resolveReady = resolve; });
+    let ready = false;
+    let imageRef = null;
+    let started = false;
+    const startWhenReady = async () => {
+        if (!ready || !imageRef || started) return;
+        started = true;
+        try {
+            await reactor.sendCommand('set_prompt', { prompt });
+            await reactor.sendCommand('set_image', { image: imageRef });
+            await reactor.sendCommand('start', {});
+            setStatus('LingBot generiert die Welt ...');
+        } catch (error) {
+            setStatus(`LingBot-Fehler: ${error.message}`);
+            throw error;
+        }
+    };
     setStatus('Verbinde mit LingBot ...');
     reactor = new Reactor({ modelName: 'reactor/lingbot' });
     reactor.on('trackReceived', (name, track) => {
@@ -24,16 +38,12 @@ window.startReactorWorld = async ({ token, prompt, file }) => {
     reactor.on('command_error', (data) => setStatus(`LingBot-Fehler: ${data?.reason || 'Befehl abgelehnt'}`));
     reactor.on('statusChanged', async (status) => {
         if (status !== 'ready') return;
-        resolveReady();
+        ready = true;
+        await startWhenReady();
     });
     await reactor.connect(token);
-    await readyPromise;
-    setStatus('Bild wird an LingBot übertragen ...');
-    const imageRef = await reactor.uploadFile(file);
-    await reactor.sendCommand('set_prompt', { prompt });
-    await reactor.sendCommand('set_image', { image: imageRef });
-    await reactor.sendCommand('start', {});
-    setStatus('LingBot generiert die Welt ...');
+    imageRef = await reactor.uploadFile(file);
+    await startWhenReady();
 
     window.__worldKeys = window.__worldKeys || new Set();
     canvas?.addEventListener('keydown', (event) => window.__worldKeys.add(event.key.toLowerCase()));
