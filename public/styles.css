@@ -7128,16 +7128,12 @@ body.desktop-mode .mode-hero::after {
     bottom: 18px;
     transform: translateX(-50%);
     z-index: 2400;
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    min-height: 44px;
-    padding: 0 16px;
-    border: 1px solid rgba(34, 224, 191, 0.34);
-    border-radius: 999px;
-    background: #06131d;
-    color: #f8fbff;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+    display: inline-block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #4da3ff;
+    text-decoration: underline;
     font: 800 0.92rem "Outfit", "Segoe UI", sans-serif;
     cursor: pointer;
 }
@@ -7148,16 +7144,8 @@ body[data-section="auth"] .support-launcher {
 }
 
 .support-launcher:hover {
-    border-color: rgba(34, 224, 191, 0.68);
-    transform: translateX(-50%) translateY(-1px);
-}
-
-.support-launcher-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: #22d36b;
-    box-shadow: 0 0 0 5px rgba(34, 211, 107, 0.13);
+    color: #8ac4ff;
+    transform: translateX(-50%);
 }
 
 .support-modal {

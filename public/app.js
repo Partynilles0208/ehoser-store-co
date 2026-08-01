@@ -5901,7 +5901,7 @@ async function mountSupportChatKit() {
                 accentColor: '#22e0bf'
             },
             header: {
-                title: 'Ehoser Support'
+                title: { text: 'Ehoser Support' }
             },
             composer: {
                 placeholder: 'Nachricht an Ehoser Support...'
