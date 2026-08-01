@@ -7148,6 +7148,41 @@ body[data-section="auth"] .support-launcher {
     transform: translateX(-50%);
 }
 
+.filme-wrapper {
+    width: min(960px, 100%);
+    margin: 0 auto;
+    padding: 24px;
+}
+
+.media-heading {
+    margin: 28px 0 20px;
+}
+
+.media-heading h2 {
+    margin: 0 0 8px;
+    color: var(--text);
+    font-size: clamp(2rem, 5vw, 3.6rem);
+}
+
+.media-heading p:last-child {
+    color: var(--muted);
+}
+
+.film-frame-wrap {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #000;
+    box-shadow: var(--shadow);
+}
+
+.film-frame {
+    display: block;
+    width: 100%;
+    min-height: 384px;
+    border: 0;
+}
+
 .support-modal {
     position: fixed;
     inset: 0;

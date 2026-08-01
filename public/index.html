@@ -153,6 +153,14 @@
                                 <span class="mode-badge mode-badge-youtube">YouTube API v3</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-filme" onclick="selectMode('filme')">
+                            <div class="mode-card-icon">🎬</div>
+                            <div class="mode-card-body">
+                                <h3>Filme</h3>
+                                <p>Filme direkt im Browser ansehen.</p>
+                                <span class="mode-badge mode-badge-youtube">Titanic Film</span>
+                            </div>
+                        </button>
                         <button class="mode-card mode-card-news" onclick="selectMode('news')" data-update-feature>
                             <div class="mode-card-icon">📰</div>
                             <div class="mode-card-body">
@@ -662,6 +670,30 @@
                     <div id="ytStatus" class="yt-status"></div>
                     <div id="ytResults" class="yt-results"></div>
                     <div id="ytPagination" class="yt-pagination"></div>
+                </div>
+            </section>
+
+            <section id="filme" class="section">
+                <div class="media-wrapper filme-wrapper">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <div class="media-heading">
+                        <p class="eyebrow">Filme</p>
+                        <h2>Titanic Film</h2>
+                        <p>Der erste Film in deiner Filmsammlung.</p>
+                    </div>
+                    <div class="film-frame-wrap">
+                        <iframe
+                            class="film-frame"
+                            src="https://archive.org/embed/silent-in-nacht-und-eis"
+                            title="Titanic Film"
+                            width="560"
+                            height="384"
+                            frameborder="0"
+                            allowfullscreen
+                            webkitallowfullscreen="true"
+                            mozallowfullscreen="true"
+                        ></iframe>
+                    </div>
                 </div>
             </section>
 
