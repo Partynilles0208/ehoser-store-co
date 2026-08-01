@@ -7,6 +7,7 @@ const statusBox = document.getElementById('uploadStatus');
 const usersList = document.getElementById('registeredUsersList');
 const resetRequestsList = document.getElementById('resetRequestsList');
 const chatReportsList = document.getElementById('chatReportsList');
+const planRequestsList = document.getElementById('planRequestsList');
 const reportMessageContext = document.getElementById('reportMessageContext');
 let adminRefreshInterval = null;
 let _reportContextPayload = null;
@@ -39,11 +40,12 @@ accessForm.addEventListener('submit', async (event) => {
         secureArea.style.display = '';
         setStatus('Als Gast im Admin-Bereich. Admin-Code wurde akzeptiert.', 'success');
         setAdminEmptyStates('Lade Admin-Daten...');
-        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadAdminApps(), loadVotes(), loadChatReports()]);
+        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadPlanRequests(), loadAdminApps(), loadVotes(), loadChatReports()]);
         clearInterval(adminRefreshInterval);
         adminRefreshInterval = setInterval(() => {
             loadRegisteredUsers();
             loadResetRequests();
+            loadPlanRequests();
             loadAdminApps();
             loadVotes();
             loadChatReports();
@@ -61,6 +63,7 @@ function setAdminEmptyStates(message) {
         usersList,
         resetRequestsList,
         chatReportsList,
+        planRequestsList,
         document.getElementById('adminAppsList'),
         document.getElementById('votesAdminList')
     ].forEach((list) => {
@@ -201,6 +204,7 @@ async function loadRegisteredUsers() {
                     <span style="display:flex;gap:6px;flex-wrap:wrap;">
                         <button class="btn-small" onclick="toggleUserPro(${user.id}, ${user.has_pro ? 'false' : 'true'})">${user.has_pro ? 'PRO entfernen' : 'PRO geben'}</button>
                         <button class="btn-small" style="background:${user.is_premium ? 'rgba(220,50,50,0.2)' : 'linear-gradient(135deg,rgba(37,99,235,0.32),rgba(20,184,166,0.22))'}" onclick="toggleUserPremium(${user.id}, ${user.is_premium ? 'false' : 'true'})">${user.is_premium ? 'Premium entfernen' : 'Premium geben'}</button>
+                        <button class="btn-small" onclick="addPlanMonth(${user.id}, '${user.is_premium ? 'premium' : 'pro'}')">+1 Monat</button>
                         <button class="btn-small" style="background:${user.update_unlocked ? 'rgba(220,50,50,0.2)' : 'rgba(45,190,108,0.2)'}" onclick="unlockUserUpdate(${user.id}, ${user.update_unlocked ? 'false' : 'true'})">${user.update_unlocked ? '🔒 Update sperren' : '🔓 Update freischalten'}</button>
                         <button class="btn-small" style="background:${user.ps_account ? 'rgba(220,50,50,0.2)' : 'rgba(77,159,255,0.2)'}" onclick="toggleUserPs(${user.id}, ${user.ps_account ? 'false' : 'true'})">${user.ps_account ? '🔵 PS entfernen' : '🔵 PS geben'}</button>
                         <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
@@ -212,6 +216,72 @@ async function loadRegisteredUsers() {
     } catch (error) {
         setListFallback(usersList, 'Ohne Anmeldung: Nutzerliste leer, Supabase nicht erreichbar.');
         setStatus(`Fehler beim Laden der Nutzer: ${error.message}`, 'error');
+    }
+}
+
+async function loadPlanRequests() {
+    if (!activeAdminCode || !planRequestsList) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/plan-requests`, {
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            planRequestsList.innerHTML = '<li>Tarif-Anfragen konnten nicht geladen werden.</li>';
+            return;
+        }
+        const requests = data.requests || [];
+        if (!requests.length) {
+            planRequestsList.innerHTML = '<li>Keine offenen Tarif-Anfragen.</li>';
+            return;
+        }
+        planRequestsList.innerHTML = requests.map((req) => `
+            <li style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                <span><strong>${escapeHtml(req.real_name || '')}</strong> möchte für ${Number(req.price_eur || 0)} Euro ${escapeHtml(String(req.plan || '').toUpperCase())} kaufen <small style="color:#8ab4c9;">(${escapeHtml(req.username || '')})</small></span>
+                <button class="btn-small" onclick="confirmPlanPayment(${req.id})">Zahlung bestätigen</button>
+            </li>
+        `).join('');
+    } catch {
+        planRequestsList.innerHTML = '<li>Keine Verbindung zu Tarif-Anfragen.</li>';
+    }
+}
+
+async function confirmPlanPayment(requestId) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/plan-requests/${requestId}/confirm`, {
+            method: 'POST',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Zahlung konnte nicht bestaetigt werden.', 'error');
+            return;
+        }
+        setStatus(`Zahlung bestaetigt: ${data.username} wurde auf ${data.plan} gesetzt.`, 'success');
+        await Promise.all([loadPlanRequests(), loadRegisteredUsers()]);
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
+    }
+}
+
+async function addPlanMonth(userId, plan) {
+    if (!activeAdminCode) return;
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/add-month`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': activeAdminCode },
+            body: JSON.stringify({ plan })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Monat konnte nicht hinzugefuegt werden.', 'error');
+            return;
+        }
+        setStatus(`Ein Monat fuer ${data.username} hinzugefuegt.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler: ${error.message}`, 'error');
     }
 }
 
@@ -289,7 +359,7 @@ async function toggleUserPro(userId, enabled) {
                 'Content-Type': 'application/json',
                 'x-admin-key': activeAdminCode
             },
-            body: JSON.stringify({ enabled, days: 2 })
+            body: JSON.stringify({ enabled, days: 30 })
         });
         const data = await response.json();
         if (!response.ok) {

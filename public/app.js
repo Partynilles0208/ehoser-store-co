@@ -27,6 +27,55 @@ let _desktopWebLoginSessionId = null;
 let _desktopWebLoginPollInterval = null;
 let _desktopNativeAuthLoaded = false;
 
+function decodeMojibakeText(value) {
+    const text = String(value ?? '');
+    if (!/[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(text)) return text;
+    try {
+        const chars = Array.from(text);
+        if (!chars.every(ch => ch.charCodeAt(0) <= 255)) return text;
+        const bytes = Uint8Array.from(chars.map(ch => ch.charCodeAt(0)));
+        const decoded = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        return decoded.includes('\uFFFD') ? text : decoded;
+    } catch {
+        return text;
+    }
+}
+
+function fixVisibleMojibake(root = document.body) {
+    if (!root) return;
+    const skipTags = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT']);
+    const visitText = (node) => {
+        if (!node?.nodeValue || !/[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(node.nodeValue)) return;
+        node.nodeValue = decodeMojibakeText(node.nodeValue);
+    };
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            const parent = node.parentElement;
+            if (!parent || skipTags.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
+            return /[\u00C3\u00C2\u00E2\u00F0\u00EF]/.test(node.nodeValue || '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        }
+    });
+    while (walker.nextNode()) visitText(walker.currentNode);
+}
+
+function startMojibakeFixer() {
+    fixVisibleMojibake();
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    if (node.parentElement?.tagName !== 'SCRIPT') {
+                        node.nodeValue = decodeMojibakeText(node.nodeValue);
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    fixVisibleMojibake(node);
+                }
+            }
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
 function isAdminGuestPreview() {
     return sessionStorage.getItem('adminGuestPreview') === '1';
 }
@@ -578,10 +627,21 @@ function hasProAccess() {
     return hasPremiumAccess() || currentProfile?.isPro === true;
 }
 
+function getCreditBalance() {
+    return Number(currentProfile?.credits ?? currentProfile?.settings?.credits?.balance ?? 0);
+}
+
+function getCurrentPlanKey() {
+    if (hasPremiumAccess()) return 'premium';
+    if (hasProAccess()) return 'pro';
+    return 'free';
+}
+
 function syncPlanStatus() {
     if (!currentProfile) return;
     currentProfile.isPremium = hasPremiumAccess();
     currentProfile.isPro = hasProAccess();
+    currentProfile.credits = getCreditBalance();
     localStorage.setItem('proStatus', currentProfile.isPro ? '1' : '0');
     localStorage.setItem('premiumStatus', currentProfile.isPremium ? '1' : '0');
 }
@@ -1438,6 +1498,7 @@ function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
     syncPlanStatus();
     const plan = hasPremiumAccess() ? 'Premium' : (hasProAccess() ? 'PRO' : 'Gratis');
+    const credits = getCreditBalance();
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     const personalization = getPersonalization();
     const displayName = currentProfile?.settings?.displayName || currentUser.username;
@@ -1452,7 +1513,9 @@ function showLoggedInUI() {
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
         <a href="admin.html" class="nav-link">Admin</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
-        <span class="plan-badge ${hasPremiumAccess() ? 'premium' : (hasProAccess() ? 'pro' : '')}">${plan}</span>
+        <button onclick="openPricingModal()" class="plan-badge ${hasPremiumAccess() ? 'premium' : (hasProAccess() ? 'pro' : '')}" style="border:0;cursor:pointer;">${plan}</button>
+        <span class="plan-badge" title="KI Credits">${credits} Credits</span>
+        ${!hasPremiumAccess() ? '<button onclick="openPricingModal()" class="btn-small" style="width:auto;padding:8px 12px;">Pro Mitglied werden</button>' : ''}
         <span style="display:flex;align-items:center;gap:8px;">${avatarNode}</span>
         <span class="hello-user">${psBadge} ${helloText}</span>
         <button onclick="logout()" class="logout-btn">Abmelden</button>
@@ -1745,10 +1808,6 @@ async function loadMyApps() {
 }
 
 function showSection(sectionId) {
-    if (sectionId !== 'filme') {
-        const filmFrame = document.querySelector('.film-frame');
-        if (filmFrame) filmFrame.removeAttribute('src');
-    }
     const token = localStorage.getItem('token');
     if (sectionId === 'auth' && token && !isAdminGuestPreview()) {
         sectionId = 'mode-select';
@@ -1871,12 +1930,6 @@ function selectMode(mode) {
     } else if (mode === 'youtube') {
         showSection('youtube');
         setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
-    } else if (mode === 'filme') {
-        showSection('filme');
-        const filmFrame = document.querySelector('.film-frame');
-        if (filmFrame && !filmFrame.getAttribute('src')) {
-            filmFrame.src = filmFrame.dataset.src || '';
-        }
     } else if (mode === 'news') {
         showSection('news');
         newsLoad('top');
@@ -2051,35 +2104,35 @@ function selectMode(mode) {
 
 
 
-// WMO Wetter-Code â†’ Emoji + Beschreibung (Open-Meteo)
+// WMO weather code -> icon + description (Open-Meteo)
 function weatherCodeInfo(code) {
     const map = {
-        0:  ['â˜€ï¸', 'Klarer Himmel'],
-        1:  ['ðŸŒ¤ï¸', 'Ãœberwiegend klar'],
-        2:  ['â›…', 'Teilweise bewÃ¶lkt'],
-        3:  ['â˜ï¸', 'Bedeckt'],
-        45: ['ðŸŒ«ï¸', 'Nebel'],
-        48: ['ðŸŒ«ï¸', 'Gefrierender Nebel'],
-        51: ['ðŸŒ¦ï¸', 'Leichter Nieselregen'],
-        53: ['ðŸŒ¦ï¸', 'Nieselregen'],
-        55: ['ðŸŒ§ï¸', 'Starker Nieselregen'],
-        61: ['ðŸŒ§ï¸', 'Leichter Regen'],
-        63: ['ðŸŒ§ï¸', 'Regen'],
-        65: ['ðŸŒ§ï¸', 'Starker Regen'],
-        71: ['ðŸŒ¨ï¸', 'Leichter Schneefall'],
-        73: ['ðŸŒ¨ï¸', 'Schneefall'],
-        75: ['â„ï¸', 'Starker Schneefall'],
-        77: ['ðŸŒ¨ï¸', 'SchneekÃ¶rner'],
-        80: ['ðŸŒ¦ï¸', 'Leichte Schauer'],
-        81: ['ðŸŒ§ï¸', 'Schauer'],
-        82: ['â›ˆï¸', 'Starke Schauer'],
-        85: ['ðŸŒ¨ï¸', 'Schneeschauer'],
-        86: ['â„ï¸', 'Starke Schneeschauer'],
-        95: ['â›ˆï¸', 'Gewitter'],
-        96: ['â›ˆï¸', 'Gewitter mit Hagel'],
-        99: ['â›ˆï¸', 'Gewitter mit starkem Hagel'],
+        0:  ['&#9728;&#65039;', 'Klarer Himmel'],
+        1:  ['&#127780;&#65039;', '\u00dcberwiegend klar'],
+        2:  ['&#9925;', 'Teilweise bew\u00f6lkt'],
+        3:  ['&#9729;&#65039;', 'Bedeckt'],
+        45: ['&#127787;&#65039;', 'Nebel'],
+        48: ['&#127787;&#65039;', 'Gefrierender Nebel'],
+        51: ['&#127782;&#65039;', 'Leichter Nieselregen'],
+        53: ['&#127782;&#65039;', 'Nieselregen'],
+        55: ['&#127783;&#65039;', 'Starker Nieselregen'],
+        61: ['&#127783;&#65039;', 'Leichter Regen'],
+        63: ['&#127783;&#65039;', 'Regen'],
+        65: ['&#127783;&#65039;', 'Starker Regen'],
+        71: ['&#127784;&#65039;', 'Leichter Schneefall'],
+        73: ['&#127784;&#65039;', 'Schneefall'],
+        75: ['&#10052;&#65039;', 'Starker Schneefall'],
+        77: ['&#127784;&#65039;', 'Schneek\u00f6rner'],
+        80: ['&#127782;&#65039;', 'Leichte Schauer'],
+        81: ['&#127783;&#65039;', 'Schauer'],
+        82: ['&#9928;&#65039;', 'Starke Schauer'],
+        85: ['&#127784;&#65039;', 'Schneeschauer'],
+        86: ['&#10052;&#65039;', 'Starke Schneeschauer'],
+        95: ['&#9928;&#65039;', 'Gewitter'],
+        96: ['&#9928;&#65039;', 'Gewitter mit Hagel'],
+        99: ['&#9928;&#65039;', 'Gewitter mit starkem Hagel'],
     };
-    return map[code] || ['ðŸŒ¡ï¸', `Wetter-Code ${code}`];
+    return map[code] || ['&#127777;&#65039;', `Wetter-Code ${code}`];
 }
 
 async function runWeatherSearch() {
@@ -2093,23 +2146,23 @@ async function runWeatherSearch() {
         return;
     }
 
-    status.textContent = 'Suche Ortâ€¦';
+    status.textContent = 'Suche Ort...';
     result.innerHTML = '';
 
     try {
-        // 1. Geocoding (kein API Key nÃ¶tig)
+        // 1. Geocoding (kein API key needed)
         const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=de&format=json`);
         const geoData = await geoRes.json();
 
         if (!geoData.results?.length) {
-            status.textContent = `Ort â€ž${city}" nicht gefunden.`;
+            status.textContent = `Ort "${city}" nicht gefunden.`;
             return;
         }
 
         const { latitude, longitude, name, country, admin1 } = geoData.results[0];
-        status.textContent = 'Lade Wetterdatenâ€¦';
+        status.textContent = 'Lade Wetterdaten...';
 
-        // 2. Wetterdaten (kein API Key nÃ¶tig)
+        // 2. Weather data (no API key needed)
         const weatherRes = await fetch(
             `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
             `&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,visibility` +
@@ -2124,7 +2177,7 @@ async function runWeatherSearch() {
         const feels     = Math.round(cur.apparent_temperature);
         const humidity  = cur.relative_humidity_2m;
         const wind      = Math.round(cur.wind_speed_10m);
-        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : 'â€“';
+        const visKm     = cur.visibility != null ? `${Math.round(cur.visibility / 1000)} km` : '-';
         const [icon, desc] = weatherCodeInfo(cur.weather_code);
         const location  = [name, admin1, country].filter(Boolean).join(', ');
 
@@ -2134,19 +2187,19 @@ async function runWeatherSearch() {
                 <div class="weather-card-country">${escapeHtml([admin1, country].filter(Boolean).join(', '))}</div>
                 <div class="weather-card-icon" style="font-size:5rem;line-height:1">${icon}</div>
                 <div class="weather-card-desc">${escapeHtml(desc)}</div>
-                <div class="weather-card-temp">${temp}Â°C</div>
-                <div class="weather-card-feels">GefÃ¼hlt wie ${feels}Â°C</div>
+                <div class="weather-card-temp">${temp}&deg;C</div>
+                <div class="weather-card-feels">Gef&uuml;hlt wie ${feels}&deg;C</div>
                 <div class="weather-card-stats">
                     <div class="weather-stat">
-                        <span class="weather-stat-label">ðŸ’§ Luftfeucht.</span>
+                        <span class="weather-stat-label">Luftfeucht.</span>
                         <span class="weather-stat-value">${humidity}%</span>
                     </div>
                     <div class="weather-stat">
-                        <span class="weather-stat-label">ðŸ’¨ Wind</span>
+                        <span class="weather-stat-label">Wind</span>
                         <span class="weather-stat-value">${wind} km/h</span>
                     </div>
                     <div class="weather-stat">
-                        <span class="weather-stat-label">ðŸ‘ï¸ Sichtweite</span>
+                        <span class="weather-stat-label">Sichtweite</span>
                         <span class="weather-stat-value">${visKm}</span>
                     </div>
                 </div>
@@ -2467,6 +2520,7 @@ function closeYTPlayer() {
 let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
 let _kiModel = 'ehoser1';
+let _pendingVideoRequest = null;
 
 function updateKIModelAccessUI() {
     const premiumBtn = document.getElementById('kiModelPremium');
@@ -2661,7 +2715,91 @@ function appendKIVideoBubble(prompt) {
     return { div, status };
 }
 
-async function kiStartVideoGeneration(prompt) {
+function videoQualityLabel(quality) {
+    return ({ low: 'niedrig', medium: 'mittel', high: 'hoch' })[quality] || 'mittel';
+}
+
+function videoCreditCost(seconds, quality) {
+    const q = ({ low: 1, medium: 2, high: 3 })[quality] || 2;
+    return Number(seconds) * 10 * q;
+}
+
+function parseVideoOptions(text) {
+    const lower = String(text || '').toLowerCase();
+    const quality = lower.includes('hoch') || lower.includes('beste') || lower.includes('high')
+        ? 'high'
+        : lower.includes('niedrig') || lower.includes('klein') || lower.includes('low')
+            ? 'low'
+            : lower.includes('mittel') || lower.includes('normal') || lower.includes('medium')
+                ? 'medium'
+                : null;
+    const secMatch = lower.match(/(\d{1,2})\s*(sek|sec|s\b)/);
+    const seconds = secMatch ? Math.min(12, Math.max(4, Number(secMatch[1]))) : null;
+    return { quality, seconds: seconds ? (seconds <= 4 ? 4 : seconds <= 8 ? 8 : 12) : null };
+}
+
+function maybeStartVideoFlow(text) {
+    if (!/(video|film|clip|sora)/i.test(text || '')) return false;
+    if (!hasPremiumAccess()) {
+        appendKIBubble('ai', 'Es tut mir leid, Video KI ist ab 20 Euro im Shop erhaeltlich. Oeffne oben deinen Tarif und waehle Premium.');
+        return true;
+    }
+    _pendingVideoRequest = { prompt: text, step: 'details' };
+    appendKIBubble('ai', 'Welche Qualitaet soll das Video haben: niedrig, mittel oder hoch? Und wie viele Sekunden: 4, 8 oder 12? Je hoeher die Qualitaet, desto mehr Credits kostet es.');
+    return true;
+}
+
+function handlePendingVideoFlow(text) {
+    if (!_pendingVideoRequest) return false;
+    if (/abbrechen|stop|nein|cancel/i.test(text || '')) {
+        _pendingVideoRequest = null;
+        appendKIBubble('ai', 'Videovorgang abgelehnt.');
+        return true;
+    }
+    if (_pendingVideoRequest.step === 'details') {
+        const opts = parseVideoOptions(text);
+        if (!opts.quality || !opts.seconds) {
+            appendKIBubble('ai', 'Bitte schreibe Qualitaet und Sekunden dazu, zum Beispiel: "hoch 8 Sekunden".');
+            return true;
+        }
+        const cost = videoCreditCost(opts.seconds, opts.quality);
+        _pendingVideoRequest = { ..._pendingVideoRequest, ...opts, cost, step: 'confirm' };
+        appendKIBubble('ai', `Das kostet ${cost} Credits (${videoQualityLabel(opts.quality)}, ${opts.seconds} Sekunden). Druecke Fortfahren zum Generieren oder Abbrechen.`);
+        appendKIVideoConfirmButtons();
+        return true;
+    }
+    return true;
+}
+
+function appendKIVideoConfirmButtons() {
+    const messages = document.getElementById('kiMessages');
+    if (!messages) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'ki-bubble ki-bubble-ai';
+    wrap.style.display = 'flex';
+    wrap.style.gap = '8px';
+    wrap.style.flexWrap = 'wrap';
+    wrap.innerHTML = `
+        <button class="btn-primary" onclick="confirmPendingVideoGeneration()">Fortfahren</button>
+        <button class="btn-secondary" onclick="cancelPendingVideoGeneration()">Abbrechen</button>
+    `;
+    messages.appendChild(wrap);
+    messages.scrollTop = messages.scrollHeight;
+}
+
+function cancelPendingVideoGeneration() {
+    _pendingVideoRequest = null;
+    appendKIBubble('ai', 'Videovorgang abgelehnt.');
+}
+
+async function confirmPendingVideoGeneration() {
+    if (!_pendingVideoRequest || _pendingVideoRequest.step !== 'confirm') return;
+    const req = _pendingVideoRequest;
+    _pendingVideoRequest = null;
+    await kiStartVideoGeneration(req.prompt, req);
+}
+
+async function kiStartVideoGeneration(prompt, options = {}) {
     const bubble = appendKIVideoBubble(prompt);
     if (!bubble) return;
     const { div, status } = bubble;
@@ -2669,8 +2807,8 @@ async function kiStartVideoGeneration(prompt) {
     try {
         const res = await fetch(`${API_BASE}/ki/video/create`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt })
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+            body: JSON.stringify({ prompt, quality: options.quality || 'medium', seconds: options.seconds || 4 })
         });
 
         if (!res.ok) {
@@ -2685,6 +2823,7 @@ async function kiStartVideoGeneration(prompt) {
                 } catch {}
             }
             status.textContent = '\u274C ' + error;
+            await refreshCurrentProfile();
             return;
         }
 
@@ -2707,8 +2846,10 @@ async function kiStartVideoGeneration(prompt) {
         div.appendChild(video);
         div.appendChild(link);
         if (messages) messages.scrollTop = messages.scrollHeight;
+        await refreshCurrentProfile();
     } catch (err) {
         status.textContent = '\u274C Verbindungsfehler';
+        await refreshCurrentProfile();
     }
 }
 
@@ -2718,7 +2859,7 @@ function kiHandleVideoGenCommand(reply) {
     const prompt = match[1].trim().replace(/["']/g, '').slice(0, 500);
     const textBefore = reply.replace(/VIDEO_GENERIEREN:\s*.+/i, '').trim();
     if (textBefore) appendKIBubble('ai', kiReplaceNamePlaceholder(textBefore));
-    kiStartVideoGeneration(prompt);
+    maybeStartVideoFlow(prompt);
     return true;
 }
 
@@ -2742,6 +2883,20 @@ async function sendKIMessage() {
     if (!text && !_kiAttachment) return;
     if (_kiModel === 'premium' && !hasPremiumAccess()) {
         setKIModel('ehoser1');
+        return;
+    }
+    if (!_kiAttachment && _pendingVideoRequest) {
+        appendKIBubble('user', text);
+        handlePendingVideoFlow(text);
+        input.value = '';
+        input?.focus();
+        return;
+    }
+    if (!_kiAttachment && /(video|film|clip|sora)/i.test(text || '')) {
+        appendKIBubble('user', text);
+        maybeStartVideoFlow(text);
+        input.value = '';
+        input?.focus();
         return;
     }
 
@@ -2821,6 +2976,7 @@ async function sendKIMessage() {
             const msg = err?.error?.message || err?.error || `Fehler ${res.status}`;
             appendKIBubble('error', 'âš ï¸ ' + msg);
             _kiHistory.pop();
+            await refreshCurrentProfile();
             return;
         }
 
@@ -3024,15 +3180,15 @@ function updatePlanBadge() {
     if (hasPremiumAccess()) {
         const premiumUntil = currentProfile?.premiumUntil || currentProfile?.settings?.premiumUntil || '';
         const until = premiumUntil ? new Date(premiumUntil).toLocaleDateString('de-DE') : '';
-        el.textContent = until ? `Plan: Premium bis ${until}` : 'Plan: Premium';
+        el.textContent = `${until ? `Plan: Premium bis ${until}` : 'Plan: Premium'} | ${getCreditBalance()} Credits`;
         el.classList.add('pro', 'premium');
     } else if (hasProAccess()) {
         const until = currentProfile.proUntil ? new Date(currentProfile.proUntil).toLocaleDateString('de-DE') : '';
-        el.textContent = until ? `Plan: PRO bis ${until}` : 'Plan: PRO';
+        el.textContent = `${until ? `Plan: PRO bis ${until}` : 'Plan: PRO'} | ${getCreditBalance()} Credits`;
         el.classList.add('pro');
         el.classList.remove('premium');
     } else {
-        el.textContent = 'Plan: Gratis';
+        el.textContent = `Plan: Gratis | ${getCreditBalance()} Credits`;
         el.classList.remove('pro', 'premium');
     }
 }
@@ -3146,6 +3302,63 @@ function closeSettingsModal() {
     if (emailInput) emailInput.value = '';
     if (emailCodeInput) emailCodeInput.value = '';
     if (emailCodeRow) emailCodeRow.style.display = 'none';
+}
+
+let _selectedPlanRequest = null;
+
+function openPricingModal() {
+    if (!currentUser) {
+        showAlert('Bitte zuerst anmelden.', 'error');
+        return;
+    }
+    const modal = document.getElementById('pricingModal');
+    const box = document.getElementById('planRequestBox');
+    const status = document.getElementById('planRequestStatus');
+    if (box) box.style.display = 'none';
+    if (status) status.textContent = '';
+    _selectedPlanRequest = null;
+    if (modal) modal.classList.add('show');
+}
+
+function closePricingModal() {
+    document.getElementById('pricingModal')?.classList.remove('show');
+}
+
+function selectPlanRequest(plan) {
+    _selectedPlanRequest = plan === 'premium' ? 'premium' : 'pro';
+    const box = document.getElementById('planRequestBox');
+    const status = document.getElementById('planRequestStatus');
+    if (box) box.style.display = 'block';
+    if (status) status.textContent = `${_selectedPlanRequest === 'premium' ? 'Premium 20 Euro' : 'Pro 10 Euro'}: Bar bezahlen, echten Namen eintragen und Anfrage senden.`;
+}
+
+async function sendPlanRequest() {
+    if (!_selectedPlanRequest) return;
+    const token = localStorage.getItem('token');
+    const input = document.getElementById('planRealName');
+    const status = document.getElementById('planRequestStatus');
+    const realName = (input?.value || '').trim();
+    if (!token) {
+        if (status) status.textContent = 'Bitte erst anmelden.';
+        return;
+    }
+    if (realName.length < 3) {
+        if (status) status.textContent = 'Bitte echten Namen eingeben.';
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/me/plan-request`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ plan: _selectedPlanRequest, realName })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Anfrage fehlgeschlagen');
+        if (status) status.textContent = 'Tarif Anfrage wurde gesendet. Bezahle bar beim Admin, danach wird freigeschaltet.';
+        if (input) input.value = '';
+    } catch (err) {
+        if (status) status.textContent = err.message || 'Anfrage fehlgeschlagen.';
+    }
 }
 
 function refreshAccountAvatarPreview() {
@@ -5784,7 +5997,6 @@ let _supportReason = '';
 let _supportHistory = [];
 let _supportConnectingTimer = null;
 let _supportIsSending = false;
-let _supportChatKitMounted = false;
 
 function supportShowStage(stage) {
     ['supportLoading', 'supportReasons', 'supportConnecting', 'supportChat'].forEach(id => {
@@ -5834,97 +6046,10 @@ function selectSupportReason(reason) {
 
 function startSupportChat() {
     supportShowStage('supportChat');
-    mountSupportChatKit();
-}
-
-function getSupportClientId() {
-    const key = 'ehoserSupportClientId';
-    let id = localStorage.getItem(key);
-    if (!id) {
-        id = `support-${cryptoRandom()}`;
-        localStorage.setItem(key, id);
-    }
-    return id;
-}
-
-function waitForChatKit() {
-    return new Promise((resolve, reject) => {
-        if (!document.querySelector('script[data-ehoser-chatkit]')) {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.platform.openai.com/deployments/chatkit/chatkit.js';
-            script.async = true;
-            script.dataset.ehoserChatkit = '1';
-            script.onerror = () => reject(new Error('ChatKit konnte nicht geladen werden'));
-            document.head.appendChild(script);
-        }
-        let tries = 0;
-        const tick = () => {
-            if (customElements.get('openai-chatkit')) {
-                resolve();
-                return;
-            }
-            tries += 1;
-            if (tries > 80) {
-                reject(new Error('ChatKit konnte nicht geladen werden'));
-                return;
-            }
-            setTimeout(tick, 150);
-        };
-        tick();
-    });
-}
-
-async function mountSupportChatKit() {
-    const mount = document.getElementById('supportChatKitMount');
-    if (!mount || _supportChatKitMounted) return;
-    mount.innerHTML = '<div class="support-chatkit-loading">Ehoser Support wird verbunden...</div>';
-    try {
-        await waitForChatKit();
-        const chatkit = document.createElement('openai-chatkit');
-        chatkit.className = 'support-chatkit';
-        chatkit.setOptions({
-            api: {
-                async getClientSecret(currentClientSecret) {
-                    if (currentClientSecret) return currentClientSecret;
-                    const token = localStorage.getItem('token');
-                    const res = await fetch(`${API_BASE}/support/session`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { Authorization: `Bearer ${token}` } : {})
-                        },
-                        body: JSON.stringify({
-                            userId: getSupportClientId(),
-                            reason: _supportReason || 'Sonstiges',
-                            desktop: isDesktopMode()
-                        })
-                    });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok || !data.client_secret) {
-                        throw new Error(data.error || 'Support konnte nicht gestartet werden');
-                    }
-                    return data.client_secret;
-                }
-            },
-            theme: {
-                colorScheme: 'dark',
-                accentColor: '#22e0bf'
-            },
-            header: {
-                title: { text: 'Ehoser Support' }
-            },
-            composer: {
-                placeholder: 'Nachricht an Ehoser Support...'
-            },
-            startScreen: {
-                greeting: `Hallo, hier ist der Ehoser Support. Ich sehe, es geht um ${_supportReason || 'Support'}. Beschreiben Sie kurz, was genau passiert ist.`
-            }
-        });
-        mount.innerHTML = '';
-        mount.appendChild(chatkit);
-        _supportChatKitMounted = true;
-    } catch (error) {
-        mount.innerHTML = `<div class="support-chatkit-error">${escapeHtml(error?.message || 'Support konnte nicht geladen werden.')}</div>`;
+    if (!_supportHistory.length) {
+        const greeting = `Hallo, hier ist der Ehoser Support. Ich sehe, es geht um ${_supportReason || 'Support'}. Beschreiben Sie kurz, was genau passiert ist.`;
+        appendSupportBubble('agent', greeting);
+        _supportHistory.push({ role: 'assistant', content: greeting });
     }
 }
 
@@ -5980,7 +6105,7 @@ async function sendSupportMessage() {
             { role: 'system', content: SUPPORT_SYSTEM_PROMPT },
             ..._supportHistory.filter(msg => msg.role !== 'system').slice(-12)
         ];
-        const res = await fetch(`${API_BASE}/ki`, {
+        const res = await fetch(`${API_BASE}/support/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -6014,6 +6139,7 @@ async function sendSupportMessage() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+    startMojibakeFixer();
     const modal = document.getElementById('supportModal');
     if (modal) {
         modal.addEventListener('click', (event) => {
