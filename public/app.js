@@ -1745,6 +1745,10 @@ async function loadMyApps() {
 }
 
 function showSection(sectionId) {
+    if (sectionId !== 'filme') {
+        const filmFrame = document.querySelector('.film-frame');
+        if (filmFrame) filmFrame.removeAttribute('src');
+    }
     const token = localStorage.getItem('token');
     if (sectionId === 'auth' && token && !isAdminGuestPreview()) {
         sectionId = 'mode-select';
@@ -1867,6 +1871,12 @@ function selectMode(mode) {
     } else if (mode === 'youtube') {
         showSection('youtube');
         setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
+    } else if (mode === 'filme') {
+        showSection('filme');
+        const filmFrame = document.querySelector('.film-frame');
+        if (filmFrame && !filmFrame.getAttribute('src')) {
+            filmFrame.src = filmFrame.dataset.src || '';
+        }
     } else if (mode === 'news') {
         showSection('news');
         newsLoad('top');
