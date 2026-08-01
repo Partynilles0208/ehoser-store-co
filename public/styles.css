@@ -7128,12 +7128,16 @@ body.desktop-mode .mode-hero::after {
     bottom: 18px;
     transform: translateX(-50%);
     z-index: 2400;
-    display: inline-block;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: #4da3ff;
-    text-decoration: underline;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid rgba(34, 224, 191, 0.34);
+    border-radius: 999px;
+    background: #06131d;
+    color: #f8fbff;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
     font: 800 0.92rem "Outfit", "Segoe UI", sans-serif;
     cursor: pointer;
 }
@@ -7144,43 +7148,16 @@ body[data-section="auth"] .support-launcher {
 }
 
 .support-launcher:hover {
-    color: #8ac4ff;
-    transform: translateX(-50%);
+    border-color: rgba(34, 224, 191, 0.68);
+    transform: translateX(-50%) translateY(-1px);
 }
 
-.filme-wrapper {
-    width: min(960px, 100%);
-    margin: 0 auto;
-    padding: 24px;
-}
-
-.media-heading {
-    margin: 28px 0 20px;
-}
-
-.media-heading h2 {
-    margin: 0 0 8px;
-    color: var(--text);
-    font-size: clamp(2rem, 5vw, 3.6rem);
-}
-
-.media-heading p:last-child {
-    color: var(--muted);
-}
-
-.film-frame-wrap {
-    overflow: hidden;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: #000;
-    box-shadow: var(--shadow);
-}
-
-.film-frame {
-    display: block;
-    width: 100%;
-    min-height: 384px;
-    border: 0;
+.support-launcher-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #22d36b;
+    box-shadow: 0 0 0 5px rgba(34, 211, 107, 0.13);
 }
 
 .support-modal {
@@ -7347,37 +7324,6 @@ body[data-section="auth"] .support-launcher {
     background: #07131d;
 }
 
-.support-chatkit-mount {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    overflow: hidden;
-    background: #07131d;
-}
-
-.support-chatkit {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    display: block;
-    background: #07131d;
-    color-scheme: dark;
-}
-
-.support-chatkit-loading,
-.support-chatkit-error {
-    width: 100%;
-    display: grid;
-    place-items: center;
-    padding: 22px;
-    color: rgba(248, 251, 255, 0.76);
-    text-align: center;
-}
-
-.support-chatkit-error {
-    color: #ffc6cc;
-}
-
 .support-messages {
     flex: 1;
     min-height: 0;
@@ -7479,6 +7425,44 @@ body[data-section="auth"] .support-launcher {
 .support-input-row button:disabled {
     opacity: 0.55;
     cursor: wait;
+}
+
+.pricing-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 260px;
+    padding: 16px;
+    border: 1px solid rgba(34, 224, 191, 0.18);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+}
+
+.pricing-card h4,
+.pricing-card strong,
+.pricing-card ul {
+    margin: 0;
+}
+
+.pricing-card strong {
+    color: #22e0bf;
+}
+
+.pricing-card ul {
+    display: grid;
+    gap: 7px;
+    padding-left: 18px;
+    color: rgba(248, 251, 255, 0.78);
+    line-height: 1.35;
+}
+
+.pricing-card button {
+    margin-top: auto;
+}
+
+.pricing-card.premium {
+    border-color: rgba(77, 159, 255, 0.36);
+    background: rgba(77, 159, 255, 0.08);
 }
 
 @media (max-width: 640px) {

@@ -5,7 +5,6 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
-const { spawn } = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
 const { Pool } = require('pg');
 require('dotenv').config();
@@ -20,34 +19,14 @@ const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
 const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
-const GROQ_TEXT_MODEL = process.env.GROQ_TEXT_MODEL || 'llama-3.3-70b-versatile';
-const GROQ_VISION_MODEL = process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
-function normalizeMailDomain(value) {
-  return String(value || 'ehoser.de')
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/\/.*$/, '')
-    .replace(/^@+/, '');
-}
-
-const MAIL_DOMAIN = normalizeMailDomain(process.env.MAIL_DOMAIN || 'ehoser.de');
-const MAIL_INBOUND_SECRET = process.env.MAIL_INBOUND_SECRET || '';
-const MAIL_SENDMAIL_PATH = process.env.MAIL_SENDMAIL_PATH || 'sendmail';
-const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_ATTEMPTS = 20;
 const guestPresence = new Map();
 const GUEST_WINDOW_MS = 5 * 60 * 1000;
-const mailAccountsMemory = new Map();
-const mailMessagesMemory = [];
-let mailMessageMemoryId = 1;
 const chatGroupMetaMemory = new Map();
 const chatGroupAdminsMemory = new Map();
 const MODERATION_SEQUENCE_STEPS = [
@@ -159,27 +138,6 @@ CREATE TABLE IF NOT EXISTS chat_group_admins (
   username TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW(),
   PRIMARY KEY (group_id, username)
-);
-CREATE TABLE IF NOT EXISTS ehoser_mail_accounts (
-  address TEXT PRIMARY KEY,
-  username TEXT NOT NULL,
-  local_part TEXT NOT NULL UNIQUE,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-CREATE TABLE IF NOT EXISTS ehoser_mail_messages (
-  id BIGSERIAL PRIMARY KEY,
-  username TEXT NOT NULL,
-  address TEXT NOT NULL,
-  direction TEXT NOT NULL,
-  sender TEXT,
-  recipient TEXT,
-  subject TEXT,
-  text_body TEXT,
-  html_body TEXT,
-  raw TEXT,
-  status TEXT DEFAULT 'received',
-  read_at TIMESTAMP NULL,
-  created_at TIMESTAMP DEFAULT NOW()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMP NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT NULL;
@@ -313,31 +271,6 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
       );
     `);
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS ehoser_mail_accounts (
-        address TEXT PRIMARY KEY,
-        username TEXT NOT NULL,
-        local_part TEXT NOT NULL UNIQUE,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS ehoser_mail_messages (
-        id BIGSERIAL PRIMARY KEY,
-        username TEXT NOT NULL,
-        address TEXT NOT NULL,
-        direction TEXT NOT NULL,
-        sender TEXT,
-        recipient TEXT,
-        subject TEXT,
-        text_body TEXT,
-        html_body TEXT,
-        raw TEXT,
-        status TEXT DEFAULT 'received',
-        read_at TIMESTAMP NULL,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-    await pool.query(`
       CREATE TABLE IF NOT EXISTS chat_reports (
         id BIGSERIAL PRIMARY KEY,
         group_id UUID NOT NULL,
@@ -460,8 +393,6 @@ const PUBLIC_API_PATHS = new Set([
 function isPublicApiPath(pathname) {
   return PUBLIC_API_PATHS.has(pathname)
     || pathname.startsWith('/api/admin/')
-    || pathname === '/api/mail/inbound'
-    || pathname === '/api/mail/resend-webhook'
     || pathname.startsWith('/api/ki')
     || pathname === '/api/apps'
     || pathname.startsWith('/api/apps/')
@@ -504,249 +435,6 @@ async function createAvailableGoogleUsername(email, name) {
     if (error || !data) return username;
   }
   return `user_${crypto.randomBytes(4).toString('hex')}`;
-}
-
-function normalizeMailLocalPart(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^@+/, '')
-    .replace(/^https?:\/\//, '')
-    .replace(new RegExp(`@${MAIL_DOMAIN.replace(/\./g, '\\.')}$`, 'i'), '');
-}
-
-function isValidMailLocalPart(value) {
-  return /^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$/.test(value)
-    && !value.includes('..')
-    && !value.startsWith('.')
-    && !value.endsWith('.');
-}
-
-function buildMailAddress(localPart) {
-  return `${localPart}@${MAIL_DOMAIN}`;
-}
-
-function escapeMailHeader(value) {
-  return String(value || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 240);
-}
-
-function extractEmailAddress(value) {
-  const raw = String(value || '').trim();
-  const bracketMatch = raw.match(/<([^>]+)>/);
-  return String(bracketMatch?.[1] || raw)
-    .trim()
-    .toLowerCase()
-    .replace(/^mailto:/, '')
-    .replace(/[^\w.!#$%&'*+/=?^`{|}~@-]/g, '');
-}
-
-async function listMailAccounts(username) {
-  const { data, error } = await supabaseAdmin
-    .from('ehoser_mail_accounts')
-    .select('*')
-    .eq('username', username)
-    .order('created_at', { ascending: true });
-  const profile = await getProfile(username).catch(() => null);
-  const profileAccounts = Array.isArray(profile?.settings?.mailAccounts) ? profile.settings.mailAccounts : [];
-  const memoryAccounts = [...mailAccountsMemory.values()].filter((account) => account.username === username);
-  const merged = [...(!error ? (data || []) : []), ...profileAccounts, ...memoryAccounts];
-  return [...new Map(merged.filter(Boolean).map((account) => [account.address, account])).values()];
-}
-
-async function getMailAccount(address) {
-  const normalized = extractEmailAddress(address);
-  const { data, error } = await supabaseAdmin
-    .from('ehoser_mail_accounts')
-    .select('*')
-    .eq('address', normalized)
-    .single();
-  if (!error && data) return data;
-  try {
-    const { data: profiles } = await supabaseAdmin
-      .from('user_profiles')
-      .select('username,settings');
-    for (const profile of (profiles || [])) {
-      const found = (profile.settings?.mailAccounts || []).find((account) => account.address === normalized);
-      if (found) return { ...found, username: profile.username };
-    }
-  } catch {}
-  return mailAccountsMemory.get(normalized) || null;
-}
-
-async function createMailAccount(username, localPart) {
-  const address = buildMailAddress(localPart);
-  const payload = { address, username, local_part: localPart };
-  const existing = await getMailAccount(address);
-  if (existing) {
-    if (existing.username !== username) {
-      const err = new Error('Diese Adresse ist schon vergeben.');
-      err.code = 'MAIL_EXISTS';
-      throw err;
-    }
-    return existing;
-  }
-
-  const ownAccounts = await listMailAccounts(username).catch(() => []);
-  const oldAccount = ownAccounts[0] || null;
-  if (oldAccount?.address && oldAccount.address !== address) {
-    try {
-      await supabaseAdmin
-        .from('ehoser_mail_accounts')
-        .delete()
-        .eq('username', username);
-    } catch {}
-    try {
-      await supabaseAdmin
-        .from('ehoser_mail_messages')
-        .update({ address })
-        .eq('username', username)
-        .eq('address', oldAccount.address);
-    } catch {}
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('ehoser_mail_accounts')
-    .insert([payload])
-    .select('*')
-    .single();
-  if (!error && data) {
-    const profile = await getProfile(username).catch(() => null);
-    const settings = { ...(profile?.settings || {}) };
-    settings.mailAccounts = [data];
-    if (oldAccount?.address && oldAccount.address !== address && Array.isArray(settings.mailMessages)) {
-      settings.mailMessages = settings.mailMessages.map((message) => (
-        message.address === oldAccount.address ? { ...message, address } : message
-      ));
-    }
-    await upsertProfile(username, { settings }).catch(() => {});
-    return data;
-  }
-  if (error?.code === '23505') {
-    const err = new Error('Diese Adresse ist schon vergeben.');
-    err.code = 'MAIL_EXISTS';
-    throw err;
-  }
-  const local = { ...payload, created_at: new Date().toISOString() };
-  const profile = await getProfile(username).catch(() => null);
-  const settings = { ...(profile?.settings || {}) };
-  settings.mailAccounts = [local];
-  if (oldAccount?.address && oldAccount.address !== address && Array.isArray(settings.mailMessages)) {
-    settings.mailMessages = settings.mailMessages.map((message) => (
-      message.address === oldAccount.address ? { ...message, address } : message
-    ));
-  }
-  await upsertProfile(username, { settings }).catch(() => {
-    mailAccountsMemory.set(address, local);
-  });
-  return local;
-}
-
-async function saveMailMessage(payload) {
-  const message = {
-    username: payload.username,
-    address: String(payload.address || '').toLowerCase(),
-    direction: payload.direction || 'inbound',
-    sender: payload.sender || null,
-    recipient: payload.recipient || null,
-    subject: payload.subject || '',
-    text_body: payload.text_body || '',
-    html_body: payload.html_body || '',
-    raw: payload.raw || '',
-    status: payload.status || (payload.direction === 'outbound' ? 'sent' : 'received')
-  };
-  const { data, error } = await supabaseAdmin
-    .from('ehoser_mail_messages')
-    .insert([message])
-    .select('*')
-    .single();
-  if (!error && data) return data;
-  const local = { ...message, id: mailMessageMemoryId++, created_at: new Date().toISOString(), read_at: null };
-  const profile = await getProfile(message.username).catch(() => null);
-  const settings = { ...(profile?.settings || {}) };
-  const messages = Array.isArray(settings.mailMessages) ? settings.mailMessages : [];
-  settings.mailMessages = [local, ...messages].slice(0, 100);
-  await upsertProfile(message.username, { settings }).catch(() => {
-    mailMessagesMemory.unshift(local);
-  });
-  return local;
-}
-
-async function listMailMessages(username, address) {
-  let query = supabaseAdmin
-    .from('ehoser_mail_messages')
-    .select('*')
-    .eq('username', username)
-    .order('created_at', { ascending: false })
-    .limit(100);
-  if (address) query = query.eq('address', String(address).toLowerCase());
-  const { data, error } = await query;
-  const profile = await getProfile(username).catch(() => null);
-  const profileMessages = Array.isArray(profile?.settings?.mailMessages) ? profile.settings.mailMessages : [];
-  const fallbackMessages = [...profileMessages, ...mailMessagesMemory]
-    .filter((message) => message.username === username && (!address || message.address === String(address).toLowerCase()))
-    .slice(0, 100);
-  if (!error) {
-    const merged = [...(data || []), ...fallbackMessages];
-    return [...new Map(merged.map((message) => [String(message.id), message])).values()]
-      .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))
-      .slice(0, 100);
-  }
-  return fallbackMessages;
-}
-
-function sendRawMailWithSendmail(rawMessage) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(MAIL_SENDMAIL_PATH, ['-t', '-i'], { stdio: ['pipe', 'pipe', 'pipe'] });
-    let stderr = '';
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(stderr.trim() || `sendmail beendet mit Code ${code}`));
-    });
-    child.stdin.write(rawMessage);
-    child.stdin.end();
-  });
-}
-
-async function sendMailWithResend({ from, to, subject, text }) {
-  if (!RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY fehlt.');
-  }
-  const cleanFrom = extractEmailAddress(from);
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: cleanFrom,
-      to: [to],
-      subject,
-      text,
-      reply_to: from
-    })
-  });
-  const payload = await response.json().catch(async () => ({ message: await response.text().catch(() => '') }));
-  if (!response.ok) {
-    throw new Error(payload?.message || payload?.error || 'Resend konnte die Mail nicht senden.');
-  }
-  return payload;
-}
-
-async function getResendReceivedEmail(emailId) {
-  if (!RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY fehlt.');
-  }
-  const response = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
-    headers: { Authorization: `Bearer ${RESEND_API_KEY}` }
-  });
-  const payload = await response.json().catch(async () => ({ message: await response.text().catch(() => '') }));
-  if (!response.ok) {
-    throw new Error(payload?.message || payload?.error || 'Resend-Mail konnte nicht geladen werden.');
-  }
-  return payload;
 }
 
 // Fallback fÃ¼r Serverless/fehlende Tabellen
@@ -822,27 +510,6 @@ function normalizeModerationSettings(raw) {
   };
 }
 
-function normalizeCustomPlan(raw) {
-  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
-  const featuresSrc = (src.features && typeof src.features === 'object' && !Array.isArray(src.features)) ? src.features : {};
-  const creditsAdded = Math.max(0, Math.min(1000000, Math.trunc(Number(src.creditsAdded) || 0)));
-  const priceEur = Math.max(0, Math.min(100000, Math.round((Number(src.priceEur) || 0) * 100) / 100));
-  return {
-    enabled: Boolean(src.enabled),
-    label: typeof src.label === 'string' && src.label.trim() ? src.label.trim().slice(0, 40) : 'Individuell',
-    priceEur,
-    creditsAdded,
-    features: {
-      premiumKi: Boolean(featuresSrc.premiumKi),
-      videoGenerator: Boolean(featuresSrc.videoGenerator),
-      proFeatures: Boolean(featuresSrc.proFeatures),
-      psAccount: Boolean(featuresSrc.psAccount),
-      updateUnlocked: Boolean(featuresSrc.updateUnlocked)
-    },
-    updatedAt: typeof src.updatedAt === 'string' ? src.updatedAt : null
-  };
-}
-
 function normalizeSettings(raw) {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
   return {
@@ -856,10 +523,7 @@ function normalizeSettings(raw) {
     personalization: normalizePersonalization(src.personalization),
     moderation: normalizeModerationSettings(src.moderation),
     credits: (src.credits && typeof src.credits === 'object' && !Array.isArray(src.credits)) ? src.credits : undefined,
-    customPlan: src.customPlan ? normalizeCustomPlan(src.customPlan) : undefined,
     planRequests: Array.isArray(src.planRequests) ? src.planRequests.slice(-10) : undefined,
-    mailAccounts: Array.isArray(src.mailAccounts) ? src.mailAccounts.slice(-10) : undefined,
-    mailMessages: Array.isArray(src.mailMessages) ? src.mailMessages.slice(-100) : undefined,
     passwordHash: typeof src.passwordHash === 'string' ? src.passwordHash : undefined,
     _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined
   };
@@ -1008,32 +672,18 @@ function normalizeProfileRow(username, row) {
   const ms = proUntil ? Date.parse(proUntil) : 0;
   const premiumMs = premiumUntil ? Date.parse(premiumUntil) : 0;
   const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
-  const settings = normalizeSettings(profile.settings || profile.user_settings);
-  const customPlan = normalizeCustomPlan(settings.customPlan);
-  const hasCustom = customPlan.enabled === true;
-  const capabilities = {
-    premiumKi: isPremium || (hasCustom && customPlan.features.premiumKi),
-    videoGenerator: isPremium || (hasCustom && customPlan.features.videoGenerator),
-    proFeatures: isPremium || (Number.isFinite(ms) && ms > Date.now()) || (hasCustom && customPlan.features.proFeatures),
-    psAccount: hasCustom && customPlan.features.psAccount,
-    updateUnlocked: hasCustom && customPlan.features.updateUnlocked
-  };
   return {
     username,
-    settings,
+    settings: normalizeSettings(profile.settings || profile.user_settings),
     proUntil: proUntil || null,
     premiumUntil: premiumUntil || null,
-    isCustom: hasCustom,
-    customPlan: hasCustom ? customPlan : null,
-    capabilities,
     isPremium,
-    isPro: capabilities.proFeatures
+    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now())
   };
 }
 
 function getPlanKey(profile) {
   if (profile?.isPremium) return 'premium';
-  if (profile?.isCustom) return 'free';
   if (profile?.isPro) return 'pro';
   return 'free';
 }
@@ -1047,7 +697,7 @@ async function ensurePlanCredits(username, profile = null) {
   const current = profile || await getProfile(username);
   const plan = getPlanKey(current);
   const settings = { ...(current.settings || {}) };
-  const credits = settings.credits || (Number.isFinite(Number(current.credits)) ? { balance: Number(current.credits) } : {});
+  const credits = settings.credits || {};
   const period = currentCreditPeriod();
   let balance = Number(credits.balance);
   if (!Number.isFinite(balance)) balance = 0;
@@ -1084,18 +734,16 @@ async function changeCredits(username, delta) {
   const profile = await ensurePlanCredits(username);
   const settings = { ...(profile.settings || {}) };
   const credits = { ...(settings.credits || {}) };
-  const currentBalance = Number.isFinite(Number(credits.balance)) ? Number(credits.balance) : Number(profile.credits || 0);
-  const balance = Math.max(0, currentBalance + delta);
+  const balance = Math.max(0, (Number(credits.balance) || 0) + delta);
   settings.credits = { ...credits, balance, updatedAt: new Date().toISOString() };
   return upsertProfile(username, { settings });
 }
 
 async function chargeCredits(username, amount) {
   const profile = await ensurePlanCredits(username);
-  const rawBalance = profile.settings?.credits?.balance ?? profile.credits ?? 0;
-  const balance = Number.isFinite(Number(rawBalance)) ? Number(rawBalance) : 0;
+  const balance = Number(profile.settings?.credits?.balance || 0);
   if (balance < amount) {
-    const err = new Error(`Keine Credits mehr verfuegbar. Du brauchst ${amount} Credits, hast aber ${balance}. Bitte upgrade deinen Plan.`);
+    const err = new Error('Keine Credits mehr verfügbar. Bitte upgrade deinen Plan.');
     err.status = 402;
     err.credits = balance;
     throw err;
@@ -1180,29 +828,15 @@ async function getProfile(username) {
   const ms = proUntil ? Date.parse(proUntil) : 0;
   const premiumMs = premiumUntil ? Date.parse(premiumUntil) : 0;
   const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
-  const normalizedSettings = normalizeSettings({ ...(settings || mem?.settings || {}), premiumUntil: premiumUntil || null });
-  const customPlan = normalizeCustomPlan(normalizedSettings.customPlan);
-  const hasCustom = customPlan.enabled === true;
-  const proByDate = Number.isFinite(ms) && ms > Date.now();
-  const capabilities = {
-    premiumKi: isPremium || (hasCustom && customPlan.features.premiumKi),
-    videoGenerator: isPremium || (hasCustom && customPlan.features.videoGenerator),
-    proFeatures: isPremium || proByDate || (hasCustom && customPlan.features.proFeatures),
-    psAccount: psAccount || (hasCustom && customPlan.features.psAccount),
-    updateUnlocked: hasCustom && customPlan.features.updateUnlocked
-  };
   return {
     username,
-    settings: normalizedSettings,
+    settings: normalizeSettings({ ...(settings || mem?.settings || {}), premiumUntil: premiumUntil || null }),
     proUntil: proUntil || null,
     premiumUntil: premiumUntil || null,
-    isCustom: hasCustom,
-    customPlan: hasCustom ? customPlan : null,
-    capabilities,
     isPremium,
-    isPro: capabilities.proFeatures,
-    ps_account: capabilities.psAccount,
-    credits: Number(normalizedSettings?.credits?.balance || 0)
+    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
+    ps_account: psAccount || false,
+    credits: Number((settings || mem?.settings || {})?.credits?.balance || 0)
   };
 }
 
@@ -1259,27 +893,13 @@ async function upsertProfile(username, patch) {
   const ms = newProUntil ? Date.parse(newProUntil) : 0;
   const premiumMs = newPremiumUntil ? Date.parse(newPremiumUntil) : 0;
   const isPremium = Number.isFinite(premiumMs) && premiumMs > Date.now();
-  const customPlan = normalizeCustomPlan(newSettings.customPlan);
-  const hasCustom = customPlan.enabled === true;
-  const proByDate = Number.isFinite(ms) && ms > Date.now();
-  const capabilities = {
-    premiumKi: isPremium || (hasCustom && customPlan.features.premiumKi),
-    videoGenerator: isPremium || (hasCustom && customPlan.features.videoGenerator),
-    proFeatures: isPremium || proByDate || (hasCustom && customPlan.features.proFeatures),
-    psAccount: hasCustom && customPlan.features.psAccount,
-    updateUnlocked: hasCustom && customPlan.features.updateUnlocked
-  };
   return {
     username,
     settings: newSettings,
     proUntil: newProUntil || null,
     premiumUntil: newPremiumUntil || null,
-    isCustom: hasCustom,
-    customPlan: hasCustom ? customPlan : null,
-    capabilities,
     isPremium,
-    isPro: capabilities.proFeatures,
-    ps_account: capabilities.psAccount,
+    isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
     credits: Number(newSettings?.credits?.balance || 0)
   };
 }
@@ -1359,8 +979,8 @@ async function consumeReferralCode(code, newUsername) {
 // Middleware
 app.set('trust proxy', 1);
 app.use(cors());
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use('/api', (req, res, next) => {
   const apiPath = `/api${req.path === '/' ? '' : req.path}`;
   if (isPublicApiPath(apiPath)) {
@@ -2085,209 +1705,6 @@ app.put('/api/me/settings', async (req, res) => {
   res.json({ ok: true, profile });
 });
 
-app.get('/api/mail/status', async (req, res) => {
-  const auth = readAuthUser(req, res);
-  if (!auth) return;
-  res.json({
-    domain: MAIL_DOMAIN,
-    provider: RESEND_API_KEY ? 'resend' : 'sendmail',
-    sendmailPath: MAIL_SENDMAIL_PATH,
-    inboundConfigured: Boolean(MAIL_INBOUND_SECRET || RESEND_API_KEY)
-  });
-});
-
-app.get('/api/mail/accounts', async (req, res) => {
-  const auth = readAuthUser(req, res);
-  if (!auth) return;
-  try {
-    const accounts = await listMailAccounts(auth.username);
-    res.json({ accounts, domain: MAIL_DOMAIN });
-  } catch (error) {
-    console.error('Mail Accounts Error:', error);
-    res.status(500).json({ error: 'E-Mail-Adressen konnten nicht geladen werden.' });
-  }
-});
-
-app.post('/api/mail/accounts', async (req, res) => {
-  const auth = readAuthUser(req, res);
-  if (!auth) return;
-  const localPart = normalizeMailLocalPart(req.body?.localPart || req.body?.address);
-  if (!isValidMailLocalPart(localPart)) {
-    return res.status(400).json({ error: 'Nutze 3-32 Zeichen: a-z, 0-9, Punkt, Minus oder Unterstrich.' });
-  }
-  try {
-    const ownAccounts = await listMailAccounts(auth.username);
-    const account = await createMailAccount(auth.username, localPart);
-    res.json({ ok: true, account, replaced: ownAccounts.length > 0 });
-  } catch (error) {
-    console.error('Mail Account Create Error:', error);
-    res.status(409).json({ error: error.message || 'Adresse ist schon vergeben.' });
-  }
-});
-
-app.get('/api/mail/messages', async (req, res) => {
-  const auth = readAuthUser(req, res);
-  if (!auth) return;
-  const address = req.query.address ? String(req.query.address).trim().toLowerCase() : '';
-  try {
-    if (address) {
-      const account = await getMailAccount(address);
-      if (!account || account.username !== auth.username) {
-        return res.status(403).json({ error: 'Diese Mailbox gehoert dir nicht.' });
-      }
-    }
-    const messages = await listMailMessages(auth.username, address);
-    res.json({ messages });
-  } catch (error) {
-    console.error('Mail Messages Error:', error);
-    res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden.' });
-  }
-});
-
-app.post('/api/mail/send', async (req, res) => {
-  const auth = readAuthUser(req, res);
-  if (!auth) return;
-  const from = extractEmailAddress(req.body?.from);
-  const to = extractEmailAddress(req.body?.to);
-  const subject = escapeMailHeader(req.body?.subject || '(ohne Betreff)');
-  const body = String(req.body?.body || '').slice(0, 20000);
-  if (!from || !to || !body.trim()) {
-    return res.status(400).json({ error: 'Absender, Empfaenger und Text sind erforderlich.' });
-  }
-  const account = await getMailAccount(from);
-  if (!account || account.username !== auth.username) {
-    return res.status(403).json({ error: 'Diese Absender-Adresse gehoert dir nicht.' });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-    return res.status(400).json({ error: 'Empfaenger-Adresse ist ungueltig.' });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)) {
-    return res.status(400).json({ error: 'Absender-Adresse ist ungueltig.' });
-  }
-
-  const now = new Date().toUTCString();
-  const messageId = `<${crypto.randomBytes(16).toString('hex')}@${MAIL_DOMAIN}>`;
-  const raw = [
-    `From: ${from}`,
-    `To: ${escapeMailHeader(to)}`,
-    `Subject: ${subject}`,
-    `Date: ${now}`,
-    `Message-ID: ${messageId}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    body
-  ].join('\r\n');
-
-  try {
-    if (RESEND_API_KEY) {
-      await sendMailWithResend({ from, to, subject, text: body });
-    } else {
-      await sendRawMailWithSendmail(raw);
-    }
-    const message = await saveMailMessage({
-      username: auth.username,
-      address: from,
-      direction: 'outbound',
-      sender: from,
-      recipient: to,
-      subject,
-      text_body: body,
-      raw,
-      status: 'sent'
-    });
-    res.json({ ok: true, message });
-  } catch (error) {
-    console.error('Mail Send Error:', error);
-    const message = await saveMailMessage({
-      username: auth.username,
-      address: from,
-      direction: 'outbound',
-      sender: from,
-      recipient: to,
-      subject,
-      text_body: body,
-      raw,
-      status: 'sendmail-error'
-    });
-    res.status(500).json({
-      error: RESEND_API_KEY
-        ? `Resend konnte nicht senden: ${error.message}. Pruefe RESEND_API_KEY und Domain-Verifizierung.`
-        : `sendmail konnte nicht senden: ${error.message}. Installiere/konfiguriere Postfix oder setze MAIL_SENDMAIL_PATH.`,
-      message
-    });
-  }
-});
-
-app.post('/api/mail/inbound', async (req, res) => {
-  if (!MAIL_INBOUND_SECRET || req.body?.secret !== MAIL_INBOUND_SECRET) {
-    return res.status(403).json({ error: 'Inbound Secret ungueltig.' });
-  }
-  const recipient = String(req.body?.recipient || req.body?.to || '').trim().toLowerCase();
-  const account = await getMailAccount(recipient);
-  if (!account) {
-    return res.status(404).json({ error: 'Mailbox nicht gefunden.' });
-  }
-  const message = await saveMailMessage({
-    username: account.username,
-    address: account.address,
-    direction: 'inbound',
-    sender: String(req.body?.sender || req.body?.from || '').trim(),
-    recipient,
-    subject: escapeMailHeader(req.body?.subject || '(ohne Betreff)'),
-    text_body: String(req.body?.text || req.body?.body || '').slice(0, 20000),
-    html_body: String(req.body?.html || '').slice(0, 50000),
-    raw: String(req.body?.raw || '').slice(0, 100000),
-    status: 'received'
-  });
-  res.json({ ok: true, id: message.id });
-});
-
-app.post('/api/mail/resend-webhook', async (req, res) => {
-  if (RESEND_WEBHOOK_SECRET && req.query.secret !== RESEND_WEBHOOK_SECRET) {
-    return res.status(403).json({ error: 'Webhook Secret ungueltig.' });
-  }
-  const event = req.body || {};
-  if (event.type !== 'email.received') {
-    return res.json({ ok: true, ignored: true });
-  }
-  const emailId = event.data?.email_id || event.data?.id;
-  if (!emailId) {
-    return res.status(400).json({ error: 'email_id fehlt.' });
-  }
-
-  try {
-    const email = await getResendReceivedEmail(emailId);
-    const recipients = Array.isArray(email.to) ? email.to : [email.to].filter(Boolean);
-    const accountPairs = await Promise.all(recipients.map(async (recipient) => {
-      const clean = String(recipient || '').match(/<([^>]+)>/)?.[1] || String(recipient || '');
-      const account = await getMailAccount(clean.trim().toLowerCase());
-      return account ? { account, recipient: clean.trim().toLowerCase() } : null;
-    }));
-    const target = accountPairs.find(Boolean);
-    if (!target) {
-      return res.status(404).json({ error: 'Keine passende Mailbox in der App gefunden.' });
-    }
-    const message = await saveMailMessage({
-      username: target.account.username,
-      address: target.account.address,
-      direction: 'inbound',
-      sender: String(email.from || '').trim(),
-      recipient: target.recipient,
-      subject: escapeMailHeader(email.subject || '(ohne Betreff)'),
-      text_body: String(email.text || '').slice(0, 20000),
-      html_body: String(email.html || '').slice(0, 50000),
-      raw: JSON.stringify({ resendEmailId: email.id, messageId: email.message_id, attachments: email.attachments || [] }).slice(0, 100000),
-      status: 'received'
-    });
-    res.json({ ok: true, id: message.id });
-  } catch (error) {
-    console.error('Resend Webhook Error:', error);
-    res.status(500).json({ error: error.message || 'Resend Webhook konnte nicht verarbeitet werden.' });
-  }
-});
-
 app.post('/api/me/plan-request', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
@@ -2662,11 +2079,8 @@ app.get('/api/admin/users', async (req, res) => {
         has_pro: profile.proUntil ? Date.parse(profile.proUntil) > Date.now() : false,
         is_pro: profile.isPro,
         is_premium: profile.isPremium,
-        is_custom: profile.isCustom,
-        custom_plan: profile.customPlan,
-        credits: profile.credits,
-        update_unlocked: up?.update_unlocked === true || profile.capabilities?.updateUnlocked === true,
-        ps_account: up?.ps_account === true || profile.capabilities?.psAccount === true
+        update_unlocked: up?.update_unlocked === true,
+        ps_account: up?.ps_account === true
       });
     }
     res.json(users);
@@ -2743,100 +2157,24 @@ app.post('/api/admin/plan-requests/:id/confirm', async (req, res) => {
     : await upsertProfile(request.username, { proUntil: until });
   await ensurePlanCredits(request.username, profile);
 
-  const confirmedAt = new Date().toISOString();
   try {
-    const { data: updatedRows, error: updateError } = await supabaseAdmin
+    await supabaseAdmin
       .from('plan_requests')
-      .update({ status: 'confirmed', confirmed_at: confirmedAt })
-      .eq('id', id)
-      .select('id');
-    if (updateError) throw updateError;
-    if (!updatedRows?.length) {
-      try {
-        await supabaseAdmin.from('plan_requests').delete().eq('id', id);
-      } catch {}
-    }
-  } catch (error) {
-    try {
-      await supabaseAdmin.from('plan_requests').delete().eq('id', id);
-    } catch {}
+      .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
+      .eq('id', id);
+  } catch {
+    request.status = 'confirmed';
+    request.confirmed_at = new Date().toISOString();
   }
-  request.status = 'confirmed';
-  request.confirmed_at = confirmedAt;
   try {
     const requestProfile = await getProfile(request.username);
     const settings = { ...(requestProfile.settings || {}) };
-    settings.planRequests = (settings.planRequests || [])
-      .map((r) => Number(r.id) === id ? { ...r, status: 'confirmed', confirmed_at: confirmedAt } : r)
-      .filter((r) => !(Number(r.id) === id && r.status === 'confirmed'));
+    settings.planRequests = (settings.planRequests || []).map((r) => Number(r.id) === id
+      ? { ...r, status: 'confirmed', confirmed_at: new Date().toISOString() }
+      : r);
     await upsertProfile(request.username, { settings });
   } catch {}
   res.json({ ok: true, username: request.username, plan: request.plan });
-});
-
-app.post('/api/admin/users/:id/custom-benefits', async (req, res) => {
-  const adminKey = req.headers['x-admin-key'];
-  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungueltiger Admin-Key' });
-  }
-
-  const userId = Number(req.params.id);
-  if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Ungueltige Nutzer-ID' });
-
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('username')
-      .eq('id', userId)
-      .single();
-    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
-
-    const featuresBody = (req.body?.features && typeof req.body.features === 'object') ? req.body.features : {};
-    const creditsAdded = Math.max(0, Math.min(1000000, Math.trunc(Number(req.body?.creditsAdded) || 0)));
-    const priceEur = Math.max(0, Math.min(100000, Math.round((Number(req.body?.priceEur) || 0) * 100) / 100));
-    const enabled = req.body?.enabled !== false;
-
-    const profile = await getProfile(data.username);
-    const settings = { ...(profile.settings || {}) };
-    const currentCredits = Number(settings.credits?.balance ?? profile.credits ?? 0);
-    const balance = Math.max(0, (Number.isFinite(currentCredits) ? currentCredits : 0) + creditsAdded);
-    settings.credits = {
-      ...(settings.credits || {}),
-      balance,
-      updatedAt: new Date().toISOString()
-    };
-    settings.customPlan = normalizeCustomPlan({
-      enabled,
-      label: 'Individuell',
-      priceEur,
-      creditsAdded,
-      features: {
-        premiumKi: Boolean(featuresBody.premiumKi),
-        videoGenerator: Boolean(featuresBody.videoGenerator),
-        proFeatures: Boolean(featuresBody.proFeatures),
-        psAccount: Boolean(featuresBody.psAccount),
-        updateUnlocked: Boolean(featuresBody.updateUnlocked)
-      },
-      updatedAt: new Date().toISOString()
-    });
-
-    const updated = await upsertProfile(data.username, { settings });
-    if (settings.customPlan.features.psAccount) {
-      try {
-        await supabaseAdmin.from('user_profiles').update({ ps_account: true }).eq('username', data.username);
-      } catch {}
-    }
-    if (settings.customPlan.features.updateUnlocked) {
-      try {
-        await supabaseAdmin.from('user_profiles').update({ update_unlocked: true }).eq('username', data.username);
-      } catch {}
-    }
-
-    res.json({ ok: true, username: data.username, profile: updated, creditsAdded, priceEur });
-  } catch (err) {
-    console.error('Admin Custom Benefits Error:', err);
-    res.status(500).json({ error: err.message || 'Vorteile konnten nicht gespeichert werden' });
-  }
 });
 
 app.post('/api/admin/users/:id/add-month', async (req, res) => {
@@ -4757,7 +4095,7 @@ app.post('/api/ki/premium', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
   const profile = await ensurePlanCredits(auth.username);
-  if (!profile.isPremium && profile.capabilities?.premiumKi !== true) {
+  if (!profile.isPremium) {
     return res.status(403).json({ error: 'Premium Ehoser ist nur mit Premium freigeschaltet.' });
   }
 
@@ -4769,7 +4107,7 @@ app.post('/api/ki/premium', async (req, res) => {
     return res.status(400).json({ error: 'messages fehlt' });
   }
 
-  const creditCost = 5;
+  const creditCost = countTextCredits(messages);
   try {
     await chargeCredits(auth.username, creditCost);
   } catch (err) {
@@ -4977,7 +4315,7 @@ app.post('/api/ki', async (req, res) => {
     const hasImage = messages.some(m =>
       Array.isArray(m.content) && m.content.some(c => c.type === 'image_url')
     );
-    const model = hasImage ? GROQ_VISION_MODEL : GROQ_TEXT_MODEL;
+    const model = hasImage ? 'llama-3.2-11b-vision-preview' : 'llama-3.3-70b-versatile';
 
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -5038,7 +4376,7 @@ app.post('/api/ki/video/create', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Kein Prompt' });
   const profile = await ensurePlanCredits(auth.username);
-  if (!profile.isPremium && profile.capabilities?.videoGenerator !== true) {
+  if (!profile.isPremium) {
     return res.status(403).json({ error: 'Es tut mir leid, Video KI ist ab 20 Euro im Shop erhaeltlich.' });
   }
   const opts = normalizeVideoOptions(req.body);
@@ -5111,103 +4449,73 @@ app.get('/api/ki/video/:id/status', async (req, res) => {
   res.status(410).json({ error: 'Status-Polling wird nicht verwendet.' });
 });
 
-// Bild-Generierung mit OpenAI GPT Image 1 Mini
-const kiImageEditUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    cb(null, ['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype));
-  }
-});
-
-app.post('/api/ki/image/edit', kiImageEditUpload.single('image'), async (req, res) => {
-  const prompt = String(req.body?.prompt || '').trim();
-  if (!prompt) return res.status(400).json({ error: 'Kein Prompt angegeben' });
-  if (!req.file) return res.status(400).json({ error: 'Bitte ein PNG, JPG oder WebP anhaengen (max 50 MB).' });
-
-  const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
-  if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
-
-  try {
-    const fd = new FormData();
-    const imageBlob = new Blob([req.file.buffer], { type: req.file.mimetype });
-    fd.append('model', 'gpt-image-1-mini');
-    fd.append('prompt', prompt.slice(0, 1000));
-    fd.append('image', imageBlob, req.file.originalname || 'reference.png');
-    fd.append('size', '1024x1024');
-    fd.append('quality', 'low');
-    fd.append('output_format', 'png');
-
-    const aiRes = await fetch('https://api.openai.com/v1/images/edits', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${openAIKey}` },
-      body: fd
-    });
-
-    if (!aiRes.ok) {
-      const errorText = await aiRes.text().catch(() => '');
-      console.error('[OpenAI Image Edit] Status:', aiRes.status, errorText);
-      return res.status(aiRes.status).json({ error: 'Bildbearbeitung mit OpenAI fehlgeschlagen' });
-    }
-
-    const data = await aiRes.json();
-    const b64 = data?.data?.[0]?.b64_json;
-    if (!b64) {
-      console.error('[OpenAI Image Edit] Keine Bilddaten erhalten:', JSON.stringify(data).slice(0, 500));
-      return res.status(502).json({ error: 'OpenAI hat keine Bilddaten geliefert' });
-    }
-
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'no-store');
-    res.send(Buffer.from(b64, 'base64'));
-  } catch (err) {
-    console.error('[OpenAI Image Edit] Fehler:', err.message || err);
-    res.status(502).json({ error: 'Bildbearbeitung fehlgeschlagen' });
-  }
-});
-
+// Bild-Generierung (HuggingFace SDXL primÃ¤r, Pollinations als Fallback)
 app.get('/api/ki/image', async (req, res) => {
   const prompt = req.query.prompt;
   if (!prompt || prompt.trim().length === 0) {
     return res.status(400).json({ error: 'Kein Prompt angegeben' });
   }
-  const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
-  if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
+  const seed = req.query.seed || Math.floor(Math.random() * 999999);
+  const hfKey = process.env.HUGGINGFACE_API_KEY;
+  const pollinationsKey = process.env.POLLINATIONS_API_KEY;
+  const encodedPrompt = encodeURIComponent(prompt.slice(0, 500));
 
   try {
-    const aiRes = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${openAIKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-image-1-mini',
-        prompt: prompt.slice(0, 1000),
-        size: '1024x1024',
-        quality: 'low',
-        output_format: 'png'
-      })
-    });
-
-    if (!aiRes.ok) {
-      const errorText = await aiRes.text().catch(() => '');
-      console.error('[OpenAI Image] Status:', aiRes.status, errorText);
-      return res.status(aiRes.status).json({ error: 'Bildgenerierung mit OpenAI fehlgeschlagen' });
+    // 1. Versuch: HuggingFace Stable Diffusion XL
+    if (hfKey) {
+      try {
+        const hfRes = await fetch('https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${hfKey}`,
+            'Content-Type': 'application/json',
+            'x-wait-for-model': 'true'
+          },
+          body: JSON.stringify({ inputs: prompt.slice(0, 500), parameters: { seed: Number(seed) } })
+        });
+        if (hfRes.ok) {
+          const contentType = hfRes.headers.get('content-type') || 'image/jpeg';
+          if (contentType.startsWith('image/')) {
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            const buffer = await hfRes.arrayBuffer();
+            return res.send(Buffer.from(buffer));
+          }
+        }
+        // HF Fehler loggen aber weiter zu Fallback
+        console.error('[HF] Status:', hfRes.status, await hfRes.text().catch(() => ''));
+      } catch (hfErr) {
+        console.error('[HF] Fehler:', hfErr.message);
+      }
     }
 
-    const data = await aiRes.json();
-    const b64 = data?.data?.[0]?.b64_json;
-    if (!b64) {
-      console.error('[OpenAI Image] Keine Bilddaten erhalten:', JSON.stringify(data).slice(0, 500));
-      return res.status(502).json({ error: 'OpenAI hat keine Bilddaten geliefert' });
-    }
+    // 2. Fallback: Pollinations
+    const urls = pollinationsKey
+      ? [`https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}&key=${encodeURIComponent(pollinationsKey)}`]
+      : [
+          `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`,
+          `https://gen.pollinations.ai/image/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`
+        ];
 
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'no-store');
-    res.send(Buffer.from(b64, 'base64'));
+    let imgRes;
+    for (const url of urls) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        imgRes = await fetch(url, { headers: { 'User-Agent': 'ehoser-store/1.0' }, signal: ctrl.signal });
+        clearTimeout(timer);
+        if (imgRes.ok) break;
+      } catch {}
+    }
+    if (!imgRes || !imgRes.ok) {
+      return res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen â€“ kein Dienst verfÃ¼gbar' });
+    }
+    const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const buffer = await imgRes.arrayBuffer();
+    res.send(Buffer.from(buffer));
   } catch (err) {
-    console.error('[OpenAI Image] Fehler:', err.message || err);
     res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen' });
   }
 });
