@@ -1547,7 +1547,7 @@ Ramen</textarea>
             <div class="modal-content game-modal-content">
                 <div class="game-timer-badge" id="gameTimerBadge" style="display:none"></div>
                 <button id="gameCloseBtn" class="game-modal-close-btn" onclick="closeGameModal()">✕</button>
-                <iframe id="gameFrame" class="game-frame" src="" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock"></iframe>
+                <iframe id="gameFrame" class="game-frame" src="" allowfullscreen sandbox="allow-scripts allow-forms allow-popups allow-pointer-lock"></iframe>
             </div>
         </div>
     </div>
@@ -2310,29 +2310,26 @@ Ramen</textarea>
         </div>
     </div>
 
-    <button id="supportLauncher" class="support-launcher" type="button" onclick="openSupport()">
-        <span class="support-launcher-dot"></span>
-        Support
-    </button>
+    <button id="supportLauncher" class="support-launcher" type="button" onclick="openSupport()">Support</button>
 
     <div id="supportModal" class="support-modal" aria-hidden="true">
         <div class="support-panel" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
             <div class="support-head">
                 <div>
                     <div class="support-kicker">Ehoser Support</div>
-                    <h2 id="supportTitle">Wie koennen wir helfen?</h2>
+                    <h2 id="supportTitle">Wie können wir helfen?</h2>
                 </div>
-                <button class="support-close" type="button" onclick="closeSupport()" aria-label="Support schliessen">x</button>
+                <button class="support-close" type="button" onclick="closeSupport()" aria-label="Support schließen">×</button>
             </div>
 
             <div id="supportLoading" class="support-stage support-loading">
                 <div class="support-spinner"></div>
                 <strong>Support wird geladen</strong>
-                <span>Einen Moment bitte...</span>
+                <span>Einen Moment bitte …</span>
             </div>
 
             <div id="supportReasons" class="support-stage" style="display:none">
-                <p class="support-copy">Waehlen Sie den Grund fuer den Support aus.</p>
+                <p class="support-copy">Wählen Sie den Grund für den Support aus.</p>
                 <div class="support-reason-grid">
                     <button type="button" onclick="selectSupportReason('Anmeldung')">Anmeldung</button>
                     <button type="button" onclick="selectSupportReason('Technik')">Technik</button>
