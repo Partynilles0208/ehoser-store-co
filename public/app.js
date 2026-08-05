@@ -6,6 +6,12 @@ const API_BASE = `${EHOSER_API_ORIGIN}/api`;
 const DESKTOP_AUTH_KEY = 'ehoserDesktopActivated';
 const DESKTOP_USER_CACHE_KEY = 'ehoserDesktopUserCache';
 const DESKTOP_ONLINE_MODES = new Set(['games', 'ki', 'chat', 'map', 'youtube', 'news', 'images', 'weather', 'gameCreator', 'ps']);
+const MINI_TOOL_MODES = new Set([
+    'lorem', 'holiday', 'contrast', 'markdown', 'binary', 'fact', 'todo', 'emoji', 'currency',
+    'sleep', 'slug', 'palindrome', 'anagram', 'datecalc', 'projectidea', 'mealidea', 'namegen',
+    'hashtag', 'domain', 'phonefmt', 'wordfreq', 'textclean', 'timer2', 'timezone', 'randomcolor',
+    'rgb', 'weeknumber', 'speedcalc', 'password2', 'motivation'
+]);
 let currentUser = null;
 let currentProfile = null;
 let allApps = [];
@@ -26,6 +32,39 @@ let _desktopUpdateUnsubscribe = null;
 let _desktopWebLoginSessionId = null;
 let _desktopWebLoginPollInterval = null;
 let _desktopNativeAuthLoaded = false;
+let deferredInstallPrompt = null;
+
+function setupInstallPrompt() {
+    if (typeof window === 'undefined') return;
+    window.addEventListener('beforeinstallprompt', (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        const bar = document.getElementById('mobileInstallBar');
+        if (bar) bar.classList.add('is-ready');
+    });
+    window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = null;
+        const bar = document.getElementById('mobileInstallBar');
+        if (bar) bar.classList.remove('is-ready');
+    });
+}
+
+async function triggerInstallPrompt() {
+    if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        if (outcome === 'accepted') {
+            showAlert('App wurde installiert.', 'success');
+        } else {
+            showAlert('Installation abgebrochen.', 'info');
+        }
+        return;
+    }
+    showAlert('Die Installation ist in diesem Browser gerade nicht verfügbar. Öffne das Menü und wähle „Zum Startbildschirm hinzufügen“.', 'info');
+}
+
+setupInstallPrompt();
 
 function decodeMojibakeText(value) {
     const text = String(value ?? '');
@@ -1128,7 +1167,7 @@ async function handleLogin(event) {
         }
         document.getElementById('loginForm').reset();
     } catch (err) {
-        showAlert('Verbindungsfehler. PrÃ¼fe ob der Server lÃ¤uft.', 'error');
+        showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
     }
 }
 
@@ -1405,7 +1444,7 @@ async function verifyToken(token) {
         currentUser = data.user;
         currentProfile = data.profile || null;
         saveDesktopUserCache(currentUser, currentProfile);
-        // ðŸ”¥ Pro-Status in localStorage speichern fÃ¼r FaceWarp/Chat
+        // 🔧 Pro-Status in localStorage speichern für FaceWarp/Chat
         syncPlanStatus();
         applyProfileSettings();
         showLoggedInUI();
@@ -1444,7 +1483,7 @@ async function handleRegister(event) {
         return;
     }
     if (password !== passwordConfirm) {
-        showAlert('PasswÃ¶rter stimmen nicht Ã¼berein.', 'error');
+        showAlert('Passwörter stimmen nicht überein.', 'error');
         return;
     }
 
@@ -1490,7 +1529,7 @@ async function handleRegister(event) {
         startOnlinePolling();
         document.getElementById('registerForm').reset();
     } catch (err) {
-        showAlert('Verbindungsfehler. PrÃ¼fe ob der Server lÃ¤uft.', 'error');
+        showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
     }
 }
 
@@ -1619,7 +1658,7 @@ function displayApps(apps, meta) {
 
 function renderIcon(iconUrl, appName) {
     if (!iconUrl) {
-        return '<span class="emoji-icon">ðŸ“±</span>';
+        return '<span class="emoji-icon">📱</span>';
     }
 
     const looksLikeImage = iconUrl.startsWith('/uploads/') || /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(iconUrl) || iconUrl.startsWith('http');
@@ -1816,6 +1855,10 @@ function showSection(sectionId) {
         sectionId = 'auth';
     }
 
+    if (sectionId === 'earth3d' && !document.getElementById('earth3dCanvas')) {
+        sectionId = 'mode-select';
+    }
+
     document.querySelectorAll('.section').forEach((section) => {
         section.classList.remove('active');
     });
@@ -1839,6 +1882,674 @@ function showSection(sectionId) {
     }
     if (sectionId === 'games') {
         if (!gamesAllLoaded.length) loadGames();
+    }
+}
+
+let _miniToolMode = '';
+let _miniToolTimer = null;
+
+function initMiniTool(mode) {
+    _miniToolMode = mode;
+    if (_miniToolTimer) {
+        clearInterval(_miniToolTimer);
+        _miniToolTimer = null;
+    }
+    renderMiniTool();
+    setTimeout(() => document.getElementById('miniToolInput')?.focus(), 50);
+}
+
+function setMiniToolOutput(content, useHtml = false) {
+    const output = document.getElementById('miniToolOutput');
+    if (!output) return;
+    if (useHtml) {
+        output.innerHTML = content;
+    } else {
+        output.textContent = content;
+    }
+}
+
+function renderMiniTool() {
+    const title = document.getElementById('miniToolTitle');
+    const description = document.getElementById('miniToolDescription');
+    const category = document.getElementById('miniToolCategory');
+    const inputLabel = document.getElementById('miniToolInputLabel');
+    const input = document.getElementById('miniToolInput');
+    const input2 = document.getElementById('miniToolInput2');
+    const input2Label = document.getElementById('miniToolInput2Label');
+    const actionBtn = document.getElementById('miniToolActionBtn');
+    const extra = document.getElementById('miniToolExtra');
+
+    if (!title || !description || !category || !inputLabel || !input || !input2 || !input2Label || !actionBtn || !extra) {
+        return;
+    }
+
+    title.textContent = 'Mini-Tool';
+    description.textContent = 'Nutz eines der neuen Mini-Tools für schnellen Browser-Support.';
+    category.textContent = 'Werkzeug';
+    input.value = '';
+    input2.value = '';
+    input.placeholder = 'Eingabe hier...';
+    input2.placeholder = '';
+    input.style.display = 'block';
+    input2.style.display = 'none';
+    input2Label.style.display = 'none';
+    actionBtn.textContent = 'Ausführen';
+    extra.innerHTML = '';
+
+    switch (_miniToolMode) {
+        case 'lorem':
+            title.textContent = 'Lorem Ipsum';
+            description.textContent = 'Erzeuge Platzhaltertext für Design-Layouts und Mockups.';
+            category.textContent = 'Text-Tool';
+            inputLabel.textContent = 'Wörter';
+            input.placeholder = 'Gib die Anzahl Wörter ein, z.B. 50';
+            actionBtn.textContent = 'Lorem erzeugen';
+            break;
+        case 'holiday':
+            title.textContent = 'Feiertags-Countdown';
+            description.textContent = 'Berechnet den nächsten Feiertag in Deutschland.';
+            category.textContent = 'Planung';
+            inputLabel.textContent = 'Land';
+            input.placeholder = 'DE, AT, CH oder leer für DE';
+            actionBtn.textContent = 'Nächsten Feiertag finden';
+            break;
+        case 'contrast':
+            title.textContent = 'Farbkontrast';
+            description.textContent = 'Prüft, wie gut zwei Farben zusammen lesbar sind.';
+            category.textContent = 'Design';
+            inputLabel.textContent = 'Vordergrundfarbe';
+            input.placeholder = 'z.B. #ffffff';
+            input2.style.display = 'block';
+            input2Label.style.display = 'block';
+            input2Label.textContent = 'Hintergrundfarbe';
+            input2.placeholder = 'z.B. #1f2937';
+            actionBtn.textContent = 'Kontrast prüfen';
+            break;
+        case 'markdown':
+            title.textContent = 'Markdown Vorschau';
+            description.textContent = 'Schreibe Markdown und sieh die Vorschau in Echtzeit.';
+            category.textContent = 'Schreiben';
+            inputLabel.textContent = 'Markdown';
+            input.placeholder = 'Gib Markdown ein...';
+            actionBtn.textContent = 'Vorschau aktualisieren';
+            extra.innerHTML = 'Überschriften mit #, **fett**, *kursiv* und [Link](https://example.com).';
+            break;
+        case 'binary':
+            title.textContent = 'Zahlen-Konverter';
+            description.textContent = 'Rechnet Binär, Dezimal und Hexadezimal um.';
+            category.textContent = 'Dev Tool';
+            inputLabel.textContent = 'Zahl';
+            input.placeholder = 'z.B. 42 oder 0b101010 oder 0x2A';
+            actionBtn.textContent = 'Konvertieren';
+            break;
+        case 'fact':
+            title.textContent = 'Zufallsfakten';
+            description.textContent = 'Kurze, interessante Fakten für Pausen und Gespräche.';
+            category.textContent = 'Wissen';
+            input.style.display = 'none';
+            actionBtn.textContent = 'Fakt generieren';
+            break;
+        case 'todo':
+            title.textContent = 'ToDo Liste';
+            description.textContent = 'Schreibe Aufgaben und erhalte eine formatierte Liste.';
+            category.textContent = 'Produktivität';
+            inputLabel.textContent = 'Aufgaben (je Zeile)';
+            input.placeholder = 'Erste Aufgabe\nZweite Aufgabe\n...';
+            actionBtn.textContent = 'Liste erstellen';
+            break;
+        case 'emoji':
+            title.textContent = 'Emoji Suche';
+            description.textContent = 'Finde Emojis nach Begriffen und kopiere sie schnell.';
+            category.textContent = 'Spaß';
+            inputLabel.textContent = 'Begriff';
+            input.placeholder = 'z.B. lachen, liebe, wetter';
+            actionBtn.textContent = 'Emoji finden';
+            break;
+        case 'currency':
+            title.textContent = 'Währungsrechner';
+            description.textContent = 'Rechnet Beträge einfach zwischen verschiedenen Währungen um.';
+            category.textContent = 'Finanzen';
+            inputLabel.textContent = 'Betrag';
+            input.placeholder = 'z.B. 100';
+            input2.style.display = 'block';
+            input2Label.style.display = 'block';
+            input2Label.textContent = 'Zielwährung';
+            input2.placeholder = 'z.B. USD, CHF, GBP';
+            actionBtn.textContent = 'Umrechnen';
+            break;
+        case 'sleep':
+            title.textContent = 'Schlafzyklus';
+            description.textContent = 'Berechne gute Aufwachzeiten für erholsamen Schlaf.';
+            category.textContent = 'Wellness';
+            inputLabel.textContent = 'Schlafenszeit';
+            input.placeholder = 'z.B. 22:30';
+            actionBtn.textContent = 'Beste Aufwachzeiten';
+            break;
+        case 'slug':
+            title.textContent = 'Slug Generator';
+            description.textContent = 'Erstellt eine saubere URL aus deinem Text.';
+            category.textContent = 'Web';
+            inputLabel.textContent = 'Text';
+            input.placeholder = 'z.B. Mein Blog-Beitrag Titel';
+            actionBtn.textContent = 'Slug erzeugen';
+            break;
+        case 'palindrome':
+            title.textContent = 'Palindrom Test';
+            description.textContent = 'Prüft, ob ein Text vorwärts und rückwärts gleich ist.';
+            category.textContent = 'Text';
+            inputLabel.textContent = 'Text';
+            input.placeholder = 'z.B. Anna';
+            actionBtn.textContent = 'Prüfen';
+            break;
+        case 'anagram':
+            title.textContent = 'Anagramm-Generator';
+            description.textContent = 'Erzeuge neue Wortkombinationen aus deinem Text.';
+            category.textContent = 'Kreativ';
+            inputLabel.textContent = 'Text';
+            input.placeholder = 'z.B. Hallo Welt';
+            actionBtn.textContent = 'Anagramme erzeugen';
+            break;
+        case 'datecalc':
+            title.textContent = 'Datumsrechner';
+            description.textContent = 'Berechnet die Tage zwischen zwei Daten.';
+            category.textContent = 'Planung';
+            inputLabel.textContent = 'Startdatum';
+            input.placeholder = 'z.B. 2025-01-01';
+            input2.style.display = 'block';
+            input2Label.style.display = 'block';
+            input2Label.textContent = 'Enddatum';
+            input2.placeholder = 'z.B. 2025-12-31';
+            actionBtn.textContent = 'Differenz berechnen';
+            break;
+        case 'projectidea':
+            title.textContent = 'Projektideen';
+            description.textContent = 'Bekomme kreative Ideen für Websites, Apps und Hobbys.';
+            category.textContent = 'Inspiration';
+            inputLabel.textContent = 'Thema (optional)';
+            input.placeholder = 'z.B. Nachhaltigkeit, Schule, Hobby';
+            actionBtn.textContent = 'Idee finden';
+            break;
+        case 'mealidea':
+            title.textContent = 'Rezeptideen';
+            description.textContent = 'Finde schnelle Essensideen für Frühstück, Mittag und Abendessen.';
+            category.textContent = 'Alltag';
+            inputLabel.textContent = 'Bevorzugte Küche oder Zutat';
+            input.placeholder = 'z.B. Pasta, vegan, Frühstück';
+            actionBtn.textContent = 'Rezeptvorschlag';
+            break;
+        case 'namegen':
+            title.textContent = 'Namens-Generator';
+            description.textContent = 'Erzeuge zufällige Namen für Charaktere, Marken oder Projekte.';
+            category.textContent = 'Kreativ';
+            inputLabel.textContent = 'Kategorie (optional)';
+            input.placeholder = 'z.B. Tech, Fantasy, Team';
+            actionBtn.textContent = 'Name generieren';
+            break;
+        case 'hashtag':
+            title.textContent = 'Hashtag-Generator';
+            description.textContent = 'Erstelle passende Hashtags für Social Media Beiträge.';
+            category.textContent = 'Social';
+            inputLabel.textContent = 'Text oder Thema';
+            input.placeholder = 'z.B. Reisen, Fitness, Coding';
+            actionBtn.textContent = 'Hashtags erzeugen';
+            break;
+        case 'domain':
+            title.textContent = 'Domain-Ideen';
+            description.textContent = 'Finde einprägsame Domain-Namen für neue Projekte.';
+            category.textContent = 'Startup';
+            inputLabel.textContent = 'Ein Wort oder Thema';
+            input.placeholder = 'z.B. shop, tech, musik';
+            actionBtn.textContent = 'Domain-Ideen';
+            break;
+        case 'phonefmt':
+            title.textContent = 'Telefonformatierer';
+            description.textContent = 'Formatiert Telefonnummern sauber und einheitlich.';
+            category.textContent = 'Office';
+            inputLabel.textContent = 'Nummer';
+            input.placeholder = 'z.B. 491771234567';
+            actionBtn.textContent = 'Formatieren';
+            break;
+        case 'wordfreq':
+            title.textContent = 'Wortfrequenz';
+            description.textContent = 'Finde die häufigsten Wörter in deinem Text.';
+            category.textContent = 'Analyse';
+            inputLabel.textContent = 'Text';
+            input.placeholder = 'Gib hier deinen Text ein...';
+            actionBtn.textContent = 'Analysieren';
+            break;
+        case 'textclean':
+            title.textContent = 'Text bereinigen';
+            description.textContent = 'Entfernt überflüssige Leerzeichen und bereinigt Text.';
+            category.textContent = 'Produktivität';
+            inputLabel.textContent = 'Text';
+            input.placeholder = 'Gib hier deinen Text ein...';
+            actionBtn.textContent = 'Bereinigen';
+            break;
+        case 'timer2':
+            title.textContent = 'Kurzzeit-Timer';
+            description.textContent = 'Starte einen einfachen Timer für Pausen oder Übungen.';
+            category.textContent = 'Zeit';
+            inputLabel.textContent = 'Sekunden';
+            input.placeholder = 'z.B. 90';
+            actionBtn.textContent = 'Timer starten';
+            break;
+        case 'timezone':
+            title.textContent = 'Zeitzonen';
+            description.textContent = 'Berechnet Uhrzeiten zwischen zwei Zeitzonen.';
+            category.textContent = 'Reise';
+            inputLabel.textContent = 'Uhrzeit';
+            input.placeholder = 'z.B. 14:00';
+            input2.style.display = 'block';
+            input2Label.style.display = 'block';
+            input2Label.textContent = 'Zeitzone (z.B. UTC+1)';
+            input2.placeholder = 'z.B. UTC+2 oder UTC-5';
+            actionBtn.textContent = 'Umrechnen';
+            extra.innerHTML = 'Aktuell nur eine einfache Zeitzonen-Prüfung.';
+            break;
+        case 'randomcolor':
+            title.textContent = 'Zufallsfarbe';
+            description.textContent = 'Erzeugt zufällige Farbwerte als HEX und RGB.';
+            category.textContent = 'Design';
+            input.style.display = 'none';
+            actionBtn.textContent = 'Farbe generieren';
+            break;
+        case 'rgb':
+            title.textContent = 'Farbcode-Konverter';
+            description.textContent = 'Wandelt Hex-Farben in RGB um und umgekehrt.';
+            category.textContent = 'Design';
+            inputLabel.textContent = 'Hex oder RGB';
+            input.placeholder = 'z.B. #ff6600 oder 255,102,0';
+            actionBtn.textContent = 'Konvertieren';
+            break;
+        case 'weeknumber':
+            title.textContent = 'Wochennummer';
+            description.textContent = 'Finde die Kalenderwoche für ein bestimmtes Datum.';
+            category.textContent = 'Planung';
+            inputLabel.textContent = 'Datum';
+            input.placeholder = 'z.B. 2025-05-27';
+            actionBtn.textContent = 'Woche berechnen';
+            break;
+        case 'speedcalc':
+            title.textContent = 'Speed Rechner';
+            description.textContent = 'Berechnet Tipp- oder Lesegeschwindigkeit.';
+            category.textContent = 'Analyse';
+            inputLabel.textContent = 'Anzahl Wörter';
+            input.placeholder = 'z.B. 250';
+            input2.style.display = 'block';
+            input2Label.style.display = 'block';
+            input2Label.textContent = 'Sekunden';
+            input2.placeholder = 'z.B. 60';
+            actionBtn.textContent = 'Speed berechnen';
+            break;
+        case 'password2':
+            title.textContent = 'Passwort-Generator 2.0';
+            description.textContent = 'Erzeugt sichere Passwörter mit optionalen Symbolen.';
+            category.textContent = 'Security';
+            inputLabel.textContent = 'Länge';
+            input.placeholder = 'z.B. 16';
+            input2.style.display = 'block';
+            input2Label.style.display = 'block';
+            input2Label.textContent = 'Symbole verwenden? (ja/nein)';
+            input2.placeholder = 'z.B. ja';
+            actionBtn.textContent = 'Passwort erstellen';
+            break;
+        case 'motivation':
+            title.textContent = 'Motivations-Boost';
+            description.textContent = 'Liefert inspirierende Sätze für mehr Fokus.';
+            category.textContent = 'Mindset';
+            input.style.display = 'none';
+            actionBtn.textContent = 'Motivation holen';
+            break;
+        default:
+            title.textContent = 'Mini-Tool';
+            description.textContent = 'Wähle ein Mini-Tool, um schnelle Aufgaben zu lösen.';
+            category.textContent = 'Werkzeug';
+            actionBtn.textContent = 'Ausführen';
+            break;
+    }
+    setMiniToolOutput('Bereit. Starte das Tool über die Schaltfläche rechts.');
+}
+
+function runMiniTool() {
+    const value = document.getElementById('miniToolInput')?.value.trim() || '';
+    const value2 = document.getElementById('miniToolInput2')?.value.trim() || '';
+    const words = (s) => s.trim().split(/\s+/).filter(Boolean);
+    const getColorValue = (hex) => {
+        const on = hex.trim().toLowerCase();
+        const cleaned = on.replace(/^#/, '');
+        if (/^[0-9a-f]{6}$/i.test(cleaned)) {
+            return [parseInt(cleaned.slice(0, 2), 16), parseInt(cleaned.slice(2, 4), 16), parseInt(cleaned.slice(4), 16)];
+        }
+        return null;
+    };
+    const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
+
+    switch (_miniToolMode) {
+        case 'lorem': {
+            const count = Math.max(8, Math.min(200, parseInt(value, 10) || 60));
+            const base = 'Lorem ipsum dolor sit amet consectetur adipiscing elit'.split(' ');
+            const text = Array.from({ length: count }, (_, i) => base[i % base.length]).join(' ');
+            setMiniToolOutput(text + '.');
+            break;
+        }
+        case 'holiday': {
+            const holidays = [
+                ['Neujahr', '01-01'], ['Karfreitag', '04-18'], ['Ostermontag', '04-21'], ['Tag der Arbeit', '05-01'], ['Christi Himmelfahrt', '05-29'], ['Pfingstmontag', '06-09'], ['Tag der Deutschen Einheit', '10-03'], ['1. Weihnachtstag', '12-25'], ['2. Weihnachtstag', '12-26']
+            ];
+            const today = new Date();
+            const year = today.getFullYear();
+            let next = null;
+            for (const [name, mmdd] of holidays) {
+                const [m, d] = mmdd.split('-').map(Number);
+                const date = new Date(year, m - 1, d);
+                if (date >= today) { next = [name, date]; break; }
+            }
+            if (!next) {
+                const [name, mmdd] = holidays[0];
+                const [m, d] = mmdd.split('-').map(Number);
+                next = [name, new Date(year + 1, m - 1, d)];
+            }
+            const diff = Math.ceil((next[1] - today) / 86400000);
+            setMiniToolOutput(`Nächster Feiertag: ${next[0]} am ${next[1].toLocaleDateString('de-DE')} (${diff} Tage)`);
+            break;
+        }
+        case 'contrast': {
+            const fg = getColorValue(value || '#ffffff');
+            const bg = getColorValue(value2 || '#000000');
+            if (!fg || !bg) { setMiniToolOutput('Bitte gültige HEX-Farben eingeben, z.B. #ffffff.'); break; }
+            const luminance = (rgb) => {
+                return rgb.map(c => {
+                    const v = c / 255;
+                    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+                }).reduce((sum, v) => sum + v * 0.2126 + 0.7152 * v + 0.0722 * v, 0);
+            };
+            const l1 = luminance(fg);
+            const l2 = luminance(bg);
+            const ratio = ((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)).toFixed(2);
+            const pass = ratio >= 4.5 ? 'Gut' : ratio >= 3 ? 'Akzeptabel' : 'Schwach';
+            setMiniToolOutput(`Kontrastverhältnis: ${ratio}:1\nBewertung: ${pass}`);
+            break;
+        }
+        case 'markdown': {
+            const text = value.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const html = text
+                .replace(/^######\s*(.*)$/gm, '<h6>$1</h6>')
+                .replace(/^#####\s*(.*)$/gm, '<h5>$1</h5>')
+                .replace(/^####\s*(.*)$/gm, '<h4>$1</h4>')
+                .replace(/^###\s*(.*)$/gm, '<h3>$1</h3>')
+                .replace(/^##\s*(.*)$/gm, '<h2>$1</h2>')
+                .replace(/^#\s*(.*)$/gm, '<h1>$1</h1>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+                .replace(/^(?!<h|<ul|<ol|<blockquote|<pre)(.*)$/gm, '<p>$1</p>');
+            setMiniToolOutput(html, true);
+            break;
+        }
+        case 'binary': {
+            const input = value.toLowerCase();
+            if (input.startsWith('0b')) {
+                const num = parseInt(input.slice(2), 2);
+                setMiniToolOutput(`Dezimal: ${num}\nHex: 0x${num.toString(16).toUpperCase()}`);
+            } else if (input.startsWith('0x')) {
+                const num = parseInt(input.slice(2), 16);
+                setMiniToolOutput(`Dezimal: ${num}\nBinär: 0b${num.toString(2)}`);
+            } else if (/^\d+$/.test(input)) {
+                const num = parseInt(input, 10);
+                setMiniToolOutput(`Binär: 0b${num.toString(2)}\nHex: 0x${num.toString(16).toUpperCase()}`);
+            } else {
+                setMiniToolOutput('Bitte eine Dezimalzahl, 0bBinär oder 0xHex eingeben.');
+            }
+            break;
+        }
+        case 'fact': {
+            const facts = [
+                'Im Weltraum hört dich niemand schreien, aber dort gibt es keinen Klang.',
+                'Honig kann praktisch nicht verderben und wurde in alten Gräbern gefunden.',
+                'Bananen sind Beeren, Erdbeeren dagegen nicht.',
+                'Der Buchstabe W ist der einzige Buchstabe mit drei Silben in Deutsch.',
+                'Glühwürmchen nutzen Licht, um Artgenossen zu finden und Räuber abzuschrecken.'
+            ];
+            setMiniToolOutput(facts[Math.floor(Math.random() * facts.length)]);
+            break;
+        }
+        case 'todo': {
+            const items = value.split(/\r?\n/).map(i => i.trim()).filter(Boolean);
+            if (!items.length) { setMiniToolOutput('Bitte mindestens eine Aufgabe eingeben.'); break; }
+            setMiniToolOutput(items.map((item, idx) => `${idx + 1}. ${item}`).join('\n'));
+            break;
+        }
+        case 'emoji': {
+            const emojis = {
+                lachen: '😄 😂 🤣',
+                liebe: '❤️ 💕 😍',
+                wetter: '☀️ 🌧️ ⛅',
+                essen: '🍕 🍔 🍣',
+                reisen: '✈️ 🌍 🧳',
+                arbeit: '💼 🧑‍💻 📊'
+            };
+            const key = value.toLowerCase();
+            setMiniToolOutput(emojis[key] || 'Keine direkte Treffer. Versuch: lachen, liebe, wetter, essen, reisen, arbeit.');
+            break;
+        }
+        case 'currency': {
+            const amt = parseFloat(value.replace(',', '.'));
+            const rateMap = { EUR: 1, USD: 1.08, CHF: 0.98, GBP: 0.86 };
+            const target = value2.trim().toUpperCase() || 'USD';
+            if (!amt || !rateMap[target]) { setMiniToolOutput('Bitte Betrag und gültige Zielwährung angeben: USD, CHF, GBP.'); break; }
+            setMiniToolOutput(`${amt.toFixed(2)} EUR ≈ ${(amt * rateMap[target]).toFixed(2)} ${target}`);
+            break;
+        }
+        case 'sleep': {
+            const [h, m] = (value || '22:30').split(':').map(Number);
+            if (Number.isNaN(h) || Number.isNaN(m)) { setMiniToolOutput('Bitte eine Uhrzeit im Format HH:MM eingeben.'); break; }
+            const start = new Date(); start.setHours(h, m, 0, 0);
+            const options = [6.5, 8, 9.5].map(hours => {
+                const wake = new Date(start.getTime() + hours * 3600000);
+                return `${hours} Std → ${wake.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+            });
+            setMiniToolOutput(`Beste Aufwachzeiten:\n${options.join('\n')}`);
+            break;
+        }
+        case 'slug': {
+            const slug = value
+                .toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .trim()
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-');
+            setMiniToolOutput(slug || 'Bitte einen Text eingeben.');
+            break;
+        }
+        case 'palindrome': {
+            const clean = value.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!clean) { setMiniToolOutput('Bitte einen Text eingeben.'); break; }
+            const isPal = clean === clean.split('').reverse().join('');
+            setMiniToolOutput(isPal ? 'Das ist ein Palindrom.' : 'Das ist kein Palindrom.');
+            break;
+        }
+        case 'anagram': {
+            const letters = value.replace(/[^a-zA-Z]/g, '');
+            if (!letters) { setMiniToolOutput('Bitte einen Text eingeben.'); break; }
+            const shuffle = (str) => str.split('');
+            for (let i = letters.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [letters[i], letters[j]] = [letters[j], letters[i]];
+            }
+            setMiniToolOutput(`Alternative Buchstabenfolge:\n${letters}`);
+            break;
+        }
+        case 'datecalc': {
+            const start = new Date(value);
+            const end = new Date(value2);
+            if (isNaN(start.valueOf()) || isNaN(end.valueOf())) { setMiniToolOutput('Bitte zwei gültige Daten im Format YYYY-MM-DD eingeben.'); break; }
+            const diff = Math.abs(end - start);
+            setMiniToolOutput(`Differenz: ${Math.round(diff / 86400000)} Tage`);
+            break;
+        }
+        case 'projectidea': {
+            const ideas = [
+                'Eine mobile App für lokale Community-Termine.',
+                'Ein persönliches Lernjournal mit Fortschrittskarten.',
+                'Eine Website für einfache Haushaltsplanung.',
+                'Ein Tool zur visuellen Tagesplanung mit Farben.'
+            ];
+            setMiniToolOutput((value ? `Projektidee zu ${value}: ` : '') + ideas[Math.floor(Math.random() * ideas.length)]);
+            break;
+        }
+        case 'mealidea': {
+            const meals = ['Pasta mit Tomatensauce', 'Bowl mit Quinoa und Gemüse', 'Ofenkartoffeln mit Kräuterquark', 'Frühstücks-Porridge mit Beeren'];
+            setMiniToolOutput(meals[Math.floor(Math.random() * meals.length)]);
+            break;
+        }
+        case 'namegen': {
+            const prefixes = ['Nova', 'Cloud', 'Pixel', 'Echo', 'Luna'];
+            const suffixes = ['Labs', 'Studio', 'Works', 'Hub', 'Spot'];
+            setMiniToolOutput(`${prefixes[Math.floor(Math.random() * prefixes.length)]}${suffixes[Math.floor(Math.random() * suffixes.length)]}`);
+            break;
+        }
+        case 'hashtag': {
+            const base = value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+            if (!base) { setMiniToolOutput('Bitte einen Begriff eingeben.'); break; }
+            const tag = base.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
+            setMiniToolOutput(`#${tag} #${tag}Tipps #${tag}Life`);
+            break;
+        }
+        case 'domain': {
+            const prefix = value.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!prefix) { setMiniToolOutput('Bitte ein Thema oder Wort eingeben.'); break; }
+            setMiniToolOutput(`${prefix}hub.de\n${prefix}works.com\n${prefix}zone.net`);
+            break;
+        }
+        case 'phonefmt': {
+            const digits = value.replace(/\D/g, '');
+            if (!digits) { setMiniToolOutput('Bitte eine Telefonnummer eingeben.'); break; }
+            const formatted = digits.length === 11 ? `+${digits[0]} ${digits.slice(1, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}` : digits;
+            setMiniToolOutput(formatted);
+            break;
+        }
+        case 'wordfreq': {
+            const counts = words(value).reduce((acc, word) => {
+                const w = word.toLowerCase();
+                acc[w] = (acc[w] || 0) + 1;
+                return acc;
+            }, {});
+            if (!Object.keys(counts).length) { setMiniToolOutput('Bitte Text eingeben.'); break; }
+            setMiniToolOutput(Object.entries(counts).sort((a,b) => b[1]-a[1]).map(([w,c]) => `${w}: ${c}`).join('\n'));
+            break;
+        }
+        case 'textclean': {
+            const cleaned = value.replace(/\s+/g, ' ').trim();
+            setMiniToolOutput(cleaned || 'Bitte Text eingeben.');
+            break;
+        }
+        case 'timer2': {
+            const seconds = clamp(parseInt(value, 10) || 0, 1, 3600);
+            if (!seconds) { setMiniToolOutput('Bitte eine Dauer in Sekunden eingeben.'); break; }
+            if (_miniToolTimer) clearInterval(_miniToolTimer);
+            let remaining = seconds;
+            setMiniToolOutput(`Timer läuft: ${remaining} Sekunden`);
+            _miniToolTimer = setInterval(() => {
+                remaining -= 1;
+                if (remaining <= 0) {
+                    clearInterval(_miniToolTimer);
+                    _miniToolTimer = null;
+                    setMiniToolOutput('⏰ Zeit abgelaufen!');
+                    return;
+                }
+                setMiniToolOutput(`Timer läuft: ${remaining} Sekunden`);
+            }, 1000);
+            break;
+        }
+        case 'timezone': {
+            const timeMatch = value.match(/^(\d{1,2}):(\d{2})$/);
+            const zoneMatch = value2.match(/^UTC([+-]\d{1,2})$/i);
+            if (!timeMatch || !zoneMatch) { setMiniToolOutput('Bitte Zeit HH:MM und Zeitzone z.B. UTC+2 eingeben.'); break; }
+            const hours = parseInt(timeMatch[1], 10);
+            const mins = parseInt(timeMatch[2], 10);
+            const offset = parseInt(zoneMatch[1], 10);
+            const date = new Date(); date.setHours(hours - offset, mins, 0, 0);
+            setMiniToolOutput(`UTC Zeit: ${date.toISOString().substr(11, 5)}\n${value2.toUpperCase()} entspricht UTC`);
+            break;
+        }
+        case 'randomcolor': {
+            const rand = `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}`;
+            const rgb = getColorValue(rand);
+            setMiniToolOutput(`${rand}\nRGB: ${rgb.join(', ')}`);
+            break;
+        }
+        case 'rgb': {
+            const hexMatch = value.match(/^#?([0-9a-f]{6})$/i);
+            if (hexMatch) {
+                const rgb = getColorValue(hexMatch[1]);
+                setMiniToolOutput(`RGB: ${rgb.join(', ')}`);
+                break;
+            }
+            const rgbMatch = value.match(/^(\d{1,3}),\s*(\d{1,3}),\s*(\d{1,3})$/);
+            if (rgbMatch) {
+                const [r,g,b] = rgbMatch.slice(1).map(n => clamp(parseInt(n, 10), 0, 255));
+                setMiniToolOutput(`#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`);
+                break;
+            }
+            setMiniToolOutput('Bitte Hex (#rrggbb) oder RGB (r,g,b) eingeben.');
+            break;
+        }
+        case 'weeknumber': {
+            const date = new Date(value);
+            if (isNaN(date.valueOf())) { setMiniToolOutput('Bitte ein gültiges Datum im Format YYYY-MM-DD eingeben.'); break; }
+            const target = new Date(date.valueOf());
+            const dayNr = (date.getDay() + 6) % 7;
+            target.setDate(target.getDate() - dayNr + 3);
+            const firstThursday = target.valueOf();
+            target.setMonth(0, 1);
+            if (target.getDay() !== 4) {
+                target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+            }
+            const week = 1 + Math.round((firstThursday - target) / 604800000);
+            setMiniToolOutput(`KW ${week}`);
+            break;
+        }
+        case 'speedcalc': {
+            const wordsCount = Math.max(1, parseInt(value, 10) || 0);
+            const seconds = Math.max(1, parseInt(value2, 10) || 60);
+            if (!wordsCount || !seconds) { setMiniToolOutput('Bitte Wortanzahl und Sekunden eingeben.'); break; }
+            const wpm = Math.round(wordsCount / seconds * 60);
+            setMiniToolOutput(`Geschwindigkeit: ${wpm} WPM`);
+            break;
+        }
+        case 'password2': {
+            const length = clamp(parseInt(value, 10) || 16, 8, 64);
+            const useSymbols = value2.toLowerCase().startsWith('j');
+            const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' + (useSymbols ? '!@#$%^&*()_+-=[]{}|;:,.<>?' : '');
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += charset[Math.floor(Math.random() * charset.length)];
+            }
+            setMiniToolOutput(result);
+            break;
+        }
+        case 'motivation': {
+            const quotes = ['Du kannst mehr als du denkst.', 'Kleiner Fortschritt ist immer noch Fortschritt.', 'Starte jetzt, nicht später.', 'Deine beste Zeit ist jetzt.'];
+            setMiniToolOutput(quotes[Math.floor(Math.random() * quotes.length)]);
+            break;
+        }
+        default:
+            setMiniToolOutput('Dieses Tool ist noch nicht verfügbar.');
+            break;
+    }
+}
+
+function miniToolReset() {
+    if (_miniToolTimer) {
+        clearInterval(_miniToolTimer);
+        _miniToolTimer = null;
+    }
+    renderMiniTool();
+}
+
+function miniToolInputChanged() {
+    if (_miniToolMode === 'markdown') {
+        runMiniTool();
     }
 }
 
@@ -1867,7 +2578,7 @@ async function loadUnlockCode() {
         document.getElementById('unlockCodeDisplay').textContent = _unlockCode;
         updateGoogleAuthVisibility();
     } catch {
-        document.getElementById('unlockCodeDisplay').textContent = 'â€“';
+        document.getElementById('unlockCodeDisplay').textContent = '–';
     }
 }
 
@@ -1885,12 +2596,14 @@ async function copyUnlockCode() {
         sel.addRange(range);
     }
     const btn = document.querySelector('.unlock-code-copy');
-    btn.textContent = 'âœ“ Kopiert!';
-    btn.classList.add('copied');
-    setTimeout(() => {
-        btn.textContent = 'ðŸ“‹ Kopieren';
-        btn.classList.remove('copied');
-    }, 2000);
+    if (btn) {
+        btn.textContent = '✓ Kopiert!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.textContent = '📋 Kopieren';
+            btn.classList.remove('copied');
+        }, 2000);
+    }
 }
 
 function selectMode(mode) {
@@ -1900,6 +2613,7 @@ function selectMode(mode) {
             ki: 'KI',
             chat: 'Chat',
             map: 'Karte',
+            earth3d: '3D Earth Flight',
             youtube: 'YouTube',
             news: 'Nachrichten',
             images: 'Bildersuche',
@@ -1927,6 +2641,12 @@ function selectMode(mode) {
     } else if (mode === 'map') {
         showSection('map');
         setTimeout(initMap, 50); // kurz warten bis section sichtbar ist
+    } else if (mode === 'earth3d') {
+        showSection('earth3d');
+        setTimeout(() => {
+            loadEarth3DMapTexture();
+            initEarth3DScene();
+        }, 60);
     } else if (mode === 'youtube') {
         showSection('youtube');
         setTimeout(() => document.getElementById('ytSearchInput')?.focus(), 50);
@@ -1934,7 +2654,7 @@ function selectMode(mode) {
         showSection('news');
         newsLoad('top');
     } else if (mode === 'ki') {
-        // Registrierung nÃ¶tig
+        // Registrierung nötig
         const token = localStorage.getItem('token');
         if (!token && !isAdminGuestPreview()) {
             showAlert('Bitte zuerst anmelden, um ehoser KI zu nutzen.', 'error');
@@ -1942,7 +2662,7 @@ function selectMode(mode) {
             return;
         }
         showSection('ki');
-        // Name bereits bekannt â†’ direkt Chat Ã¶ffnen, sonst Modal zeigen
+        // Name bereits bekannt → direkt Chat öffnen, sonst Modal zeigen
         if (sessionStorage.getItem('kiUserName')) {
             showKIChat();
         } else {
@@ -2097,6 +2817,9 @@ function selectMode(mode) {
         showSection('birthday'); initBirthday();
     } else if (mode === 'minesweeper') {
         showSection('minesweeper'); initMinesweeper();
+    } else if (MINI_TOOL_MODES.has(mode)) {
+        showSection('mini-tools');
+        initMiniTool(mode);
     } else {
         showSection('mode-select');
     }
@@ -2209,7 +2932,231 @@ async function runWeatherSearch() {
     }
 }
 
-// â”€â”€â”€ Karte (Leaflet + OpenStreetMap + Nominatim) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── 3D Earth Flight ──────────────────────────
+let earth3dState = {
+    canvas: null,
+    ctx: null,
+    width: 0,
+    height: 0,
+    phase: 0,
+    drift: 0,
+    rotationY: 0,
+    wallpaper: null,
+    ready: false,
+    rafId: null
+};
+
+function getEarth3DMapKey() {
+    return localStorage.getItem('ehoserEarth3DMapKey') || window.__ENV__?.googleMapsApiKey || '';
+}
+
+function updateEarth3DMapKeyState() {
+    const keyState = document.getElementById('earth3dMapKeyState');
+    const input = document.getElementById('earth3dMapKeyInput');
+    const key = getEarth3DMapKey();
+    if (keyState) keyState.textContent = key ? 'aktiv' : 'nicht konfiguriert';
+    if (input && !input.value) input.value = key;
+}
+
+function saveEarth3DMapKey() {
+    const input = document.getElementById('earth3dMapKeyInput');
+    const key = String(input?.value || '').trim();
+    if (key) {
+        localStorage.setItem('ehoserEarth3DMapKey', key);
+    } else {
+        localStorage.removeItem('ehoserEarth3DMapKey');
+    }
+    updateEarth3DMapKeyState();
+    loadEarth3DMapTexture();
+    if (document.getElementById('earth3dCanvas')) initEarth3DScene();
+}
+
+function loadEarth3DMapTexture() {
+    const key = getEarth3DMapKey();
+    if (!key) {
+        earth3dState.wallpaper = null;
+        earth3dState.ready = false;
+        return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+        earth3dState.wallpaper = img;
+        earth3dState.ready = true;
+    };
+    img.onerror = () => {
+        earth3dState.wallpaper = null;
+        earth3dState.ready = false;
+    };
+    img.src = `https://maps.googleapis.com/maps/api/staticmap?center=0,0&zoom=2&size=1200x700&maptype=satellite&scale=2&key=${encodeURIComponent(key)}`;
+}
+
+function resizeEarth3DCanvas() {
+    const canvas = document.getElementById('earth3dCanvas');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.max(900, Math.round(rect.width * ratio));
+    canvas.height = Math.max(500, Math.round(rect.height * ratio));
+    earth3dState.width = canvas.width;
+    earth3dState.height = canvas.height;
+}
+
+function drawEarth3DScene() {
+    const { ctx, width, height } = earth3dState;
+    if (!ctx) return;
+
+    const cx = width * 0.52;
+    const cy = height * 0.54;
+    const radius = Math.min(width, height) * 0.32;
+
+    ctx.clearRect(0, 0, width, height);
+
+    const bg = ctx.createRadialGradient(cx, cy, radius * 0.5, cx, cy, Math.max(width, height) * 0.7);
+    bg.addColorStop(0, '#0b2334');
+    bg.addColorStop(0.35, '#0d1d2b');
+    bg.addColorStop(1, '#020b14');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+
+    for (let i = 0; i < 90; i++) {
+        const x = (i * 173.1) % width;
+        const y = (i * 91.4 + (earth3dState.phase * 18)) % height;
+        const alpha = 0.15 + ((i % 7) / 12);
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        ctx.fillRect(x, y, 2, 2);
+    }
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(earth3dState.rotationY);
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.clip();
+
+    const globeGrad = ctx.createRadialGradient(-radius * 0.35, -radius * 0.45, radius * 0.2, 0, 0, radius);
+    globeGrad.addColorStop(0, '#66e0ff');
+    globeGrad.addColorStop(0.25, '#1d7fe8');
+    globeGrad.addColorStop(0.6, '#0b4f7d');
+    globeGrad.addColorStop(1, '#071a2b');
+    ctx.fillStyle = globeGrad;
+    ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+
+    if (earth3dState.wallpaper) {
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(earth3dState.wallpaper, -radius, -radius, radius * 2, radius * 2);
+    } else {
+        ctx.fillStyle = 'rgba(27, 141, 118, 0.7)';
+        ctx.beginPath();
+        ctx.moveTo(-radius * 0.9, -radius * 0.2);
+        ctx.bezierCurveTo(-radius * 0.5, -radius * 0.7, -radius * 0.1, -radius * 0.4, radius * 0.15, -radius * 0.5);
+        ctx.bezierCurveTo(radius * 0.6, -radius * 0.6, radius * 0.9, -radius * 0.1, radius * 0.7, radius * 0.15);
+        ctx.bezierCurveTo(radius * 0.45, radius * 0.55, radius * 0.05, radius * 0.7, -radius * 0.15, radius * 0.5);
+        ctx.bezierCurveTo(-radius * 0.5, radius * 0.45, -radius * 0.95, radius * 0.1, -radius * 0.9, -radius * 0.2);
+        ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(135, 240, 255, 0.45)';
+    ctx.lineWidth = 1.1;
+    for (let lat = -4; lat <= 4; lat++) {
+        ctx.beginPath();
+        for (let lon = -180; lon <= 180; lon += 8) {
+            const x = Math.sin((lon * Math.PI) / 180) * radius * (0.75 + (lat / 12));
+            const y = Math.cos((lon * Math.PI) / 180) * radius * (0.75 + (lat / 12));
+            if (lon === -180) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+    for (let lon = -7; lon <= 7; lon++) {
+        ctx.beginPath();
+        for (let lat = -90; lat <= 90; lat += 10) {
+            const x = Math.sin((lon * Math.PI) / 180) * radius * Math.cos((lat * Math.PI) / 180);
+            const y = Math.cos((lon * Math.PI) / 180) * radius * Math.cos((lat * Math.PI) / 180);
+            if (lat === -90) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 18, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(130, 214, 255, 0.72)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-earth3dState.rotationY * 1.15);
+    ctx.beginPath();
+    for (let i = 0; i <= 90; i++) {
+        const t = (i / 90) * Math.PI * 2;
+        const x = Math.cos(t) * (radius + 40 + Math.sin(earth3dState.phase + t * 3) * 12);
+        const y = Math.sin(t) * (radius + 40 + Math.sin(earth3dState.phase + t * 3) * 12);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(14, 240, 208, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.font = '600 14px Outfit, sans-serif';
+    ctx.fillText('3D Earth Flight', 28, 34);
+    ctx.fillStyle = 'rgba(162, 210, 232, 0.82)';
+    ctx.font = '500 12px Outfit, sans-serif';
+    ctx.fillText(getEarth3DMapKey() ? 'Live Map Texture aktiv' : 'Canvas-Erdansicht aktiv', 28, 56);
+}
+
+function animateEarth3D() {
+    const canvas = document.getElementById('earth3dCanvas');
+    if (!canvas) return;
+
+    earth3dState.phase += 0.008;
+    earth3dState.rotationY += 0.005;
+    earth3dState.drift = Math.sin(earth3dState.phase * 1.8) * 22;
+    drawEarth3DScene();
+    earth3dState.rafId = requestAnimationFrame(animateEarth3D);
+}
+
+function initEarth3DScene() {
+    const canvas = document.getElementById('earth3dCanvas');
+    if (!canvas) return;
+    earth3dState.canvas = canvas;
+    earth3dState.ctx = canvas.getContext('2d');
+    resizeEarth3DCanvas();
+    updateEarth3DMapKeyState();
+    loadEarth3DMapTexture();
+    if (earth3dState.rafId) cancelAnimationFrame(earth3dState.rafId);
+    animateEarth3D();
+}
+
+function resetEarth3DView() {
+    earth3dState.phase = 0;
+    earth3dState.rotationY = 0;
+    earth3dState.drift = 0;
+    drawEarth3DScene();
+}
+
+async function toggleEarth3DFullscreen() {
+    const viewport = document.getElementById('earth3dViewport');
+    if (!viewport) return;
+
+    try {
+        if (document.fullscreenElement) {
+            await document.exitFullscreen();
+            return;
+        }
+        await viewport.requestFullscreen();
+    } catch {
+        showAlert('Vollbild konnte nicht gestartet werden. Probiere es erneut.', 'info');
+    }
+}
+
+// ─── Karte (Leaflet + OpenStreetMap + Nominatim) ──────────────────────────────
 let _map = null;
 let _mapNormalLayer = null;
 let _mapSatLayer = null;
@@ -2226,17 +3173,17 @@ function initMap() {
     if (!_map) return;
 
     _mapNormalLayer = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: 'Â© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19
     });
     _mapSatLayer = window.L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles Â© Esri',
+        attribution: 'Tiles © Esri',
         maxZoom: 19
     });
     _mapNormalLayer.addTo(_map);
 
-    // Dropdown schlieÃŸen bei Klick auf Karte
+    // Dropdown schließen bei Klick auf Karte
     _map.on('click', closeMapDropdown);
 }
 
@@ -2313,7 +3260,7 @@ function goToMapResult(lat, lon, name) {
     if (input) input.value = name.split(',')[0].trim();
 }
 
-// Dropdown schlieÃŸen bei Klick auÃŸerhalb
+// Dropdown schließen bei Klick außerhalb
 document.addEventListener('click', (e) => {
     const wrap = document.getElementById('mapSearchInput')?.closest('.map-search-wrap');
     if (wrap && !wrap.contains(e.target)) closeMapDropdown();
@@ -2385,7 +3332,7 @@ function newsCard(a) {
         </a>`;
 }
 
-// â”€â”€â”€ YouTube (YouTube Data API v3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── YouTube (YouTube Data API v3) ────────────────────────────────────────────
 let _ytType = 'video';
 let _ytNextPageToken = null;
 let _ytPrevPageToken = null;
@@ -2408,7 +3355,7 @@ async function runYTSearch(pageToken) {
     const status = document.getElementById('ytStatus');
     const results = document.getElementById('ytResults');
     const pagination = document.getElementById('ytPagination');
-    if (status) status.textContent = 'Suche lÃ¤uftâ€¦';
+    if (status) status.textContent = 'Suche läuft…';
     if (results) results.innerHTML = '';
     if (pagination) pagination.innerHTML = '';
     closeYTPlayer();
@@ -2438,8 +3385,8 @@ async function runYTSearch(pageToken) {
         // Pagination
         if (pagination && (_ytPrevPageToken || _ytNextPageToken)) {
             pagination.innerHTML = `
-                ${_ytPrevPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytPrevPageToken}')">â† ZurÃ¼ck</button>` : ''}
-                ${_ytNextPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytNextPageToken}')">Weiter â†’</button>` : ''}
+                ${_ytPrevPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytPrevPageToken}')">← Zurück</button>` : ''}
+                ${_ytNextPageToken ? `<button class="yt-page-btn" onclick="runYTSearch('${_ytNextPageToken}')">Weiter →</button>` : ''}
             `;
         }
 
@@ -2461,17 +3408,17 @@ function buildYTCard(item) {
     if (kind === 'youtube#video') {
         id = item.id.videoId;
         onclickAttr = `openYTPlayer('${id}', this.querySelector('.yt-card-title').textContent, 'video')`;
-        badge = 'â–¶ Video';
-        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">â–¶</div></div>`;
+        badge = '▶ Video';
+        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">▶</div></div>`;
     } else if (kind === 'youtube#playlist') {
         id = item.id.playlistId;
         onclickAttr = `openYTPlayer('${id}', this.querySelector('.yt-card-title').textContent, 'playlist')`;
-        badge = 'ðŸ“‹ Playlist';
-        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">â–¶</div></div>`;
+        badge = '📋 Playlist';
+        playOverlay = `<div class="yt-play-overlay"><div class="yt-play-icon">▶</div></div>`;
     } else {
         id = item.id.channelId;
         onclickAttr = `window.open('https://www.youtube.com/channel/${id}','_blank')`;
-        badge = 'ðŸ“º Kanal';
+        badge = '📺 Kanal';
         playOverlay = '';
     }
 
@@ -2515,7 +3462,7 @@ function closeYTPlayer() {
     if (wrap) wrap.style.display = 'none';
 }
 
-// â”€â”€â”€ KI Chat (Groq â€“ Llama 3.3 70B) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── KI Chat (Groq – Llama 3.3 70B) ──────────────────────────────────────────
 // API Key liegt serverseitig in GROQ_API_KEY (Vercel Environment Variable)
 let _kiHistory = []; // { role: 'user'|'assistant'|'system', content: string }
 let _kiAttachment = null; // { type: 'image'|'text', data: string, name: string }
@@ -2532,13 +3479,13 @@ function updateKIModelAccessUI() {
     premiumBtn.textContent = unlocked ? 'Premium Ehoser' : 'Premium Ehoser 🔒';
 }
 
-const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser lÃ¤uft. ehoser ist eine private Plattform mit Spielen, Chat und weiteren Features.
-Deine PersÃ¶nlichkeit ist locker, nett und ein kleines bisschen charmant â€“ aber nicht Ã¼bertrieben. Keine Kosenamen wie "Schatz" oder "SÃ¼ÃŸe". Sprich den Nutzer normal aber herzlich an.
-Wenn du den Nutzer persÃ¶nlich ansprechen mÃ¶chtest, schreibe ausschlieÃŸlich [name] anstelle des echten Namens (zum Beispiel: "Hey [name], wie kann ich helfen?"). Verwende niemals den echten Namen direkt.
-Antworte IMMER ausschlieÃŸlich auf Deutsch, egal in welcher Sprache der Nutzer schreibt. Keine Ausnahmen.
-Halte deine Antworten kurz und knapp â€“ maximal 3-4 SÃ¤tze.
-Du kannst Bilder generieren! Wenn der Nutzer ein Bild moechte, antworte mit: BILD_GENERIEREN: [englischer Bildprompt]. Dieser Befehl wird automatisch erkannt und ein Bild erstellt.
-Du kannst auch Videos generieren! Wenn der Nutzer ein Video moechte, antworte mit: VIDEO_GENERIEREN: [englischer Videoprompt]. Dieser Befehl wird automatisch erkannt und ein Video erstellt.`;
+const KI_SYSTEM_PROMPT = `Du bist ehoser KI, ein freundlicher und sympathischer KI-Assistent, der exklusiv auf den Servern von ehoser läuft. ehoser ist eine private Plattform mit Spielen, Chat und weiteren Features.
+Deine Persönlichkeit ist locker, nett und ein kleines bisschen charmant – aber nicht übertrieben. Keine Kosenamen wie "Schatz" oder "Süße". Sprich den Nutzer normal aber herzlich an.
+Wenn du den Nutzer persönlich ansprechen möchtest, schreibe ausschließlich [name] anstelle des echten Namens (zum Beispiel: "Hey [name], wie kann ich helfen?"). Verwende niemals den echten Namen direkt.
+Antworte IMMER ausschließlich auf Deutsch, egal in welcher Sprache der Nutzer schreibt. Keine Ausnahmen.
+Halte deine Antworten kurz und knapp – maximal 3-4 Sätze.
+Du kannst Bilder generieren! Wenn der Nutzer ein Bild möchte, antworte mit: BILD_GENERIEREN: [englischer Bildprompt]. Dieser Befehl wird automatisch erkannt und ein Bild erstellt.
+Du kannst auch Videos generieren! Wenn der Nutzer ein Video möchte, antworte mit: VIDEO_GENERIEREN: [englischer Videoprompt]. Dieser Befehl wird automatisch erkannt und ein Video erstellt.`;
 
 function startKIWithName() {
     const input = document.getElementById('kiNameInput');
@@ -2556,14 +3503,14 @@ function showKIChat() {
     document.getElementById('kiNameModal').style.display = 'none';
     document.getElementById('kiChatWrapper').style.display = 'flex';
 
-    // Anhang-Button nur fÃ¼r PRO sichtbar
+    // Anhang-Button nur für PRO sichtbar
     const attachBtn = document.getElementById('kiAttachBtn');
     if (attachBtn) attachBtn.style.display = localStorage.getItem('proStatus') === '1' ? 'flex' : 'none';
 
     // Nur beim ersten Mal initialisieren
     if (_kiHistory.length === 0) {
         _kiHistory = [{ role: 'system', content: KI_SYSTEM_PROMPT }];
-        const greeting = kiReplaceNamePlaceholder(`Hallo, [name]! ðŸ‘‹ Ich bin ehoser KI, dein persÃ¶nlicher Assistent auf dem ehoser Server. Wie kann ich dir heute helfen?`);
+        const greeting = kiReplaceNamePlaceholder(`Hallo, [name]! 👋 Ich bin ehoser KI, dein persönlicher Assistent auf dem ehoser Server. Wie kann ich dir heute helfen?`);
         appendKIBubble('ai', greeting);
     }
     updateKIModelAccessUI();
@@ -2575,7 +3522,7 @@ function kiHandleFileSelect(event) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > 4 * 1024 * 1024) {
-        showAlert('Datei zu groÃŸ (max. 4 MB).', 'error');
+        showAlert('Datei zu groß (max. 4 MB).', 'error');
         event.target.value = '';
         return;
     }
@@ -2584,7 +3531,7 @@ function kiHandleFileSelect(event) {
     reader.onload = (e) => {
         _kiAttachment = { type: isImage ? 'image' : 'text', data: e.target.result, name: file.name };
         document.getElementById('kiAttachPreview').style.display = 'flex';
-        document.getElementById('kiAttachName').textContent = 'ðŸ“Ž ' + file.name;
+        document.getElementById('kiAttachName').textContent = '📁 ' + file.name;
     };
     if (isImage) reader.readAsDataURL(file);
     else reader.readAsText(file);
@@ -2608,7 +3555,7 @@ function setKIModel(model) {
     updateKIModelAccessUI();
     if (model === 'premium' && !hasPremiumAccess()) {
         _kiModel = 'ehoser1';
-        showAlert('Premium Ehoser ist nur mit Premium freigeschaltet. PRO enthaelt diese neue KI nicht.', 'error');
+        showAlert('Premium Ehoser ist nur mit Premium freigeschaltet. PRO enthält diese neue KI nicht.', 'error');
         model = 'ehoser1';
     }
     _kiModel = ['ehoser1', 'premium'].includes(model) ? model : 'ehoser1';
@@ -2903,7 +3850,7 @@ async function sendKIMessage() {
     input.value = '';
     if (sendBtn) sendBtn.disabled = true;
 
-    // â”€â”€ Nachricht aufbauen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Nachricht aufbauen ──────────────────────────────────────
     let apiMessage; // was an Groq geht (ggf. mit base64 Bild)
     let historyMsg; // was im Verlauf gespeichert wird (kein base64)
 
@@ -2927,7 +3874,7 @@ async function sendKIMessage() {
             { type: 'text', text: text || 'Was siehst du auf diesem Bild?' },
             { type: 'image_url', image_url: { url: _kiAttachment.data } }
         ]};
-        historyMsg = { role: 'user', content: `[Bild: ${_kiAttachment.name}]${text ? ' â€“ ' + text : ''}` };
+        historyMsg = { role: 'user', content: `[Bild: ${_kiAttachment.name}]${text ? ' – ' + text : ''}` };
     } else if (_kiAttachment?.type === 'text') {
         const combined = `Dateiinhalt (${_kiAttachment.name}):\n\`\`\`\n${_kiAttachment.data.slice(0, 8000)}\n\`\`\`${text ? '\n\n' + text : ''}`;
         // Zeige Datei-Badge + Text im Chat
@@ -2937,7 +3884,7 @@ async function sendKIMessage() {
             bubble.className = 'ki-bubble ki-bubble-user';
             const badge = document.createElement('div');
             badge.className = 'ki-bubble-file-badge';
-            badge.textContent = 'ðŸ“„ ' + _kiAttachment.name;
+            badge.textContent = '📄 ' + _kiAttachment.name;
             bubble.appendChild(badge);
             if (text) { const t = document.createElement('div'); t.style.marginTop='4px'; t.textContent = text; bubble.appendChild(t); }
             msgEl.appendChild(bubble);
@@ -2974,7 +3921,7 @@ async function sendKIMessage() {
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             const msg = err?.error?.message || err?.error || `Fehler ${res.status}`;
-            appendKIBubble('error', 'âš ï¸ ' + msg);
+            appendKIBubble('error', '⚠️ ' + msg);
             _kiHistory.pop();
             await refreshCurrentProfile();
             return;
@@ -2990,7 +3937,7 @@ async function sendKIMessage() {
         await refreshCurrentProfile();
     } catch (err) {
         typing?.remove();
-        appendKIBubble('error', 'âš ï¸ Verbindungsfehler. Bitte versuche es erneut.');
+        appendKIBubble('error', '⚠️ Verbindungsfehler. Bitte versuche es erneut.');
         _kiHistory.pop();
     } finally {
         if (sendBtn) sendBtn.disabled = false;
@@ -3003,7 +3950,7 @@ function clearKIChat() {
     _kiHistory = [{ role: 'system', content: KI_SYSTEM_PROMPT }];
     const messages = document.getElementById('kiMessages');
     if (messages) messages.innerHTML = '';
-    appendKIBubble('ai', kiReplaceNamePlaceholder('Verlauf geleert. ðŸ‘‹ Womit kann ich dir helfen, [name]?'));
+    appendKIBubble('ai', kiReplaceNamePlaceholder('Verlauf geleert. 👋 Womit kann ich dir helfen, [name]?'));
     setKIModel(_kiModel);
 }
 function renderImageSearchResults(hits) {
@@ -3053,8 +4000,8 @@ async function runImageSearch() {
     }
 
     imageSearchLastQuery = q;
-    status.textContent = 'Suche lÃ¤uft...';
-    if (grid) grid.innerHTML = '<div class="games-loading">Bilder werden geladenâ€¦</div>';
+    status.textContent = 'Suche läuft...';
+    if (grid) grid.innerHTML = '<div class="games-loading">Bilder werden geladen…</div>';
 
     try {
         const params = new URLSearchParams({ q });
@@ -3070,7 +4017,7 @@ async function runImageSearch() {
         }
 
         const hits = Array.isArray(data.hits) ? data.hits : [];
-        status.textContent = `${hits.length} Treffer fÃ¼r "${q}"`;
+        status.textContent = `${hits.length} Treffer für "${q}"`;
         renderImageSearchResults(hits);
     } catch {
         status.textContent = 'Verbindungsfehler bei der Bildersuche.';
@@ -3214,11 +4161,11 @@ function openSettingsModal() {
     // Login-Code laden und anzeigen
     const codeDisplay = document.getElementById('myLoginCodeDisplay');
     if (codeDisplay) {
-        codeDisplay.textContent = 'â€¢â€¢â€¢â€¢â€¢â€¢';
+        codeDisplay.textContent = '••••••';
         codeDisplay.dataset.revealed = 'false';
     }
     const toggleBtn = document.getElementById('toggleCodeBtn');
-    if (toggleBtn) toggleBtn.textContent = 'ðŸ‘ Anzeigen';
+    if (toggleBtn) toggleBtn.textContent = '👁 Anzeigen';
     fetchLoginCode();
     updatePlanBadge();
     // Aktuelle E-Mail laden
@@ -3252,7 +4199,7 @@ async function fetchLoginCode() {
         _cachedLoginCode = data.loginCode || null;
         const codeDisplay = document.getElementById('myLoginCodeDisplay');
         if (codeDisplay && codeDisplay.dataset.revealed === 'true') {
-            codeDisplay.textContent = _cachedLoginCode || 'â€“';
+            codeDisplay.textContent = _cachedLoginCode || '–';
         }
     } catch {}
 }
@@ -3262,20 +4209,20 @@ function toggleShowLoginCode() {
     const btn = document.getElementById('toggleCodeBtn');
     if (!codeDisplay) return;
     if (codeDisplay.dataset.revealed === 'true') {
-        codeDisplay.textContent = 'â€¢â€¢â€¢â€¢â€¢â€¢';
+        codeDisplay.textContent = '••••••';
         codeDisplay.dataset.revealed = 'false';
-        if (btn) btn.textContent = 'ðŸ‘ Anzeigen';
+        if (btn) btn.textContent = '👁 Anzeigen';
     } else {
         if (_cachedLoginCode) {
             codeDisplay.textContent = _cachedLoginCode;
             codeDisplay.dataset.revealed = 'true';
-            if (btn) btn.textContent = 'ðŸ™ˆ Verbergen';
+            if (btn) btn.textContent = '🙈 Verbergen';
         } else {
             fetchLoginCode().then(() => {
                 if (_cachedLoginCode) {
                     codeDisplay.textContent = _cachedLoginCode;
                     codeDisplay.dataset.revealed = 'true';
-                    if (btn) btn.textContent = 'ðŸ™ˆ Verbergen';
+                    if (btn) btn.textContent = '🙈 Verbergen';
                 }
             });
         }
@@ -3379,7 +4326,7 @@ async function uploadAccountAvatar() {
     if (!token) { showAlert('Bitte zuerst anmelden.', 'error'); return; }
     const input = document.getElementById('accountAvatarFile');
     const file = input?.files?.[0];
-    if (!file) { showAlert('Bitte zuerst ein Bild auswaehlen.', 'error'); return; }
+    if (!file) { showAlert('Bitte zuerst ein Bild auswählen.', 'error'); return; }
     if (!file.type.startsWith('image/')) { showAlert('Nur Bilder sind erlaubt.', 'error'); return; }
 
     const fd = new FormData();
@@ -3507,7 +4454,7 @@ function chatAskNotificationPermission() {
 
 function requestChatNotificationsManually() {
     if (!('Notification' in window)) {
-        showAlert('Dieser Browser unterstuetzt keine Benachrichtigungen.', 'error');
+        showAlert('Dieser Browser unterstützt keine Benachrichtigungen.', 'error');
         return;
     }
     Notification.requestPermission().then((permission) => {
@@ -4333,26 +5280,26 @@ function escapeAttribute(value) {
     return escapeHtml(value).replace(/`/g, '&#96;');
 }
 
-// â”€â”€â”€ Online Spiele â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Online Spiele ────────────────────────────────────────────────────────────
 let gamesAllLoaded = [];
 let gamesFiltered = [];
 let gamesCurrentPage = 1;
 let gamesCurrentCategory = 'all';
 let gamesSearchText = '';
 
-// â”€â”€â”€ Game Timer Variablen (15min Limit fÃ¼r Gratis) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Game Timer Variablen (15min Limit für Gratis) ─────────────────────────
 let _gameTimerInterval = null;
 let _gameSecondsLeft = 0;
 let _gameStartTime = null;
-let _gameLimitSeconds = 900; // 15 Min = 900 Sekunden fÃ¼r Gratis
+let _gameLimitSeconds = 900; // 15 Min = 900 Sekunden für Gratis
 
 async function loadGames() {
     const grid = document.getElementById('gamesGrid');
-    grid.innerHTML = '<div class="games-loading">Spiele werden geladenâ€¦</div>';
+    grid.innerHTML = '<div class="games-loading">Spiele werden geladen…</div>';
 
     try {
         const res = await fetch(`${API_BASE}/games?page=${gamesCurrentPage}`);
-        if (!res.ok) throw new Error('Feed nicht verfÃ¼gbar');
+        if (!res.ok) throw new Error('Feed nicht verfügbar');
         const data = await res.json();
 
         if (!Array.isArray(data) || !data.length) {
@@ -4437,12 +5384,12 @@ function displayGames(games) {
         <article class="game-card" onclick="openGame('${gameUrl}', '${gTitle}')">
             <div class="game-thumb-wrap">
                 <img class="game-thumb" src="${thumb}" alt="${title}" loading="lazy" onerror="this.style.display='none'">
-                <div class="game-play-overlay">â–¶</div>
+                <div class="game-play-overlay">▶</div>
             </div>
             <div class="game-info">
                 <h3 class="game-title">${title}</h3>
                 ${category ? `<span class="game-category">${category}</span>` : ''}
-                <p class="game-desc">${desc}${(g.description || '').length > 120 ? 'â€¦' : ''}</p>
+                <p class="game-desc">${desc}${(g.description || '').length > 120 ? '…' : ''}</p>
                 <div class="game-tags">${tags}</div>
             </div>
         </article>`;
@@ -4452,7 +5399,7 @@ function displayGames(games) {
 function _formatGameTime(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `â±ï¸ ${mins}:${secs.toString().padStart(2, '0')}`;
+    return `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 function _updateGameTimer() {
@@ -4469,7 +5416,7 @@ function _updateGameTimer() {
     
     if (_gameSecondsLeft <= 0) {
         _stopGameTimer();
-        alert('â±ï¸ Deine 15 Minuten sind vorbei! Jetzt Vollzugang freischalten fÃ¼r unbegrenzte Spielzeit.');
+        alert('⚠️ Deine 15 Minuten sind vorbei! Jetzt Vollzugang freischalten für unbegrenzte Spielzeit.');
         closeGameModal();
     }
 }
@@ -4502,7 +5449,7 @@ function _stopGameTimer() {
 function openGame(url, title) {
     if (!url) return;
     
-    // Wenn kein Pro â†’ Timer starten (15 Min)
+    // Wenn kein Pro → Timer starten (15 Min)
     if (currentProfile && !hasProAccess()) {
         _startGameTimer();
     } else {
@@ -4519,7 +5466,7 @@ function closeGameModal() {
     _stopGameTimer();
     document.getElementById('gameFrame').src = '';
     document.getElementById('gameModal').classList.remove('show');
-    // ZurÃ¼ck zu Spieleauswahl
+    // Zurück zu Spieleauswahl
     showSection('games');
 }
 
@@ -4533,7 +5480,7 @@ function changeGamesPage(delta) {
     loadGames();
 }
 
-// â”€â”€â”€ BildschirmÃ¼bertragung (Nutzer = Sharer / WebRTC Answerer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Bildschirmübertragung (Nutzer = Sharer / WebRTC Answerer) ─────────────────────
 let _srSession = null;
 let _srOffer = null;
 let _srPc = null;
@@ -4594,7 +5541,7 @@ async function acceptShareRequest() {
         });
         _srPc = pc;
 
-        // Video-Track hinzufÃ¼gen
+        // Video-Track hinzufügen
         stream.getTracks().forEach(track => {
             pc.addTrack(track, stream);
             track.onended = () => endShareSession();
@@ -6128,7 +7075,7 @@ async function sendSupportMessage() {
     } catch {
         await new Promise(resolve => setTimeout(resolve, 2200));
         supportSetTyping(false);
-        const fallback = 'Die Verbindung zum Support-Dienst ist gerade nicht sauber erreichbar. Bitte pruefen Sie kurz Internet und Anmeldung, und schreiben Sie mir dann die genaue Fehlermeldung.';
+        const fallback = 'Die Verbindung zum Support-Dienst ist gerade nicht sauber erreichbar. Bitte prüfen Sie kurz Internet und Anmeldung, und schreiben Sie mir dann die genaue Fehlermeldung.';
         appendSupportBubble('error', fallback);
         _supportHistory.push({ role: 'assistant', content: fallback });
     } finally {
