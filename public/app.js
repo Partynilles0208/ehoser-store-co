@@ -6,12 +6,610 @@ const API_BASE = `${EHOSER_API_ORIGIN}/api`;
 const DESKTOP_AUTH_KEY = 'ehoserDesktopActivated';
 const DESKTOP_USER_CACHE_KEY = 'ehoserDesktopUserCache';
 const DESKTOP_ONLINE_MODES = new Set(['games', 'ki', 'chat', 'map', 'youtube', 'news', 'images', 'weather', 'gameCreator', 'ps']);
-const MINI_TOOL_MODES = new Set([
-    'lorem', 'holiday', 'contrast', 'markdown', 'binary', 'fact', 'todo', 'emoji', 'currency',
-    'sleep', 'slug', 'palindrome', 'anagram', 'datecalc', 'projectidea', 'mealidea', 'namegen',
-    'hashtag', 'domain', 'phonefmt', 'wordfreq', 'textclean', 'timer2', 'timezone', 'randomcolor',
-    'rgb', 'weeknumber', 'speedcalc', 'password2', 'motivation'
-]);
+const miniToolHelpers = {
+    words: (text) => String(text || '').trim().split(/\s+/).filter(Boolean),
+    lineCount: (text) => String(text || '').split(/\r?\n/).filter(Boolean).length,
+    normalizeWord: (word) => String(word || '').toLowerCase().replace(/[^\p{L}0-9]+/gu, ''),
+    slugify: (text) => String(text || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-'),
+    parseHexColor: (hex) => {
+        const cleaned = String(hex || '').trim().replace(/^#/, '');
+        if (/^[0-9a-f]{6}$/i.test(cleaned)) {
+            return [parseInt(cleaned.slice(0, 2), 16), parseInt(cleaned.slice(2, 4), 16), parseInt(cleaned.slice(4, 6), 16)];
+        }
+        return null;
+    },
+    rgbToHex: (r, g, b) => `#${[r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('').toUpperCase()}`,
+    clamp: (value, min, max) => Math.min(Math.max(value, min), max),
+    parseDate: (value) => {
+        const date = new Date(String(value || ''));
+        return Number.isNaN(date.valueOf()) ? null : date;
+    },
+    toTitleCase: (text) => String(text || '').replace(/\w[\p{L}0-9]*/gu, (word) => word[0].toUpperCase() + word.slice(1).toLowerCase()),
+    getContrastInfo: (fg, bg) => {
+        const luminance = ([r, g, b]) => {
+            return [r, g, b].map((c) => {
+                const v = c / 255;
+                return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+            }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+        };
+        const l1 = luminance(fg);
+        const l2 = luminance(bg);
+        const ratio = ((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05));
+        return {
+            ratio: ratio.toFixed(2),
+            grade: ratio >= 4.5 ? 'Gut' : ratio >= 3 ? 'Akzeptabel' : 'Schwach'
+        };
+    },
+    weekNumber: (date) => {
+        const target = new Date(date.valueOf());
+        const dayNr = (date.getDay() + 6) % 7;
+        target.setDate(target.getDate() - dayNr + 3);
+        const firstThursday = target.valueOf();
+        target.setMonth(0, 1);
+        if (target.getDay() !== 4) {
+            target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+        }
+        return 1 + Math.round((firstThursday - target) / 604800000);
+    }
+};
+const MINI_TOOL_DEFINITIONS = {
+    lorem: {
+        title: 'Lorem Ipsum',
+        description: 'Erzeuge Platzhaltertext für Design-Layouts und Mockups.',
+        category: 'Text-Tool',
+        inputLabel: 'Wörter',
+        placeholder: 'Gib die Anzahl Wörter ein, z.B. 50',
+        actionText: 'Lorem erzeugen',
+        run: (value) => {
+            const count = Math.max(8, Math.min(200, parseInt(value, 10) || 60));
+            const base = 'Lorem ipsum dolor sit amet consectetur adipiscing elit'.split(' ');
+            return Array.from({ length: count }, (_, i) => base[i % base.length]).join(' ') + '.';
+        }
+    },
+    holiday: {
+        title: 'Feiertags-Countdown',
+        description: 'Berechnet den nächsten Feiertag in Deutschland.',
+        category: 'Planung',
+        inputLabel: 'Land',
+        placeholder: 'DE, AT, CH oder leer für DE',
+        actionText: 'Nächsten Feiertag finden',
+        run: () => {
+            const holidays = [
+                ['Neujahr', '01-01'], ['Karfreitag', '04-18'], ['Ostermontag', '04-21'], ['Tag der Arbeit', '05-01'], ['Christi Himmelfahrt', '05-29'], ['Pfingstmontag', '06-09'], ['Tag der Deutschen Einheit', '10-03'], ['1. Weihnachtstag', '12-25'], ['2. Weihnachtstag', '12-26']
+            ];
+            const today = new Date();
+            const year = today.getFullYear();
+            let next = null;
+            for (const [name, mmdd] of holidays) {
+                const [m, d] = mmdd.split('-').map(Number);
+                const date = new Date(year, m - 1, d);
+                if (date >= today) { next = [name, date]; break; }
+            }
+            if (!next) {
+                const [name, mmdd] = holidays[0];
+                const [m, d] = mmdd.split('-').map(Number);
+                next = [name, new Date(year + 1, m - 1, d)];
+            }
+            const diff = Math.ceil((next[1] - today) / 86400000);
+            return `Nächster Feiertag: ${next[0]} am ${next[1].toLocaleDateString('de-DE')} (${diff} Tage)`;
+        }
+    },
+    contrast: {
+        title: 'Farbkontrast',
+        description: 'Prüft, wie gut zwei Farben zusammen lesbar sind.',
+        category: 'Design',
+        inputLabel: 'Vordergrundfarbe',
+        placeholder: 'z.B. #ffffff',
+        input2Label: 'Hintergrundfarbe',
+        placeholder2: 'z.B. #1f2937',
+        actionText: 'Kontrast prüfen',
+        input2Visible: true,
+        run: (value, value2) => {
+            const fg = miniToolHelpers.parseHexColor(value || '#ffffff');
+            const bg = miniToolHelpers.parseHexColor(value2 || '#000000');
+            if (!fg || !bg) {
+                return 'Bitte gültige HEX-Farben eingeben, z.B. #ffffff.';
+            }
+            const info = miniToolHelpers.getContrastInfo(fg, bg);
+            return `Kontrastverhältnis: ${info.ratio}:1\nBewertung: ${info.grade}`;
+        }
+    },
+    markdown: {
+        title: 'Markdown Vorschau',
+        description: 'Schreibe Markdown und sieh die formatierte Vorschau in Echtzeit.',
+        category: 'Schreiben',
+        inputLabel: 'Markdown',
+        placeholder: 'Gib Markdown ein...',
+        actionText: 'Vorschau aktualisieren',
+        extraHtml: 'Überschriften mit #, **fett**, *kursiv* und [Link](https://example.com).',
+        autoRunOnInput: true,
+        run: (value) => {
+            const text = String(value || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const html = text
+                .replace(/^######\s*(.*)$/gm, '<h6>$1</h6>')
+                .replace(/^#####\s*(.*)$/gm, '<h5>$1</h5>')
+                .replace(/^####\s*(.*)$/gm, '<h4>$1</h4>')
+                .replace(/^###\s*(.*)$/gm, '<h3>$1</h3>')
+                .replace(/^##\s*(.*)$/gm, '<h2>$1</h2>')
+                .replace(/^#\s*(.*)$/gm, '<h1>$1</h1>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+                .replace(/^(?!<h|<ul|<ol|<blockquote|<pre)(.*)$/gm, '<p>$1</p>');
+            return { html };
+        }
+    },
+    binary: {
+        title: 'Zahlen-Konverter',
+        description: 'Rechnet Binär, Dezimal und Hexadezimal um.',
+        category: 'Dev Tool',
+        inputLabel: 'Zahl',
+        placeholder: 'z.B. 42 oder 0b101010 oder 0x2A',
+        actionText: 'Konvertieren',
+        run: (value) => {
+            const input = String(value || '').trim().toLowerCase();
+            if (input.startsWith('0b')) {
+                const num = parseInt(input.slice(2), 2);
+                return `Dezimal: ${num}\nHex: 0x${num.toString(16).toUpperCase()}`;
+            }
+            if (input.startsWith('0x')) {
+                const num = parseInt(input.slice(2), 16);
+                return `Dezimal: ${num}\nBinär: 0b${num.toString(2)}`;
+            }
+            if (/^\d+$/.test(input)) {
+                const num = parseInt(input, 10);
+                return `Binär: 0b${num.toString(2)}\nHex: 0x${num.toString(16).toUpperCase()}`;
+            }
+            return 'Bitte eine Dezimalzahl, 0bBinär oder 0xHex eingeben.';
+        }
+    },
+    fact: {
+        title: 'Zufallsfakten',
+        description: 'Kurze, interessante Fakten für Pausen und Gespräche.',
+        category: 'Wissen',
+        actionText: 'Fakt generieren',
+        inputVisible: false,
+        run: () => {
+            const facts = [
+                'Im Weltraum hört dich niemand schreien, aber dort gibt es keinen Klang.',
+                'Honig kann praktisch nicht verderben und wurde in alten Gräbern gefunden.',
+                'Bananen sind Beeren, Erdbeeren dagegen nicht.',
+                'Der Buchstabe W ist der einzige Buchstabe mit drei Silben in Deutsch.',
+                'Glühwürmchen nutzen Licht, um Artgenossen zu finden und Räuber abzuschrecken.'
+            ];
+            return facts[Math.floor(Math.random() * facts.length)];
+        }
+    },
+    todo: {
+        title: 'ToDo Liste',
+        description: 'Schreibe Aufgaben und erhalte eine formatierte Liste.',
+        category: 'Produktivität',
+        inputLabel: 'Aufgaben (je Zeile)',
+        placeholder: 'Erste Aufgabe\nZweite Aufgabe\n...',
+        actionText: 'Liste erstellen',
+        run: (value) => {
+            const items = String(value || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+            if (!items.length) return 'Bitte mindestens eine Aufgabe eingeben.';
+            return items.map((item, idx) => `${idx + 1}. ${item}`).join('\n');
+        }
+    },
+    emoji: {
+        title: 'Emoji Suche',
+        description: 'Finde Emojis nach Begriffen und kopiere sie schnell.',
+        category: 'Spaß',
+        inputLabel: 'Begriff',
+        placeholder: 'z.B. lachen, liebe, wetter',
+        actionText: 'Emoji finden',
+        run: (value) => {
+            const emojis = {
+                lachen: '😄 😂 🤣',
+                liebe: '❤️ 💕 😍',
+                wetter: '☀️ 🌧️ ⛅',
+                essen: '🍕 🍔 🍣',
+                reisen: '✈️ 🌍 🧳',
+                arbeit: '💼 🧑‍💻 📊'
+            };
+            const key = String(value || '').toLowerCase();
+            return emojis[key] || 'Keine direkte Treffer. Versuch: lachen, liebe, wetter, essen, reisen, arbeit.';
+        }
+    },
+    currency: {
+        title: 'Währungsrechner',
+        description: 'Rechnet Beträge einfach zwischen verschiedenen Währungen um.',
+        category: 'Finanzen',
+        inputLabel: 'Betrag',
+        placeholder: 'z.B. 100',
+        input2Label: 'Zielwährung',
+        placeholder2: 'z.B. USD, CHF, GBP',
+        actionText: 'Umrechnen',
+        input2Visible: true,
+        run: (value, value2) => {
+            const amt = parseFloat(String(value || '').replace(',', '.'));
+            const target = String(value2 || 'USD').trim().toUpperCase();
+            const rateMap = { EUR: 1, USD: 1.08, CHF: 0.98, GBP: 0.86 };
+            if (!amt || !rateMap[target]) {
+                return 'Bitte Betrag und gültige Zielwährung angeben: USD, CHF, GBP.';
+            }
+            return `${amt.toFixed(2)} EUR ≈ ${(amt * rateMap[target]).toFixed(2)} ${target}`;
+        }
+    },
+    sleep: {
+        title: 'Schlafzyklus',
+        description: 'Berechne die besten Aufwachzeiten für erholsamen Schlaf.',
+        category: 'Wellness',
+        inputLabel: 'Schlafenszeit',
+        placeholder: 'z.B. 22:30',
+        actionText: 'Beste Aufwachzeiten',
+        run: (value) => {
+            const match = String(value || '22:30').match(/^(\d{1,2}):(\d{2})$/);
+            if (!match) return 'Bitte eine Uhrzeit im Format HH:MM eingeben.';
+            const [_, h, m] = match;
+            const start = new Date();
+            start.setHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
+            const options = [6.5, 8, 9.5].map((hours) => {
+                const wake = new Date(start.getTime() + hours * 3600000);
+                return `${hours} Std → ${wake.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+            });
+            return `Beste Aufwachzeiten:\n${options.join('\n')}`;
+        }
+    },
+    slug: {
+        title: 'Slug Generator',
+        description: 'Erstellt eine saubere URL aus deinem Text.',
+        category: 'Web',
+        inputLabel: 'Text',
+        placeholder: 'z.B. Mein Blog-Beitrag Titel',
+        actionText: 'Slug erzeugen',
+        run: (value) => {
+            const slug = miniToolHelpers.slugify(value);
+            return slug || 'Bitte einen Text eingeben.';
+        }
+    },
+    palindrome: {
+        title: 'Palindrom Test',
+        description: 'Prüft, ob ein Text vorwärts und rückwärts gleich ist.',
+        category: 'Text',
+        inputLabel: 'Text',
+        placeholder: 'z.B. Anna',
+        actionText: 'Prüfen',
+        run: (value) => {
+            const clean = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!clean) return 'Bitte einen Text eingeben.';
+            return clean === clean.split('').reverse().join('') ? 'Das ist ein Palindrom.' : 'Das ist kein Palindrom.';
+        }
+    },
+    anagram: {
+        title: 'Anagramm-Generator',
+        description: 'Erzeuge neue Wortkombinationen aus deinem Text.',
+        category: 'Kreativ',
+        inputLabel: 'Text',
+        placeholder: 'z.B. Hallo Welt',
+        actionText: 'Anagramme erzeugen',
+        run: (value) => {
+            const letters = String(value || '').replace(/[^a-zA-Z]/g, '');
+            if (!letters) return 'Bitte einen Text eingeben.';
+            const chars = letters.split('');
+            for (let i = chars.length - 1; i > 0; i -= 1) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [chars[i], chars[j]] = [chars[j], chars[i]];
+            }
+            return `Alternative Buchstabenfolge:\n${chars.join('')}`;
+        }
+    },
+    datecalc: {
+        title: 'Datumsrechner',
+        description: 'Berechnet die Tage zwischen zwei Daten.',
+        category: 'Planung',
+        inputLabel: 'Startdatum',
+        placeholder: 'z.B. 2025-01-01',
+        input2Label: 'Enddatum',
+        placeholder2: 'z.B. 2025-12-31',
+        actionText: 'Differenz berechnen',
+        input2Visible: true,
+        run: (value, value2) => {
+            const start = miniToolHelpers.parseDate(value);
+            const end = miniToolHelpers.parseDate(value2);
+            if (!start || !end) return 'Bitte zwei gültige Daten im Format YYYY-MM-DD eingeben.';
+            return `Differenz: ${Math.round(Math.abs(end - start) / 86400000)} Tage`;
+        }
+    },
+    projectidea: {
+        title: 'Projektideen',
+        description: 'Bekomme kreative Ideen für Websites, Apps und Hobbys.',
+        category: 'Inspiration',
+        inputLabel: 'Thema (optional)',
+        placeholder: 'z.B. Nachhaltigkeit, Schule, Hobby',
+        actionText: 'Idee finden',
+        run: (value) => {
+            const ideas = [
+                'Eine mobile App für lokale Community-Termine.',
+                'Ein persönliches Lernjournal mit Fortschrittskarten.',
+                'Eine Website für einfache Haushaltsplanung.',
+                'Ein Tool zur visuellen Tagesplanung mit Farben.'
+            ];
+            return `${value ? `Projektidee zu ${value}: ` : ''}${ideas[Math.floor(Math.random() * ideas.length)]}`;
+        }
+    },
+    mealidea: {
+        title: 'Rezeptideen',
+        description: 'Finde schnelle Essensideen für Frühstück, Mittag und Abendessen.',
+        category: 'Alltag',
+        inputLabel: 'Bevorzugte Küche oder Zutat',
+        placeholder: 'z.B. Pasta, vegan, Frühstück',
+        actionText: 'Rezeptvorschlag',
+        run: () => {
+            const meals = ['Pasta mit Tomatensauce', 'Bowl mit Quinoa und Gemüse', 'Ofenkartoffeln mit Kräuterquark', 'Frühstücks-Porridge mit Beeren'];
+            return meals[Math.floor(Math.random() * meals.length)];
+        }
+    },
+    namegen: {
+        title: 'Namens-Generator',
+        description: 'Erzeuge zufällige Namen für Charaktere, Marken oder Projekte.',
+        category: 'Kreativ',
+        inputLabel: 'Kategorie (optional)',
+        placeholder: 'z.B. Tech, Fantasy, Team',
+        actionText: 'Name generieren',
+        run: () => {
+            const prefixes = ['Nova', 'Cloud', 'Pixel', 'Echo', 'Luna'];
+            const suffixes = ['Labs', 'Studio', 'Works', 'Hub', 'Spot'];
+            return `${prefixes[Math.floor(Math.random() * prefixes.length)]}${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
+        }
+    },
+    hashtag: {
+        title: 'Hashtag-Generator',
+        description: 'Erstelle passende Hashtags für Social Media Beiträge.',
+        category: 'Social',
+        inputLabel: 'Text oder Thema',
+        placeholder: 'z.B. Reisen, Fitness, Coding',
+        actionText: 'Hashtags erzeugen',
+        run: (value) => {
+            const base = String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+            if (!base) return 'Bitte einen Begriff eingeben.';
+            const tag = base.split(' ').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join('');
+            return `#${tag} #${tag}Tipps #${tag}Life`;
+        }
+    },
+    domain: {
+        title: 'Domain-Ideen',
+        description: 'Finde einprägsame Domain-Namen für neue Projekte.',
+        category: 'Startup',
+        inputLabel: 'Ein Wort oder Thema',
+        placeholder: 'z.B. shop, tech, musik',
+        actionText: 'Domain-Ideen',
+        run: (value) => {
+            const prefix = String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!prefix) return 'Bitte ein Thema oder Wort eingeben.';
+            return `${prefix}hub.de\n${prefix}works.com\n${prefix}zone.net`;
+        }
+    },
+    phonefmt: {
+        title: 'Telefonformatierer',
+        description: 'Formatiert Telefonnummern sauber und einheitlich.',
+        category: 'Office',
+        inputLabel: 'Nummer',
+        placeholder: 'z.B. 491771234567',
+        actionText: 'Formatieren',
+        run: (value) => {
+            const digits = String(value || '').replace(/\D/g, '');
+            if (!digits) return 'Bitte eine Telefonnummer eingeben.';
+            if (digits.length === 11) {
+                return `+${digits[0]} ${digits.slice(1, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+            }
+            return digits;
+        }
+    },
+    wordfreq: {
+        title: 'Wortfrequenz',
+        description: 'Finde die häufigsten Wörter in deinem Text.',
+        category: 'Analyse',
+        inputLabel: 'Text',
+        placeholder: 'Gib hier deinen Text ein...',
+        actionText: 'Analysieren',
+        run: (value) => {
+            const words = miniToolHelpers.words(value);
+            const counts = words.reduce((acc, word) => {
+                const key = miniToolHelpers.normalizeWord(word);
+                if (!key) return acc;
+                acc[key] = (acc[key] || 0) + 1;
+                return acc;
+            }, {});
+            const entries = Object.entries(counts);
+            if (!entries.length) return 'Bitte Text eingeben.';
+            return entries.sort((a, b) => b[1] - a[1]).map(([w, c]) => `${w}: ${c}`).join('\n');
+        }
+    },
+    textclean: {
+        title: 'Text bereinigen',
+        description: 'Entfernt überflüssige Leerzeichen und bereinigt Text.',
+        category: 'Produktivität',
+        inputLabel: 'Text',
+        placeholder: 'Gib hier deinen Text ein...',
+        actionText: 'Bereinigen',
+        run: (value) => {
+            const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+            return cleaned || 'Bitte Text eingeben.';
+        }
+    },
+    timer2: {
+        title: 'Kurzzeit-Timer',
+        description: 'Starte einen einfachen Timer für Pausen oder Übungen.',
+        category: 'Zeit',
+        inputLabel: 'Sekunden',
+        placeholder: 'z.B. 90',
+        actionText: 'Timer starten',
+        run: (value) => {
+            const seconds = miniToolHelpers.clamp(parseInt(String(value || ''), 10) || 0, 1, 3600);
+            if (!seconds) return 'Bitte eine Dauer in Sekunden eingeben.';
+            return `timer:${seconds}`;
+        }
+    },
+    timezone: {
+        title: 'Zeitzonen',
+        description: 'Berechnet Uhrzeiten zwischen zwei Zeitzonen.',
+        category: 'Reise',
+        inputLabel: 'Uhrzeit',
+        placeholder: 'z.B. 14:00',
+        input2Label: 'Zeitzone (z.B. UTC+1)',
+        placeholder2: 'z.B. UTC+2 oder UTC-5',
+        actionText: 'Umrechnen',
+        input2Visible: true,
+        run: (value, value2) => {
+            const timeMatch = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+            const zoneMatch = String(value2 || '').match(/^UTC([+-]\d{1,2})$/i);
+            if (!timeMatch || !zoneMatch) return 'Bitte Zeit HH:MM und Zeitzone z.B. UTC+2 eingeben.';
+            const hours = parseInt(timeMatch[1], 10);
+            const mins = parseInt(timeMatch[2], 10);
+            const offset = parseInt(zoneMatch[1], 10);
+            const date = new Date();
+            date.setHours(hours - offset, mins, 0, 0);
+            return `UTC Zeit: ${date.toISOString().substr(11, 5)}\n${value2.toUpperCase()} entspricht UTC`;
+        }
+    },
+    randomcolor: {
+        title: 'Zufallsfarbe',
+        description: 'Erzeugt zufällige Farbwerte als HEX und RGB.',
+        category: 'Design',
+        actionText: 'Farbe generieren',
+        inputVisible: false,
+        run: () => {
+            const rand = `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}`;
+            const rgb = miniToolHelpers.parseHexColor(rand);
+            return `${rand}\nRGB: ${rgb.join(', ')}`;
+        }
+    },
+    rgb: {
+        title: 'Farbcode-Konverter',
+        description: 'Wandelt Hex-Farben in RGB um und umgekehrt.',
+        category: 'Design',
+        inputLabel: 'Hex oder RGB',
+        placeholder: 'z.B. #ff6600 oder 255,102,0',
+        actionText: 'Konvertieren',
+        run: (value) => {
+            const hexMatch = String(value || '').match(/^#?([0-9a-f]{6})$/i);
+            if (hexMatch) {
+                const rgb = miniToolHelpers.parseHexColor(hexMatch[1]);
+                return `RGB: ${rgb.join(', ')}`;
+            }
+            const rgbMatch = String(value || '').match(/^(\d{1,3}),\s*(\d{1,3}),\s*(\d{1,3})$/);
+            if (rgbMatch) {
+                const [r, g, b] = rgbMatch.slice(1).map((num) => miniToolHelpers.clamp(parseInt(num, 10), 0, 255));
+                return miniToolHelpers.rgbToHex(r, g, b);
+            }
+            return 'Bitte Hex (#rrggbb) oder RGB (r,g,b) eingeben.';
+        }
+    },
+    weeknumber: {
+        title: 'Wochennummer',
+        description: 'Finde die Kalenderwoche für ein bestimmtes Datum.',
+        category: 'Planung',
+        inputLabel: 'Datum',
+        placeholder: 'z.B. 2025-05-27',
+        actionText: 'Woche berechnen',
+        run: (value) => {
+            const date = miniToolHelpers.parseDate(value);
+            if (!date) return 'Bitte ein gültiges Datum im Format YYYY-MM-DD eingeben.';
+            return `KW ${miniToolHelpers.weekNumber(date)}`;
+        }
+    },
+    speedcalc: {
+        title: 'Speed Rechner',
+        description: 'Berechnet Tipp- oder Lesegeschwindigkeit.',
+        category: 'Analyse',
+        inputLabel: 'Anzahl Wörter',
+        placeholder: 'z.B. 250',
+        input2Label: 'Sekunden',
+        placeholder2: 'z.B. 60',
+        actionText: 'Speed berechnen',
+        input2Visible: true,
+        run: (value, value2) => {
+            const wordsCount = Math.max(1, parseInt(String(value || ''), 10) || 0);
+            const seconds = Math.max(1, parseInt(String(value2 || ''), 10) || 60);
+            if (!wordsCount || !seconds) return 'Bitte Wortanzahl und Sekunden eingeben.';
+            return `Geschwindigkeit: ${Math.round(wordsCount / seconds * 60)} WPM`;
+        }
+    },
+    password2: {
+        title: 'Passwort-Generator 2.0',
+        description: 'Erzeugt sichere Passwörter mit optionalen Symbolen.',
+        category: 'Security',
+        inputLabel: 'Länge',
+        placeholder: 'z.B. 16',
+        input2Label: 'Symbole verwenden? (ja/nein)',
+        placeholder2: 'z.B. ja',
+        actionText: 'Passwort erstellen',
+        input2Visible: true,
+        run: (value, value2) => {
+            const length = miniToolHelpers.clamp(parseInt(String(value || ''), 10) || 16, 8, 64);
+            const useSymbols = String(value2 || '').toLowerCase().startsWith('j');
+            const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' + (useSymbols ? '!@#$%^&*()_+-=[]{}|;:,.<>?' : '');
+            let result = '';
+            for (let i = 0; i < length; i += 1) {
+                result += charset[Math.floor(Math.random() * charset.length)];
+            }
+            return result;
+        }
+    },
+    motivation: {
+        title: 'Motivations-Boost',
+        description: 'Liefert inspirierende Sätze für mehr Fokus.',
+        category: 'Mindset',
+        actionText: 'Motivation holen',
+        inputVisible: false,
+        run: () => {
+            const quotes = ['Du kannst mehr als du denkst.', 'Kleiner Fortschritt ist immer noch Fortschritt.', 'Starte jetzt, nicht später.', 'Deine beste Zeit ist jetzt.'];
+            return quotes[Math.floor(Math.random() * quotes.length)];
+        }
+    },
+    wordcount: {
+        title: 'Wortanzahl',
+        description: 'Zählt Wörter, Zeichen und häufigste Wörter im Text.',
+        category: 'Text',
+        inputLabel: 'Text',
+        placeholder: 'Gib hier deinen Text ein...',
+        actionText: 'Zählen',
+        run: (value) => {
+            const text = String(value || '');
+            if (!text.trim()) return 'Bitte gib einen Text ein.';
+            const words = miniToolHelpers.words(text);
+            const lines = miniToolHelpers.lineCount(text);
+            const chars = text.length;
+            const unique = [...new Set(words.map((word) => miniToolHelpers.normalizeWord(word)))].filter(Boolean).length;
+            const freq = words.reduce((acc, word) => {
+                const key = miniToolHelpers.normalizeWord(word);
+                if (!key) return acc;
+                acc[key] = (acc[key] || 0) + 1;
+                return acc;
+            }, {});
+            const top = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([w, c]) => `${w}: ${c}`).join('\n');
+            return `Zeichen: ${chars}\nWörter: ${words.length}\nZeilen: ${lines}\nEinzigartige Wörter: ${unique}\n\nTop Wörter:\n${top}`;
+        }
+    },
+    caseconv: {
+        title: 'Text-Konverter',
+        description: 'Konvertiere Text in Groß-, Klein- oder Titel-Schreibweise.',
+        category: 'Text',
+        inputLabel: 'Text',
+        placeholder: 'Gib deinen Text ein...',
+        input2Label: 'Modus',
+        placeholder2: 'upper, lower oder title',
+        actionText: 'Konvertieren',
+        input2Visible: true,
+        run: (value, value2) => {
+            const mode = String(value2 || '').toLowerCase();
+            if (!value.trim()) return 'Bitte gib einen Text ein.';
+            if (mode === 'upper' || mode === 'groß') return String(value).toUpperCase();
+            if (mode === 'lower' || mode === 'klein') return String(value).toLowerCase();
+            if (mode === 'title' || mode === 'titel') return miniToolHelpers.toTitleCase(value);
+            return 'Bitte wähle einen Modus: upper, lower oder title.';
+        }
+    }
+};
+const MINI_TOOL_MODES = new Set(Object.keys(MINI_TOOL_DEFINITIONS));
 let currentUser = null;
 let currentProfile = null;
 let allApps = [];
@@ -1888,6 +2486,10 @@ function showSection(sectionId) {
 let _miniToolMode = '';
 let _miniToolTimer = null;
 
+function getMiniToolDefinition(mode) {
+    return MINI_TOOL_DEFINITIONS[mode] || null;
+}
+
 function initMiniTool(mode) {
     _miniToolMode = mode;
     if (_miniToolTimer) {
@@ -1923,620 +2525,69 @@ function renderMiniTool() {
         return;
     }
 
-    title.textContent = 'Mini-Tool';
-    description.textContent = 'Nutz eines der neuen Mini-Tools für schnellen Browser-Support.';
-    category.textContent = 'Werkzeug';
+    const def = getMiniToolDefinition(_miniToolMode);
+    title.textContent = def?.title || 'Mini-Tool';
+    description.textContent = def?.description || 'Nutz eines der neuen Mini-Tools für schnellen Browser-Support.';
+    category.textContent = def?.category || 'Werkzeug';
     input.value = '';
     input2.value = '';
-    input.placeholder = 'Eingabe hier...';
-    input2.placeholder = '';
-    input.style.display = 'block';
-    input2.style.display = 'none';
-    input2Label.style.display = 'none';
-    actionBtn.textContent = 'Ausführen';
-    extra.innerHTML = '';
+    input.placeholder = def?.placeholder || 'Eingabe hier...';
+    input2.placeholder = def?.placeholder2 || '';
+    inputLabel.textContent = def?.inputLabel || 'Eingabe';
+    inputLabel.style.display = def?.inputVisible === false ? 'none' : 'block';
+    input.style.display = def?.inputVisible === false ? 'none' : 'block';
+    input2Label.textContent = def?.input2Label || 'Zusatz';
+    input2Label.style.display = def?.input2Visible ? 'block' : 'none';
+    input2.style.display = def?.input2Visible ? 'block' : 'none';
+    actionBtn.textContent = def?.actionText || 'Ausführen';
+    extra.innerHTML = def?.extraHtml || '';
 
-    switch (_miniToolMode) {
-        case 'lorem':
-            title.textContent = 'Lorem Ipsum';
-            description.textContent = 'Erzeuge Platzhaltertext für Design-Layouts und Mockups.';
-            category.textContent = 'Text-Tool';
-            inputLabel.textContent = 'Wörter';
-            input.placeholder = 'Gib die Anzahl Wörter ein, z.B. 50';
-            actionBtn.textContent = 'Lorem erzeugen';
-            break;
-        case 'holiday':
-            title.textContent = 'Feiertags-Countdown';
-            description.textContent = 'Berechnet den nächsten Feiertag in Deutschland.';
-            category.textContent = 'Planung';
-            inputLabel.textContent = 'Land';
-            input.placeholder = 'DE, AT, CH oder leer für DE';
-            actionBtn.textContent = 'Nächsten Feiertag finden';
-            break;
-        case 'contrast':
-            title.textContent = 'Farbkontrast';
-            description.textContent = 'Prüft, wie gut zwei Farben zusammen lesbar sind.';
-            category.textContent = 'Design';
-            inputLabel.textContent = 'Vordergrundfarbe';
-            input.placeholder = 'z.B. #ffffff';
-            input2.style.display = 'block';
-            input2Label.style.display = 'block';
-            input2Label.textContent = 'Hintergrundfarbe';
-            input2.placeholder = 'z.B. #1f2937';
-            actionBtn.textContent = 'Kontrast prüfen';
-            break;
-        case 'markdown':
-            title.textContent = 'Markdown Vorschau';
-            description.textContent = 'Schreibe Markdown und sieh die Vorschau in Echtzeit.';
-            category.textContent = 'Schreiben';
-            inputLabel.textContent = 'Markdown';
-            input.placeholder = 'Gib Markdown ein...';
-            actionBtn.textContent = 'Vorschau aktualisieren';
-            extra.innerHTML = 'Überschriften mit #, **fett**, *kursiv* und [Link](https://example.com).';
-            break;
-        case 'binary':
-            title.textContent = 'Zahlen-Konverter';
-            description.textContent = 'Rechnet Binär, Dezimal und Hexadezimal um.';
-            category.textContent = 'Dev Tool';
-            inputLabel.textContent = 'Zahl';
-            input.placeholder = 'z.B. 42 oder 0b101010 oder 0x2A';
-            actionBtn.textContent = 'Konvertieren';
-            break;
-        case 'fact':
-            title.textContent = 'Zufallsfakten';
-            description.textContent = 'Kurze, interessante Fakten für Pausen und Gespräche.';
-            category.textContent = 'Wissen';
-            input.style.display = 'none';
-            actionBtn.textContent = 'Fakt generieren';
-            break;
-        case 'todo':
-            title.textContent = 'ToDo Liste';
-            description.textContent = 'Schreibe Aufgaben und erhalte eine formatierte Liste.';
-            category.textContent = 'Produktivität';
-            inputLabel.textContent = 'Aufgaben (je Zeile)';
-            input.placeholder = 'Erste Aufgabe\nZweite Aufgabe\n...';
-            actionBtn.textContent = 'Liste erstellen';
-            break;
-        case 'emoji':
-            title.textContent = 'Emoji Suche';
-            description.textContent = 'Finde Emojis nach Begriffen und kopiere sie schnell.';
-            category.textContent = 'Spaß';
-            inputLabel.textContent = 'Begriff';
-            input.placeholder = 'z.B. lachen, liebe, wetter';
-            actionBtn.textContent = 'Emoji finden';
-            break;
-        case 'currency':
-            title.textContent = 'Währungsrechner';
-            description.textContent = 'Rechnet Beträge einfach zwischen verschiedenen Währungen um.';
-            category.textContent = 'Finanzen';
-            inputLabel.textContent = 'Betrag';
-            input.placeholder = 'z.B. 100';
-            input2.style.display = 'block';
-            input2Label.style.display = 'block';
-            input2Label.textContent = 'Zielwährung';
-            input2.placeholder = 'z.B. USD, CHF, GBP';
-            actionBtn.textContent = 'Umrechnen';
-            break;
-        case 'sleep':
-            title.textContent = 'Schlafzyklus';
-            description.textContent = 'Berechne gute Aufwachzeiten für erholsamen Schlaf.';
-            category.textContent = 'Wellness';
-            inputLabel.textContent = 'Schlafenszeit';
-            input.placeholder = 'z.B. 22:30';
-            actionBtn.textContent = 'Beste Aufwachzeiten';
-            break;
-        case 'slug':
-            title.textContent = 'Slug Generator';
-            description.textContent = 'Erstellt eine saubere URL aus deinem Text.';
-            category.textContent = 'Web';
-            inputLabel.textContent = 'Text';
-            input.placeholder = 'z.B. Mein Blog-Beitrag Titel';
-            actionBtn.textContent = 'Slug erzeugen';
-            break;
-        case 'palindrome':
-            title.textContent = 'Palindrom Test';
-            description.textContent = 'Prüft, ob ein Text vorwärts und rückwärts gleich ist.';
-            category.textContent = 'Text';
-            inputLabel.textContent = 'Text';
-            input.placeholder = 'z.B. Anna';
-            actionBtn.textContent = 'Prüfen';
-            break;
-        case 'anagram':
-            title.textContent = 'Anagramm-Generator';
-            description.textContent = 'Erzeuge neue Wortkombinationen aus deinem Text.';
-            category.textContent = 'Kreativ';
-            inputLabel.textContent = 'Text';
-            input.placeholder = 'z.B. Hallo Welt';
-            actionBtn.textContent = 'Anagramme erzeugen';
-            break;
-        case 'datecalc':
-            title.textContent = 'Datumsrechner';
-            description.textContent = 'Berechnet die Tage zwischen zwei Daten.';
-            category.textContent = 'Planung';
-            inputLabel.textContent = 'Startdatum';
-            input.placeholder = 'z.B. 2025-01-01';
-            input2.style.display = 'block';
-            input2Label.style.display = 'block';
-            input2Label.textContent = 'Enddatum';
-            input2.placeholder = 'z.B. 2025-12-31';
-            actionBtn.textContent = 'Differenz berechnen';
-            break;
-        case 'projectidea':
-            title.textContent = 'Projektideen';
-            description.textContent = 'Bekomme kreative Ideen für Websites, Apps und Hobbys.';
-            category.textContent = 'Inspiration';
-            inputLabel.textContent = 'Thema (optional)';
-            input.placeholder = 'z.B. Nachhaltigkeit, Schule, Hobby';
-            actionBtn.textContent = 'Idee finden';
-            break;
-        case 'mealidea':
-            title.textContent = 'Rezeptideen';
-            description.textContent = 'Finde schnelle Essensideen für Frühstück, Mittag und Abendessen.';
-            category.textContent = 'Alltag';
-            inputLabel.textContent = 'Bevorzugte Küche oder Zutat';
-            input.placeholder = 'z.B. Pasta, vegan, Frühstück';
-            actionBtn.textContent = 'Rezeptvorschlag';
-            break;
-        case 'namegen':
-            title.textContent = 'Namens-Generator';
-            description.textContent = 'Erzeuge zufällige Namen für Charaktere, Marken oder Projekte.';
-            category.textContent = 'Kreativ';
-            inputLabel.textContent = 'Kategorie (optional)';
-            input.placeholder = 'z.B. Tech, Fantasy, Team';
-            actionBtn.textContent = 'Name generieren';
-            break;
-        case 'hashtag':
-            title.textContent = 'Hashtag-Generator';
-            description.textContent = 'Erstelle passende Hashtags für Social Media Beiträge.';
-            category.textContent = 'Social';
-            inputLabel.textContent = 'Text oder Thema';
-            input.placeholder = 'z.B. Reisen, Fitness, Coding';
-            actionBtn.textContent = 'Hashtags erzeugen';
-            break;
-        case 'domain':
-            title.textContent = 'Domain-Ideen';
-            description.textContent = 'Finde einprägsame Domain-Namen für neue Projekte.';
-            category.textContent = 'Startup';
-            inputLabel.textContent = 'Ein Wort oder Thema';
-            input.placeholder = 'z.B. shop, tech, musik';
-            actionBtn.textContent = 'Domain-Ideen';
-            break;
-        case 'phonefmt':
-            title.textContent = 'Telefonformatierer';
-            description.textContent = 'Formatiert Telefonnummern sauber und einheitlich.';
-            category.textContent = 'Office';
-            inputLabel.textContent = 'Nummer';
-            input.placeholder = 'z.B. 491771234567';
-            actionBtn.textContent = 'Formatieren';
-            break;
-        case 'wordfreq':
-            title.textContent = 'Wortfrequenz';
-            description.textContent = 'Finde die häufigsten Wörter in deinem Text.';
-            category.textContent = 'Analyse';
-            inputLabel.textContent = 'Text';
-            input.placeholder = 'Gib hier deinen Text ein...';
-            actionBtn.textContent = 'Analysieren';
-            break;
-        case 'textclean':
-            title.textContent = 'Text bereinigen';
-            description.textContent = 'Entfernt überflüssige Leerzeichen und bereinigt Text.';
-            category.textContent = 'Produktivität';
-            inputLabel.textContent = 'Text';
-            input.placeholder = 'Gib hier deinen Text ein...';
-            actionBtn.textContent = 'Bereinigen';
-            break;
-        case 'timer2':
-            title.textContent = 'Kurzzeit-Timer';
-            description.textContent = 'Starte einen einfachen Timer für Pausen oder Übungen.';
-            category.textContent = 'Zeit';
-            inputLabel.textContent = 'Sekunden';
-            input.placeholder = 'z.B. 90';
-            actionBtn.textContent = 'Timer starten';
-            break;
-        case 'timezone':
-            title.textContent = 'Zeitzonen';
-            description.textContent = 'Berechnet Uhrzeiten zwischen zwei Zeitzonen.';
-            category.textContent = 'Reise';
-            inputLabel.textContent = 'Uhrzeit';
-            input.placeholder = 'z.B. 14:00';
-            input2.style.display = 'block';
-            input2Label.style.display = 'block';
-            input2Label.textContent = 'Zeitzone (z.B. UTC+1)';
-            input2.placeholder = 'z.B. UTC+2 oder UTC-5';
-            actionBtn.textContent = 'Umrechnen';
-            extra.innerHTML = 'Aktuell nur eine einfache Zeitzonen-Prüfung.';
-            break;
-        case 'randomcolor':
-            title.textContent = 'Zufallsfarbe';
-            description.textContent = 'Erzeugt zufällige Farbwerte als HEX und RGB.';
-            category.textContent = 'Design';
-            input.style.display = 'none';
-            actionBtn.textContent = 'Farbe generieren';
-            break;
-        case 'rgb':
-            title.textContent = 'Farbcode-Konverter';
-            description.textContent = 'Wandelt Hex-Farben in RGB um und umgekehrt.';
-            category.textContent = 'Design';
-            inputLabel.textContent = 'Hex oder RGB';
-            input.placeholder = 'z.B. #ff6600 oder 255,102,0';
-            actionBtn.textContent = 'Konvertieren';
-            break;
-        case 'weeknumber':
-            title.textContent = 'Wochennummer';
-            description.textContent = 'Finde die Kalenderwoche für ein bestimmtes Datum.';
-            category.textContent = 'Planung';
-            inputLabel.textContent = 'Datum';
-            input.placeholder = 'z.B. 2025-05-27';
-            actionBtn.textContent = 'Woche berechnen';
-            break;
-        case 'speedcalc':
-            title.textContent = 'Speed Rechner';
-            description.textContent = 'Berechnet Tipp- oder Lesegeschwindigkeit.';
-            category.textContent = 'Analyse';
-            inputLabel.textContent = 'Anzahl Wörter';
-            input.placeholder = 'z.B. 250';
-            input2.style.display = 'block';
-            input2Label.style.display = 'block';
-            input2Label.textContent = 'Sekunden';
-            input2.placeholder = 'z.B. 60';
-            actionBtn.textContent = 'Speed berechnen';
-            break;
-        case 'password2':
-            title.textContent = 'Passwort-Generator 2.0';
-            description.textContent = 'Erzeugt sichere Passwörter mit optionalen Symbolen.';
-            category.textContent = 'Security';
-            inputLabel.textContent = 'Länge';
-            input.placeholder = 'z.B. 16';
-            input2.style.display = 'block';
-            input2Label.style.display = 'block';
-            input2Label.textContent = 'Symbole verwenden? (ja/nein)';
-            input2.placeholder = 'z.B. ja';
-            actionBtn.textContent = 'Passwort erstellen';
-            break;
-        case 'motivation':
-            title.textContent = 'Motivations-Boost';
-            description.textContent = 'Liefert inspirierende Sätze für mehr Fokus.';
-            category.textContent = 'Mindset';
-            input.style.display = 'none';
-            actionBtn.textContent = 'Motivation holen';
-            break;
-        default:
-            title.textContent = 'Mini-Tool';
-            description.textContent = 'Wähle ein Mini-Tool, um schnelle Aufgaben zu lösen.';
-            category.textContent = 'Werkzeug';
-            actionBtn.textContent = 'Ausführen';
-            break;
-    }
     setMiniToolOutput('Bereit. Starte das Tool über die Schaltfläche rechts.');
 }
 
 function runMiniTool() {
-    const value = document.getElementById('miniToolInput')?.value.trim() || '';
-    const value2 = document.getElementById('miniToolInput2')?.value.trim() || '';
-    const words = (s) => s.trim().split(/\s+/).filter(Boolean);
-    const getColorValue = (hex) => {
-        const on = hex.trim().toLowerCase();
-        const cleaned = on.replace(/^#/, '');
-        if (/^[0-9a-f]{6}$/i.test(cleaned)) {
-            return [parseInt(cleaned.slice(0, 2), 16), parseInt(cleaned.slice(2, 4), 16), parseInt(cleaned.slice(4), 16)];
-        }
-        return null;
-    };
-    const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
-
-    switch (_miniToolMode) {
-        case 'lorem': {
-            const count = Math.max(8, Math.min(200, parseInt(value, 10) || 60));
-            const base = 'Lorem ipsum dolor sit amet consectetur adipiscing elit'.split(' ');
-            const text = Array.from({ length: count }, (_, i) => base[i % base.length]).join(' ');
-            setMiniToolOutput(text + '.');
-            break;
-        }
-        case 'holiday': {
-            const holidays = [
-                ['Neujahr', '01-01'], ['Karfreitag', '04-18'], ['Ostermontag', '04-21'], ['Tag der Arbeit', '05-01'], ['Christi Himmelfahrt', '05-29'], ['Pfingstmontag', '06-09'], ['Tag der Deutschen Einheit', '10-03'], ['1. Weihnachtstag', '12-25'], ['2. Weihnachtstag', '12-26']
-            ];
-            const today = new Date();
-            const year = today.getFullYear();
-            let next = null;
-            for (const [name, mmdd] of holidays) {
-                const [m, d] = mmdd.split('-').map(Number);
-                const date = new Date(year, m - 1, d);
-                if (date >= today) { next = [name, date]; break; }
-            }
-            if (!next) {
-                const [name, mmdd] = holidays[0];
-                const [m, d] = mmdd.split('-').map(Number);
-                next = [name, new Date(year + 1, m - 1, d)];
-            }
-            const diff = Math.ceil((next[1] - today) / 86400000);
-            setMiniToolOutput(`Nächster Feiertag: ${next[0]} am ${next[1].toLocaleDateString('de-DE')} (${diff} Tage)`);
-            break;
-        }
-        case 'contrast': {
-            const fg = getColorValue(value || '#ffffff');
-            const bg = getColorValue(value2 || '#000000');
-            if (!fg || !bg) { setMiniToolOutput('Bitte gültige HEX-Farben eingeben, z.B. #ffffff.'); break; }
-            const luminance = (rgb) => {
-                return rgb.map(c => {
-                    const v = c / 255;
-                    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-                }).reduce((sum, v) => sum + v * 0.2126 + 0.7152 * v + 0.0722 * v, 0);
-            };
-            const l1 = luminance(fg);
-            const l2 = luminance(bg);
-            const ratio = ((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)).toFixed(2);
-            const pass = ratio >= 4.5 ? 'Gut' : ratio >= 3 ? 'Akzeptabel' : 'Schwach';
-            setMiniToolOutput(`Kontrastverhältnis: ${ratio}:1\nBewertung: ${pass}`);
-            break;
-        }
-        case 'markdown': {
-            const text = value.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const html = text
-                .replace(/^######\s*(.*)$/gm, '<h6>$1</h6>')
-                .replace(/^#####\s*(.*)$/gm, '<h5>$1</h5>')
-                .replace(/^####\s*(.*)$/gm, '<h4>$1</h4>')
-                .replace(/^###\s*(.*)$/gm, '<h3>$1</h3>')
-                .replace(/^##\s*(.*)$/gm, '<h2>$1</h2>')
-                .replace(/^#\s*(.*)$/gm, '<h1>$1</h1>')
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-                .replace(/^(?!<h|<ul|<ol|<blockquote|<pre)(.*)$/gm, '<p>$1</p>');
-            setMiniToolOutput(html, true);
-            break;
-        }
-        case 'binary': {
-            const input = value.toLowerCase();
-            if (input.startsWith('0b')) {
-                const num = parseInt(input.slice(2), 2);
-                setMiniToolOutput(`Dezimal: ${num}\nHex: 0x${num.toString(16).toUpperCase()}`);
-            } else if (input.startsWith('0x')) {
-                const num = parseInt(input.slice(2), 16);
-                setMiniToolOutput(`Dezimal: ${num}\nBinär: 0b${num.toString(2)}`);
-            } else if (/^\d+$/.test(input)) {
-                const num = parseInt(input, 10);
-                setMiniToolOutput(`Binär: 0b${num.toString(2)}\nHex: 0x${num.toString(16).toUpperCase()}`);
-            } else {
-                setMiniToolOutput('Bitte eine Dezimalzahl, 0bBinär oder 0xHex eingeben.');
-            }
-            break;
-        }
-        case 'fact': {
-            const facts = [
-                'Im Weltraum hört dich niemand schreien, aber dort gibt es keinen Klang.',
-                'Honig kann praktisch nicht verderben und wurde in alten Gräbern gefunden.',
-                'Bananen sind Beeren, Erdbeeren dagegen nicht.',
-                'Der Buchstabe W ist der einzige Buchstabe mit drei Silben in Deutsch.',
-                'Glühwürmchen nutzen Licht, um Artgenossen zu finden und Räuber abzuschrecken.'
-            ];
-            setMiniToolOutput(facts[Math.floor(Math.random() * facts.length)]);
-            break;
-        }
-        case 'todo': {
-            const items = value.split(/\r?\n/).map(i => i.trim()).filter(Boolean);
-            if (!items.length) { setMiniToolOutput('Bitte mindestens eine Aufgabe eingeben.'); break; }
-            setMiniToolOutput(items.map((item, idx) => `${idx + 1}. ${item}`).join('\n'));
-            break;
-        }
-        case 'emoji': {
-            const emojis = {
-                lachen: '😄 😂 🤣',
-                liebe: '❤️ 💕 😍',
-                wetter: '☀️ 🌧️ ⛅',
-                essen: '🍕 🍔 🍣',
-                reisen: '✈️ 🌍 🧳',
-                arbeit: '💼 🧑‍💻 📊'
-            };
-            const key = value.toLowerCase();
-            setMiniToolOutput(emojis[key] || 'Keine direkte Treffer. Versuch: lachen, liebe, wetter, essen, reisen, arbeit.');
-            break;
-        }
-        case 'currency': {
-            const amt = parseFloat(value.replace(',', '.'));
-            const rateMap = { EUR: 1, USD: 1.08, CHF: 0.98, GBP: 0.86 };
-            const target = value2.trim().toUpperCase() || 'USD';
-            if (!amt || !rateMap[target]) { setMiniToolOutput('Bitte Betrag und gültige Zielwährung angeben: USD, CHF, GBP.'); break; }
-            setMiniToolOutput(`${amt.toFixed(2)} EUR ≈ ${(amt * rateMap[target]).toFixed(2)} ${target}`);
-            break;
-        }
-        case 'sleep': {
-            const [h, m] = (value || '22:30').split(':').map(Number);
-            if (Number.isNaN(h) || Number.isNaN(m)) { setMiniToolOutput('Bitte eine Uhrzeit im Format HH:MM eingeben.'); break; }
-            const start = new Date(); start.setHours(h, m, 0, 0);
-            const options = [6.5, 8, 9.5].map(hours => {
-                const wake = new Date(start.getTime() + hours * 3600000);
-                return `${hours} Std → ${wake.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
-            });
-            setMiniToolOutput(`Beste Aufwachzeiten:\n${options.join('\n')}`);
-            break;
-        }
-        case 'slug': {
-            const slug = value
-                .toLowerCase()
-                .replace(/[^a-z0-9\s-]/g, '')
-                .trim()
-                .replace(/\s+/g, '-')
-                .replace(/-+/g, '-');
-            setMiniToolOutput(slug || 'Bitte einen Text eingeben.');
-            break;
-        }
-        case 'palindrome': {
-            const clean = value.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (!clean) { setMiniToolOutput('Bitte einen Text eingeben.'); break; }
-            const isPal = clean === clean.split('').reverse().join('');
-            setMiniToolOutput(isPal ? 'Das ist ein Palindrom.' : 'Das ist kein Palindrom.');
-            break;
-        }
-        case 'anagram': {
-            const letters = value.replace(/[^a-zA-Z]/g, '');
-            if (!letters) { setMiniToolOutput('Bitte einen Text eingeben.'); break; }
-            const shuffle = (str) => str.split('');
-            for (let i = letters.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [letters[i], letters[j]] = [letters[j], letters[i]];
-            }
-            setMiniToolOutput(`Alternative Buchstabenfolge:\n${letters}`);
-            break;
-        }
-        case 'datecalc': {
-            const start = new Date(value);
-            const end = new Date(value2);
-            if (isNaN(start.valueOf()) || isNaN(end.valueOf())) { setMiniToolOutput('Bitte zwei gültige Daten im Format YYYY-MM-DD eingeben.'); break; }
-            const diff = Math.abs(end - start);
-            setMiniToolOutput(`Differenz: ${Math.round(diff / 86400000)} Tage`);
-            break;
-        }
-        case 'projectidea': {
-            const ideas = [
-                'Eine mobile App für lokale Community-Termine.',
-                'Ein persönliches Lernjournal mit Fortschrittskarten.',
-                'Eine Website für einfache Haushaltsplanung.',
-                'Ein Tool zur visuellen Tagesplanung mit Farben.'
-            ];
-            setMiniToolOutput((value ? `Projektidee zu ${value}: ` : '') + ideas[Math.floor(Math.random() * ideas.length)]);
-            break;
-        }
-        case 'mealidea': {
-            const meals = ['Pasta mit Tomatensauce', 'Bowl mit Quinoa und Gemüse', 'Ofenkartoffeln mit Kräuterquark', 'Frühstücks-Porridge mit Beeren'];
-            setMiniToolOutput(meals[Math.floor(Math.random() * meals.length)]);
-            break;
-        }
-        case 'namegen': {
-            const prefixes = ['Nova', 'Cloud', 'Pixel', 'Echo', 'Luna'];
-            const suffixes = ['Labs', 'Studio', 'Works', 'Hub', 'Spot'];
-            setMiniToolOutput(`${prefixes[Math.floor(Math.random() * prefixes.length)]}${suffixes[Math.floor(Math.random() * suffixes.length)]}`);
-            break;
-        }
-        case 'hashtag': {
-            const base = value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-            if (!base) { setMiniToolOutput('Bitte einen Begriff eingeben.'); break; }
-            const tag = base.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
-            setMiniToolOutput(`#${tag} #${tag}Tipps #${tag}Life`);
-            break;
-        }
-        case 'domain': {
-            const prefix = value.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (!prefix) { setMiniToolOutput('Bitte ein Thema oder Wort eingeben.'); break; }
-            setMiniToolOutput(`${prefix}hub.de\n${prefix}works.com\n${prefix}zone.net`);
-            break;
-        }
-        case 'phonefmt': {
-            const digits = value.replace(/\D/g, '');
-            if (!digits) { setMiniToolOutput('Bitte eine Telefonnummer eingeben.'); break; }
-            const formatted = digits.length === 11 ? `+${digits[0]} ${digits.slice(1, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}` : digits;
-            setMiniToolOutput(formatted);
-            break;
-        }
-        case 'wordfreq': {
-            const counts = words(value).reduce((acc, word) => {
-                const w = word.toLowerCase();
-                acc[w] = (acc[w] || 0) + 1;
-                return acc;
-            }, {});
-            if (!Object.keys(counts).length) { setMiniToolOutput('Bitte Text eingeben.'); break; }
-            setMiniToolOutput(Object.entries(counts).sort((a,b) => b[1]-a[1]).map(([w,c]) => `${w}: ${c}`).join('\n'));
-            break;
-        }
-        case 'textclean': {
-            const cleaned = value.replace(/\s+/g, ' ').trim();
-            setMiniToolOutput(cleaned || 'Bitte Text eingeben.');
-            break;
-        }
-        case 'timer2': {
-            const seconds = clamp(parseInt(value, 10) || 0, 1, 3600);
-            if (!seconds) { setMiniToolOutput('Bitte eine Dauer in Sekunden eingeben.'); break; }
-            if (_miniToolTimer) clearInterval(_miniToolTimer);
-            let remaining = seconds;
-            setMiniToolOutput(`Timer läuft: ${remaining} Sekunden`);
-            _miniToolTimer = setInterval(() => {
-                remaining -= 1;
-                if (remaining <= 0) {
-                    clearInterval(_miniToolTimer);
-                    _miniToolTimer = null;
-                    setMiniToolOutput('⏰ Zeit abgelaufen!');
-                    return;
-                }
-                setMiniToolOutput(`Timer läuft: ${remaining} Sekunden`);
-            }, 1000);
-            break;
-        }
-        case 'timezone': {
-            const timeMatch = value.match(/^(\d{1,2}):(\d{2})$/);
-            const zoneMatch = value2.match(/^UTC([+-]\d{1,2})$/i);
-            if (!timeMatch || !zoneMatch) { setMiniToolOutput('Bitte Zeit HH:MM und Zeitzone z.B. UTC+2 eingeben.'); break; }
-            const hours = parseInt(timeMatch[1], 10);
-            const mins = parseInt(timeMatch[2], 10);
-            const offset = parseInt(zoneMatch[1], 10);
-            const date = new Date(); date.setHours(hours - offset, mins, 0, 0);
-            setMiniToolOutput(`UTC Zeit: ${date.toISOString().substr(11, 5)}\n${value2.toUpperCase()} entspricht UTC`);
-            break;
-        }
-        case 'randomcolor': {
-            const rand = `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}`;
-            const rgb = getColorValue(rand);
-            setMiniToolOutput(`${rand}\nRGB: ${rgb.join(', ')}`);
-            break;
-        }
-        case 'rgb': {
-            const hexMatch = value.match(/^#?([0-9a-f]{6})$/i);
-            if (hexMatch) {
-                const rgb = getColorValue(hexMatch[1]);
-                setMiniToolOutput(`RGB: ${rgb.join(', ')}`);
-                break;
-            }
-            const rgbMatch = value.match(/^(\d{1,3}),\s*(\d{1,3}),\s*(\d{1,3})$/);
-            if (rgbMatch) {
-                const [r,g,b] = rgbMatch.slice(1).map(n => clamp(parseInt(n, 10), 0, 255));
-                setMiniToolOutput(`#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`);
-                break;
-            }
-            setMiniToolOutput('Bitte Hex (#rrggbb) oder RGB (r,g,b) eingeben.');
-            break;
-        }
-        case 'weeknumber': {
-            const date = new Date(value);
-            if (isNaN(date.valueOf())) { setMiniToolOutput('Bitte ein gültiges Datum im Format YYYY-MM-DD eingeben.'); break; }
-            const target = new Date(date.valueOf());
-            const dayNr = (date.getDay() + 6) % 7;
-            target.setDate(target.getDate() - dayNr + 3);
-            const firstThursday = target.valueOf();
-            target.setMonth(0, 1);
-            if (target.getDay() !== 4) {
-                target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-            }
-            const week = 1 + Math.round((firstThursday - target) / 604800000);
-            setMiniToolOutput(`KW ${week}`);
-            break;
-        }
-        case 'speedcalc': {
-            const wordsCount = Math.max(1, parseInt(value, 10) || 0);
-            const seconds = Math.max(1, parseInt(value2, 10) || 60);
-            if (!wordsCount || !seconds) { setMiniToolOutput('Bitte Wortanzahl und Sekunden eingeben.'); break; }
-            const wpm = Math.round(wordsCount / seconds * 60);
-            setMiniToolOutput(`Geschwindigkeit: ${wpm} WPM`);
-            break;
-        }
-        case 'password2': {
-            const length = clamp(parseInt(value, 10) || 16, 8, 64);
-            const useSymbols = value2.toLowerCase().startsWith('j');
-            const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' + (useSymbols ? '!@#$%^&*()_+-=[]{}|;:,.<>?' : '');
-            let result = '';
-            for (let i = 0; i < length; i++) {
-                result += charset[Math.floor(Math.random() * charset.length)];
-            }
-            setMiniToolOutput(result);
-            break;
-        }
-        case 'motivation': {
-            const quotes = ['Du kannst mehr als du denkst.', 'Kleiner Fortschritt ist immer noch Fortschritt.', 'Starte jetzt, nicht später.', 'Deine beste Zeit ist jetzt.'];
-            setMiniToolOutput(quotes[Math.floor(Math.random() * quotes.length)]);
-            break;
-        }
-        default:
-            setMiniToolOutput('Dieses Tool ist noch nicht verfügbar.');
-            break;
+    const value = document.getElementById('miniToolInput')?.value || '';
+    const value2 = document.getElementById('miniToolInput2')?.value || '';
+    const def = getMiniToolDefinition(_miniToolMode);
+    if (!def) {
+        setMiniToolOutput('Dieses Tool ist noch nicht verfügbar.');
+        return;
     }
+
+    if (_miniToolTimer) {
+        clearInterval(_miniToolTimer);
+        _miniToolTimer = null;
+    }
+
+    const result = def.run(value, value2);
+    if (result && typeof result === 'object' && result.html) {
+        setMiniToolOutput(result.html, true);
+        return;
+    }
+
+    const text = String(result ?? '');
+    if (text.startsWith('timer:')) {
+        const seconds = parseInt(text.slice(6), 10) || 0;
+        if (!seconds) {
+            setMiniToolOutput('Bitte eine Dauer in Sekunden eingeben.');
+            return;
+        }
+        let remaining = seconds;
+        setMiniToolOutput(`Timer läuft: ${remaining} Sekunden`);
+        _miniToolTimer = setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+                clearInterval(_miniToolTimer);
+                _miniToolTimer = null;
+                setMiniToolOutput('⏰ Zeit abgelaufen!');
+                return;
+            }
+            setMiniToolOutput(`Timer läuft: ${remaining} Sekunden`);
+        }, 1000);
+        return;
+    }
+
+    setMiniToolOutput(text);
 }
 
 function miniToolReset() {
@@ -2548,7 +2599,8 @@ function miniToolReset() {
 }
 
 function miniToolInputChanged() {
-    if (_miniToolMode === 'markdown') {
+    const def = getMiniToolDefinition(_miniToolMode);
+    if (def?.autoRunOnInput) {
         runMiniTool();
     }
 }
