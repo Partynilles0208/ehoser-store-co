@@ -72,6 +72,13 @@
     <div class="bg-shape bg-shape-1"></div>
     <div class="bg-shape bg-shape-2"></div>
 
+    <div id="mobileInstallBar" class="mobile-install-bar">
+        <div class="mobile-install-text">
+            <strong>📱 App installieren</strong>
+            <span>Für ein schnelleres Handy-Erlebnis</span>
+        </div>
+        <button type="button" class="mobile-install-btn" onclick="triggerInstallPrompt()">Installieren</button>
+    </div>
     <div id="onlineWidget" class="online-widget" style="display:none">
         <div class="online-header">🟢 Online</div>
         <ul id="onlineList" class="online-list"></ul>
@@ -145,6 +152,14 @@
                                 <span class="mode-badge mode-badge-map">OpenStreetMap</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-earth" onclick="selectMode('earth3d')">
+                            <div class="mode-card-icon">🌍</div>
+                            <div class="mode-card-body">
+                                <h3>3D Earth Flight</h3>
+                                <p>Fliege durch eine 3D-Erdansicht mit pulsierender Weltkarte und Vollbildmodus.</p>
+                                <span class="mode-badge mode-badge-map">Google Maps Key</span>
+                            </div>
+                        </button>
                         <button class="mode-card mode-card-youtube" onclick="selectMode('youtube')" data-update-feature>
                             <div class="mode-card-icon">▶️</div>
                             <div class="mode-card-body">
@@ -153,14 +168,249 @@
                                 <span class="mode-badge mode-badge-youtube">YouTube API v3</span>
                             </div>
                         </button>
-                        <button class="mode-card mode-card-filme" onclick="selectMode('filme')">
-                            <div class="mode-card-icon">🎬</div>
+
+                        <!-- ─── 30 Neue Mini-Tools ───────────────────────────────────────────────── -->
+                        <button class="mode-card mode-card-lorem" onclick="selectMode('lorem')">
+                            <div class="mode-card-icon">📜</div>
                             <div class="mode-card-body">
-                                <h3>Filme</h3>
-                                <p>Filme direkt im Browser ansehen.</p>
-                                <span class="mode-badge mode-badge-youtube">Titanic Film</span>
+                                <h3>Lorem Ipsum</h3>
+                                <p>Platzhaltertext für Design‑Mockups und schnellere Layouts erzeugen.</p>
+                                <span class="mode-badge">Text-Tool</span>
                             </div>
                         </button>
+                        <button class="mode-card mode-card-holiday" onclick="selectMode('holiday')">
+                            <div class="mode-card-icon">🎉</div>
+                            <div class="mode-card-body">
+                                <h3>Feiertags-Countdown</h3>
+                                <p>Zeigt dir den nächsten Feiertag und die verbleibenden Tage an.</p>
+                                <span class="mode-badge">Planung</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-contrast" onclick="selectMode('contrast')">
+                            <div class="mode-card-icon">🎨</div>
+                            <div class="mode-card-body">
+                                <h3>Farbkontrast</h3>
+                                <p>Teste, ob zwei Farben gut genug für Barrierefreiheit zusammenpassen.</p>
+                                <span class="mode-badge">Design</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-markdown" onclick="selectMode('markdown')">
+                            <div class="mode-card-icon">📝</div>
+                            <div class="mode-card-body">
+                                <h3>Markdown Vorschau</h3>
+                                <p>Schreibe Markdown und sieh die formatierte Vorschau in Echtzeit.</p>
+                                <span class="mode-badge">Schreiben</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-binary" onclick="selectMode('binary')">
+                            <div class="mode-card-icon">💻</div>
+                            <div class="mode-card-body">
+                                <h3>Zahlen-Konverter</h3>
+                                <p>Binär, Dezimal und Hexadezimal schnell umrechnen.</p>
+                                <span class="mode-badge">Dev Tool</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-fact" onclick="selectMode('fact')">
+                            <div class="mode-card-icon">📘</div>
+                            <div class="mode-card-body">
+                                <h3>Zufallsfakten</h3>
+                                <p>Kurze, interessante Fakten für Pausen und Gespräche.</p>
+                                <span class="mode-badge">Wissen</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-todo" onclick="selectMode('todo')">
+                            <div class="mode-card-icon">✅</div>
+                            <div class="mode-card-body">
+                                <h3>ToDo Liste</h3>
+                                <p>Erstelle und verwalte schnelle Aufgaben direkt im Browser.</p>
+                                <span class="mode-badge">Produktivität</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-emoji" onclick="selectMode('emoji')">
+                            <div class="mode-card-icon">😄</div>
+                            <div class="mode-card-body">
+                                <h3>Emoji Suche</h3>
+                                <p>Finde Emojis nach Begriffen und kopiere sie sofort.</p>
+                                <span class="mode-badge">Spaß</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-currency" onclick="selectMode('currency')">
+                            <div class="mode-card-icon">💱</div>
+                            <div class="mode-card-body">
+                                <h3>Währungsrechner</h3>
+                                <p>Beliebige Beträge zwischen Euro, Dollar, Franken und mehr umrechnen.</p>
+                                <span class="mode-badge">Finanzen</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-sleep" onclick="selectMode('sleep')">
+                            <div class="mode-card-icon">😴</div>
+                            <div class="mode-card-body">
+                                <h3>Schlafzyklus</h3>
+                                <p>Berechne die besten Aufwachzeiten für erholsame Nächte.</p>
+                                <span class="mode-badge">Wellness</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-slug" onclick="selectMode('slug')">
+                            <div class="mode-card-icon">🔗</div>
+                            <div class="mode-card-body">
+                                <h3>Slug Generator</h3>
+                                <p>Erstelle saubere URL-Slugs aus beliebigem Text.</p>
+                                <span class="mode-badge">Web</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-palindrome" onclick="selectMode('palindrome')">
+                            <div class="mode-card-icon">🔁</div>
+                            <div class="mode-card-body">
+                                <h3>Palindrom Test</h3>
+                                <p>Prüfe, ob ein Text vorwärts und rückwärts gleich ist.</p>
+                                <span class="mode-badge">Text</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-anagram" onclick="selectMode('anagram')">
+                            <div class="mode-card-icon">🔤</div>
+                            <div class="mode-card-body">
+                                <h3>Anagramm-Generator</h3>
+                                <p>Erzeuge neue Wortkombinationen aus deinem Text.</p>
+                                <span class="mode-badge">Kreativ</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-datecalc" onclick="selectMode('datecalc')">
+                            <div class="mode-card-icon">📅</div>
+                            <div class="mode-card-body">
+                                <h3>Datumsrechner</h3>
+                                <p>Berechne die Tage zwischen zwei Daten.</p>
+                                <span class="mode-badge">Planung</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-projectidea" onclick="selectMode('projectidea')">
+                            <div class="mode-card-icon">💡</div>
+                            <div class="mode-card-body">
+                                <h3>Projektideen</h3>
+                                <p>Bekomme kreative Projektideen für Websites, Apps und Hobbys.</p>
+                                <span class="mode-badge">Inspiration</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-mealidea" onclick="selectMode('mealidea')">
+                            <div class="mode-card-icon">🍽️</div>
+                            <div class="mode-card-body">
+                                <h3>Rezeptideen</h3>
+                                <p>Finde schnelle Essensideen für Frühstück, Mittag und Abendessen.</p>
+                                <span class="mode-badge">Alltag</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-namegen" onclick="selectMode('namegen')">
+                            <div class="mode-card-icon">🧑‍💻</div>
+                            <div class="mode-card-body">
+                                <h3>Namens-Generator</h3>
+                                <p>Erzeuge zufällige Namen für Charaktere, Marken oder Projekte.</p>
+                                <span class="mode-badge">Kreativ</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-hashtag" onclick="selectMode('hashtag')">
+                            <div class="mode-card-icon">#️⃣</div>
+                            <div class="mode-card-body">
+                                <h3>Hashtag-Generator</h3>
+                                <p>Erstelle passende Hashtags für Social Media Beiträge.</p>
+                                <span class="mode-badge">Social</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-domain" onclick="selectMode('domain')">
+                            <div class="mode-card-icon">🌐</div>
+                            <div class="mode-card-body">
+                                <h3>Domain-Ideen</h3>
+                                <p>Finde einprägsame Domain‑Namen für neue Projekte.</p>
+                                <span class="mode-badge">Startup</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-phonefmt" onclick="selectMode('phonefmt')">
+                            <div class="mode-card-icon">📞</div>
+                            <div class="mode-card-body">
+                                <h3>Telefonformatierer</h3>
+                                <p>Formatiere Telefonnummern sauber und einheitlich.</p>
+                                <span class="mode-badge">Office</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-wordfreq" onclick="selectMode('wordfreq')">
+                            <div class="mode-card-icon">🔢</div>
+                            <div class="mode-card-body">
+                                <h3>Wortfrequenz</h3>
+                                <p>Finde die häufigsten Wörter in deinem Text.</p>
+                                <span class="mode-badge">Analyse</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-textclean" onclick="selectMode('textclean')">
+                            <div class="mode-card-icon">🧼</div>
+                            <div class="mode-card-body">
+                                <h3>Text bereinigen</h3>
+                                <p>Entferne Leerzeilen, Leerzeichen und formatiere Text sauber.</p>
+                                <span class="mode-badge">Produktivität</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-timer2" onclick="selectMode('timer2')">
+                            <div class="mode-card-icon">⏲️</div>
+                            <div class="mode-card-body">
+                                <h3>Kurzzeit-Timer</h3>
+                                <p>Starte einen einfachen Timer für Pausen, Übungen oder Pomodoro.</p>
+                                <span class="mode-badge">Zeit</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-timezone" onclick="selectMode('timezone')">
+                            <div class="mode-card-icon">🕒</div>
+                            <div class="mode-card-body">
+                                <h3>Zeitzonen</h3>
+                                <p>Berechne Uhrzeiten zwischen verschiedenen Zeitzonen.</p>
+                                <span class="mode-badge">Reise</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-randomcolor" onclick="selectMode('randomcolor')">
+                            <div class="mode-card-icon">🌈</div>
+                            <div class="mode-card-body">
+                                <h3>Zufallsfarbe</h3>
+                                <p>Erzeuge zufällige Farbwerte mit Hex-, RGB- und HSL-Anzeige.</p>
+                                <span class="mode-badge">Design</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-rgb" onclick="selectMode('rgb')">
+                            <div class="mode-card-icon">🔢</div>
+                            <div class="mode-card-body">
+                                <h3>Farbcode-Konverter</h3>
+                                <p>Wandle Hex- und RGB-Farbwerte schnell ineinander um.</p>
+                                <span class="mode-badge">Design</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-weeknumber" onclick="selectMode('weeknumber')">
+                            <div class="mode-card-icon">📆</div>
+                            <div class="mode-card-body">
+                                <h3>Wochennummer</h3>
+                                <p>Finde die Kalenderwoche für jedes Datum heraus.</p>
+                                <span class="mode-badge">Planung</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-speedcalc" onclick="selectMode('speedcalc')">
+                            <div class="mode-card-icon">⚡</div>
+                            <div class="mode-card-body">
+                                <h3>Speed Rechner</h3>
+                                <p>Berechne Tippgeschwindigkeit oder Lesegeschwindigkeit einfach.</p>
+                                <span class="mode-badge">Analyse</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-password2" onclick="selectMode('password2')">
+                            <div class="mode-card-icon">🔒</div>
+                            <div class="mode-card-body">
+                                <h3>Passwort-Generator 2.0</h3>
+                                <p>Erstelle starke Passwörter mit Länge, Zahlen und Sonderzeichen.</p>
+                                <span class="mode-badge">Security</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-motivation" onclick="selectMode('motivation')">
+                            <div class="mode-card-icon">✨</div>
+                            <div class="mode-card-body">
+                                <h3>Motivations-Boost</h3>
+                                <p>Hol dir inspirierende Sätze für mehr Fokus und Motivation.</p>
+                                <span class="mode-badge">Mindset</span>
+                            </div>
+                        </button>
+
                         <button class="mode-card mode-card-news" onclick="selectMode('news')" data-update-feature>
                             <div class="mode-card-icon">📰</div>
                             <div class="mode-card-body">
@@ -673,30 +923,6 @@
                 </div>
             </section>
 
-            <section id="filme" class="section">
-                <div class="media-wrapper filme-wrapper">
-                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
-                    <div class="media-heading">
-                        <p class="eyebrow">Filme</p>
-                        <h2>Titanic Film</h2>
-                        <p>Der erste Film in deiner Filmsammlung.</p>
-                    </div>
-                    <div class="film-frame-wrap">
-                        <iframe
-                            class="film-frame"
-                            data-src="https://archive.org/embed/silent-in-nacht-und-eis"
-                            title="Titanic Film"
-                            width="560"
-                            height="384"
-                            frameborder="0"
-                            allowfullscreen
-                            webkitallowfullscreen="true"
-                            mozallowfullscreen="true"
-                        ></iframe>
-                    </div>
-                </div>
-            </section>
-
             <!-- NACHRICHTEN -->
             <section id="news" class="section">
                 <div class="news-wrapper">
@@ -750,6 +976,32 @@
                         </div>
                     </div>
                     <div id="mapContainer" class="map-container"></div>
+                </div>
+            </section>
+
+            <section id="earth3d" class="section">
+                <div class="earth3d-wrapper">
+                    <div class="earth3d-topbar">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <div class="earth3d-headline">
+                            <p class="eyebrow">3D Earth Flight</p>
+                            <h2>Welttrume durch die Erde</h2>
+                        </div>
+                        <div class="earth3d-actions">
+                            <button class="earth3d-btn" id="earth3dFullscreenBtn" onclick="toggleEarth3DFullscreen()">⛶ Vollbild</button>
+                            <button class="earth3d-btn earth3d-btn-alt" onclick="resetEarth3DView()">↺ Reset</button>
+                        </div>
+                    </div>
+                    <div class="earth3d-statusbar">
+                        <span>Google Maps Key: <strong id="earth3dMapKeyState">nicht konfiguriert</strong></span>
+                        <div class="earth3d-key-group">
+                            <input id="earth3dMapKeyInput" type="text" placeholder="Google Maps API Key eintragen" autocomplete="off">
+                            <button onclick="saveEarth3DMapKey()">Speichern</button>
+                        </div>
+                    </div>
+                    <div id="earth3dViewport" class="earth3d-viewport">
+                        <canvas id="earth3dCanvas" width="1200" height="700"></canvas>
+                    </div>
                 </div>
             </section>
 
@@ -1197,6 +1449,39 @@
                         <div class="tool-actions">
                             <button class="btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('encOutput').value)">📋 Kopieren</button>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── Mini Tools ───────────────────────────────────────── -->
+            <section id="mini-tools" class="section">
+                <div class="tool-header">
+                    <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                    <div>
+                        <h2 id="miniToolTitle">Mini-Tool</h2>
+                        <p id="miniToolDescription" style="margin:6px 0 0;color:var(--muted);">Wähle ein Tool, um schnelle Aufgaben zu lösen.</p>
+                    </div>
+                    <span class="mode-badge" id="miniToolCategory" style="margin-left:auto;">Werkzeug</span>
+                </div>
+                <div class="tool-body tool-split">
+                    <div class="split-left">
+                        <label class="tool-label" id="miniToolInputLabel">Eingabe</label>
+                        <textarea id="miniToolInput" class="tool-textarea" placeholder="Eingabe hier…" oninput="miniToolInputChanged()"></textarea>
+                        <div style="display:flex;gap:12px;align-items:flex-end;margin-top:14px;">
+                            <div style="flex:1;">
+                                <label class="tool-label" id="miniToolInput2Label" style="display:none;">Zusatz</label>
+                                <input id="miniToolInput2" class="tool-input" placeholder="" style="display:none;width:100%;" oninput="miniToolInputChanged()">
+                            </div>
+                        </div>
+                        <div class="tool-extra" id="miniToolExtra"></div>
+                        <div class="tool-actions">
+                            <button class="btn-primary" id="miniToolActionBtn" onclick="runMiniTool()">Ausführen</button>
+                            <button class="btn-secondary" onclick="miniToolReset()">Zurücksetzen</button>
+                        </div>
+                    </div>
+                    <div class="split-right">
+                        <label class="tool-label">Ergebnis</label>
+                        <div id="miniToolOutput" class="tool-output">Bereit. Starte das Tool über die Schaltfläche rechts.</div>
                     </div>
                 </div>
             </section>
