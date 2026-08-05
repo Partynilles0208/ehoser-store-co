@@ -12,6 +12,8 @@ let _poll = null;
 let _ngMembers = {}; // new-group selected members { username: pubKeyJwk }
 let _recorder = null, _recChunks = [], _recTimer = null, _recSecs = 0;
 let _attachOpen = false;
+let _summaryAiEnabled = false;
+let _seenMessageIds = {};
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 (async () => {
@@ -75,10 +77,12 @@ let _attachOpen = false;
         if (proStickerItem) proStickerItem.style.display = '';
     }
     _myKeys = await getOrCreateKeys();
+    _summaryAiEnabled = localStorage.getItem('ehoserAiSummary') === '1' && Boolean(_meProfile?.isPro);
     api('/chat/key', 'POST', { publicKey: await exportPub(_myKeys.publicKey) }).catch(() => {});
     await loadGroups();
     _poll = setInterval(pollMessages, 3000);
     document.addEventListener('click', globalClickClose);
+    updateAiSummaryToggle();
 })();
 
 function show(id) {
@@ -210,11 +214,54 @@ function renderGroupList() {
         </div>`).join('');
 }
 
+function updateAiSummaryToggle() {
+    const btn = document.getElementById('chatAiSummaryToggle');
+    if (!btn) return;
+    const enabled = _summaryAiEnabled && Boolean(_meProfile?.isPro);
+    btn.classList.toggle('active', enabled);
+    btn.textContent = enabled ? '🤖 ehoser AI • AN' : '🤖 ehoser AI';
+    btn.title = enabled
+        ? 'ehoser AI ist aktiv und fasst die letzten Nachrichten zusammen.'
+        : _meProfile?.isPro ? 'ehoser AI für die Gruppen-Zusammenfassung aktivieren' : 'Nur für PRO-Nutzer verfügbar';
+}
+
+function ensureSummaryAccess() {
+    if (!_meProfile?.isPro) {
+        toast('ehoser AI-Zusammenfassung ist nur für PRO-Nutzer verfügbar.', 'err');
+        return false;
+    }
+    return true;
+}
+
+async function toggleEhoserAiSummary() {
+    if (!ensureSummaryAccess()) return;
+    _summaryAiEnabled = !_summaryAiEnabled;
+    localStorage.setItem('ehoserAiSummary', _summaryAiEnabled ? '1' : '0');
+    updateAiSummaryToggle();
+    if (_summaryAiEnabled && _activeGroupId) {
+        const notice = '⚠️ Hinweis: Für die KI-Zusammenfassung wurde die Ende-zu-Ende-Verschlüsselung kurz aufgehoben.';
+        appendMessage({ id: 'summary-toggle-' + Date.now(), sender: 'ehoser AI', created_at: new Date().toISOString(), encrypted_content: '' }, JSON.stringify({ t: 'ai_summary', summary: notice + ' Die Zusammenfassung bleibt nur auf diesem Gerät aktiv.' }));
+        const a = document.getElementById('messagesArea'); if (a) a.scrollTop = a.scrollHeight;
+    }
+}
+
+function markMessageSeen(gid, id) {
+    if (!gid || !id) return;
+    if (!_seenMessageIds[gid]) _seenMessageIds[gid] = new Set();
+    _seenMessageIds[gid].add(String(id));
+}
+
+function isMessageSeen(gid, id) {
+    if (!gid || !id) return false;
+    return Boolean(_seenMessageIds[gid]?.has(String(id)));
+}
+
 async function selectGroup(gid) {
     _activeGroupId = gid;
     renderGroupList();
     const g = _groups.find(x => x.id === gid);
     if (!g) return;
+    _seenMessageIds[gid] = new Set();
     document.getElementById('noGroup').style.display = 'none';
     const ac = document.getElementById('activeChat');
     ac.style.display = 'flex';
@@ -225,6 +272,7 @@ async function selectGroup(gid) {
     _lastMsgId[gid] = 0;
     await loadMessages(gid, true);
     document.getElementById('msgInput').focus();
+    updateAiSummaryToggle();
 }
 
 async function pollMessages() {
@@ -244,10 +292,12 @@ async function loadMessages(gid, initial) {
         if (initial) document.getElementById('messagesArea').innerHTML = '';
         for (const m of messages) {
             if (gid !== _activeGroupId) break;
+            if (isMessageSeen(gid, m.id)) continue;
             let plain = null;
             try { plain = await decryptMsg(m.encrypted_content, key); } catch {}
             appendMessage(m, plain);
-            _lastMsgId[gid] = m.id;
+            markMessageSeen(gid, m.id);
+            _lastMsgId[gid] = Math.max(_lastMsgId[gid] || 0, Number(m.id) || 0);
         }
         if (gid === _activeGroupId) { const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight; }
     } catch (e) {
@@ -257,6 +307,8 @@ async function loadMessages(gid, initial) {
 
 function appendMessage(m, plainJson) {
     const area = document.getElementById('messagesArea');
+    if (!area) return;
+    if (m?.id && _activeGroupId && isMessageSeen(_activeGroupId, m.id)) return;
     const own = m.sender === _me?.username;
     const time = new Date(m.created_at).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
     let content = '';
@@ -269,18 +321,21 @@ function appendMessage(m, plainJson) {
     }
     const row = document.createElement('div');
     row.className = 'msg-row' + (own ? ' own' : '');
-    const isSenderPro = _proBadgeCache[m.sender]?.isPro;
+    const senderName = m.sender || 'ehoser AI';
+    const isSenderPro = senderName !== 'ehoser AI' && _proBadgeCache[senderName]?.isPro;
     const senderBadge = isSenderPro ? '<span class="msg-pro-badge">⭐ PRO</span>' : '';
     const senderClass = isSenderPro ? 'msg-sender pro-sender' : 'msg-sender';
     const avatarClass = isSenderPro && !own ? 'msg-avatar pro-av' : 'msg-avatar';
+    const avatarText = senderName === 'ehoser AI' ? 'AI' : esc(senderName.substring(0,2).toUpperCase());
     row.innerHTML = `
-        <div class="${avatarClass}">${esc(m.sender.substring(0,2).toUpperCase())}</div>
+        <div class="${avatarClass}">${avatarText}</div>
         <div class="msg-body">
-            ${!own ? '<span class="' + senderClass + '">' + esc(m.sender) + senderBadge + '</span>' : ''}
+            ${(!own && senderName !== 'ehoser AI') ? '<span class="' + senderClass + '">' + esc(senderName) + senderBadge + '</span>' : ''}
             <div class="msg-bubble">${content}</div>
             <span class="msg-time">${time}</span>
         </div>`;
     area.appendChild(row);
+    if (m?.id && _activeGroupId) markMessageSeen(_activeGroupId, m.id);
 }
 
 function renderContent(p) {
@@ -293,6 +348,7 @@ function renderContent(p) {
         case 'fw':  return `<img class="msg-img" src="${esc(p.url)}" alt="Face Warp" loading="lazy" onclick="viewImg(this.src)"><div class="msg-fw-label">🎭 Face Warp</div>`;
         case 'pro_sticker': return renderProSticker(p);
         case 'file': return renderFile(p);
+        case 'ai_summary': return `<div class="ai-summary-card"><div class="ai-summary-header">🤖 ehoser AI</div><div>${esc(p.summary || '').replace(/\n/g, '<br>')}</div></div>`;
         default: return esc(JSON.stringify(p));
     }
 }
@@ -331,6 +387,43 @@ function renderFile(p) {
 }
 
 // ─── Send ─────────────────────────────────────────────────────────────────────
+function summarizeChatMessages(messages) {
+    const clean = (messages || [])
+        .map((msg) => {
+            if (!msg || typeof msg !== 'string') return '';
+            return msg.replace(/\s+/g, ' ').trim();
+        })
+        .filter(Boolean)
+        .slice(-6);
+    if (!clean.length) return 'Keine neuen Inhalte in der Gruppe.';
+    const core = clean.slice(0, 3).join(' • ');
+    return clean.length > 3 ? `Kürzliche Themen: ${core}.` : `Letzte Meldungen: ${core}.`;
+}
+
+async function triggerChatAiSummary() {
+    if (!_activeGroupId || !_summaryAiEnabled || !_meProfile?.isPro) return;
+    try {
+        const after = _lastMsgId[_activeGroupId] || 0;
+        const { messages } = await api('/chat/messages/' + _activeGroupId + '?after=' + after);
+        if (!messages.length) return;
+        const key = await getGroupKey(_activeGroupId);
+        const summaries = [];
+        for (const m of messages.slice(-6)) {
+            if (!m?.encrypted_content) continue;
+            try {
+                const plain = await decryptMsg(m.encrypted_content, key);
+                if (!plain) continue;
+                const parsed = (() => { try { return JSON.parse(plain); } catch { return { t: 'txt', v: plain }; } })();
+                if (parsed?.t === 'txt' && typeof parsed.v === 'string' && parsed.v.trim()) summaries.push(parsed.v.trim());
+            } catch {}
+        }
+        const summaryText = summarizeChatMessages(summaries);
+        const warning = '⚠️ Hinweis: Für die KI-Zusammenfassung wurde die Ende-zu-Ende-Verschlüsselung kurz aufgehoben. ' + summaryText;
+        appendMessage({ id: 'ai-summary-' + Date.now(), sender: 'ehoser AI', created_at: new Date().toISOString(), encrypted_content: '' }, JSON.stringify({ t: 'ai_summary', summary: warning }));
+        const area = document.getElementById('messagesArea'); if (area) area.scrollTop = area.scrollHeight;
+    } catch {}
+}
+
 async function sendMessage() {
     const inp = document.getElementById('msgInput');
     const text = inp.value.trim();
@@ -342,6 +435,11 @@ async function sendMessage() {
         const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, encryptedContent: enc });
         appendMessage({ id, sender: _me.username, created_at, encrypted_content: enc }, JSON.stringify({ t:'txt', v:text }));
         _lastMsgId[_activeGroupId] = id;
+        if (_summaryAiEnabled && _meProfile?.isPro) {
+            const warning = '⚠️ Hinweis: Die Ende-zu-Ende-Verschlüsselung wurde für die KI-Zusammenfassung kurz aufgehoben.';
+            toast(warning, 'warn');
+            setTimeout(() => triggerChatAiSummary(), 300);
+        }
         const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
     } catch (e) { toast('Fehler: ' + e.message, 'err'); inp.value = text; }
     finally { inp.disabled = false; inp.focus(); }
