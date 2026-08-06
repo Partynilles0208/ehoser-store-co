@@ -609,6 +609,1428 @@ const MINI_TOOL_DEFINITIONS = {
         }
     }
 };
+const parseMiniNumber = (value) => {
+    const num = parseFloat(String(value ?? '').replace(',', '.').trim());
+    return Number.isFinite(num) ? num : null;
+};
+
+const formatMiniNumber = (value, digits = 6) => {
+    if (!Number.isFinite(value)) return '0';
+    return Number(value.toFixed(digits)).toString();
+};
+
+function createExtraMiniToolDefinitions() {
+    const defs = {};
+
+    const conversionSpecs = [
+        { key: 'km_mi', title: 'Kilometer -> Meilen', from: 'km', to: 'mi', factor: 0.621371 },
+        { key: 'm_ft', title: 'Meter -> Fuß', from: 'm', to: 'ft', factor: 3.28084 },
+        { key: 'cm_in', title: 'Zentimeter -> Inch', from: 'cm', to: 'in', factor: 0.393701 },
+        { key: 'kg_lb', title: 'Kilogramm -> Pfund', from: 'kg', to: 'lb', factor: 2.20462 },
+        { key: 'g_oz', title: 'Gramm -> Unzen', from: 'g', to: 'oz', factor: 0.035274 },
+        { key: 'l_gal', title: 'Liter -> Gallonen', from: 'l', to: 'gal', factor: 0.264172 },
+        { key: 'ml_floz', title: 'Milliliter -> Fluid Ounce', from: 'ml', to: 'fl oz', factor: 0.033814 },
+        { key: 'ha_ac', title: 'Hektar -> Acre', from: 'ha', to: 'ac', factor: 2.47105 },
+        { key: 'km2_mi2', title: 'Quadratkilometer -> Quadratmeilen', from: 'km²', to: 'mi²', factor: 0.386102 },
+        { key: 'm2_ft2', title: 'Quadratmeter -> Quadratfuß', from: 'm²', to: 'ft²', factor: 10.7639 },
+        { key: 'nm_km', title: 'Seemeilen -> Kilometer', from: 'nm', to: 'km', factor: 1.852 },
+        { key: 'bar_psi', title: 'Bar -> PSI', from: 'bar', to: 'psi', factor: 14.5038 },
+        { key: 'kpa_psi', title: 'kPa -> PSI', from: 'kPa', to: 'psi', factor: 0.145038 },
+        { key: 'mps_kmh', title: 'm/s -> km/h', from: 'm/s', to: 'km/h', factor: 3.6 },
+        { key: 'w_hp', title: 'Watt -> PS', from: 'W', to: 'PS', factor: 0.00135962 },
+        { key: 'kw_hp', title: 'Kilowatt -> PS', from: 'kW', to: 'PS', factor: 1.35962 },
+        { key: 'n_lbf', title: 'Newton -> lbf', from: 'N', to: 'lbf', factor: 0.224809 },
+        { key: 'j_cal', title: 'Joule -> Kalorien', from: 'J', to: 'cal', factor: 0.239006 },
+        { key: 'wh_j', title: 'Wattstunden -> Joule', from: 'Wh', to: 'J', factor: 3600 },
+        { key: 'byte_kb', title: 'Byte -> KB', from: 'B', to: 'KB', factor: 1 / 1024 },
+        { key: 'kb_mb', title: 'KB -> MB', from: 'KB', to: 'MB', factor: 1 / 1024 },
+        { key: 'mb_gb', title: 'MB -> GB', from: 'MB', to: 'GB', factor: 1 / 1024 },
+        { key: 'gb_tb', title: 'GB -> TB', from: 'GB', to: 'TB', factor: 1 / 1024 },
+        { key: 'min_h', title: 'Minuten -> Stunden', from: 'min', to: 'h', factor: 1 / 60 }
+    ];
+
+    conversionSpecs.forEach((spec) => {
+        const mode = `x100_${spec.key}`;
+        defs[mode] = {
+            title: spec.title,
+            description: `Konvertiert ${spec.from} nach ${spec.to}.`,
+            category: 'Konverter',
+            inputLabel: `Wert in ${spec.from}`,
+            placeholder: `z.B. 10 ${spec.from}`,
+            actionText: 'Umrechnen',
+            cardIcon: '🔁',
+            cardBadge: 'Konverter',
+            generatedBatch: 'x100',
+            run: (value) => {
+                const n = parseMiniNumber(value);
+                if (n === null) return `Bitte einen gültigen Wert in ${spec.from} eingeben.`;
+                return `${formatMiniNumber(n)} ${spec.from} = ${formatMiniNumber(n * spec.factor)} ${spec.to}`;
+            }
+        };
+
+        const inverseMode = `x100_${spec.key}_rev`;
+        defs[inverseMode] = {
+            title: `${spec.to} -> ${spec.from}`,
+            description: `Konvertiert ${spec.to} nach ${spec.from}.`,
+            category: 'Konverter',
+            inputLabel: `Wert in ${spec.to}`,
+            placeholder: `z.B. 10 ${spec.to}`,
+            actionText: 'Umrechnen',
+            cardIcon: '🔁',
+            cardBadge: 'Konverter',
+            generatedBatch: 'x100',
+            run: (value) => {
+                const n = parseMiniNumber(value);
+                if (n === null) return `Bitte einen gültigen Wert in ${spec.to} eingeben.`;
+                return `${formatMiniNumber(n)} ${spec.to} = ${formatMiniNumber(n / spec.factor)} ${spec.from}`;
+            }
+        };
+    });
+
+    defs.x100_c_f = {
+        title: 'Celsius -> Fahrenheit',
+        description: 'Temperatur von Celsius in Fahrenheit umrechnen.',
+        category: 'Konverter',
+        inputLabel: 'Temperatur in °C',
+        placeholder: 'z.B. 22',
+        actionText: 'Umrechnen',
+        cardIcon: '🌡️',
+        cardBadge: 'Konverter',
+        generatedBatch: 'x100',
+        run: (value) => {
+            const n = parseMiniNumber(value);
+            if (n === null) return 'Bitte eine gültige Temperatur eingeben.';
+            return `${formatMiniNumber(n)} °C = ${formatMiniNumber((n * 9) / 5 + 32)} °F`;
+        }
+    };
+
+    defs.x100_f_c = {
+        title: 'Fahrenheit -> Celsius',
+        description: 'Temperatur von Fahrenheit in Celsius umrechnen.',
+        category: 'Konverter',
+        inputLabel: 'Temperatur in °F',
+        placeholder: 'z.B. 72',
+        actionText: 'Umrechnen',
+        cardIcon: '🌡️',
+        cardBadge: 'Konverter',
+        generatedBatch: 'x100',
+        run: (value) => {
+            const n = parseMiniNumber(value);
+            if (n === null) return 'Bitte eine gültige Temperatur eingeben.';
+            return `${formatMiniNumber(n)} °F = ${formatMiniNumber(((n - 32) * 5) / 9)} °C`;
+        }
+    };
+
+    const calcTools = [
+        {
+            key: 'x100_add',
+            title: 'Addierer',
+            description: 'Zwei Zahlen addieren.',
+            icon: '➕',
+            category: 'Rechner',
+            run: (a, b) => `${formatMiniNumber(a)} + ${formatMiniNumber(b)} = ${formatMiniNumber(a + b)}`
+        },
+        {
+            key: 'x100_subtract',
+            title: 'Subtrahierer',
+            description: 'Zwei Zahlen subtrahieren.',
+            icon: '➖',
+            category: 'Rechner',
+            run: (a, b) => `${formatMiniNumber(a)} - ${formatMiniNumber(b)} = ${formatMiniNumber(a - b)}`
+        },
+        {
+            key: 'x100_multiply',
+            title: 'Multiplikator',
+            description: 'Zwei Zahlen multiplizieren.',
+            icon: '✖️',
+            category: 'Rechner',
+            run: (a, b) => `${formatMiniNumber(a)} × ${formatMiniNumber(b)} = ${formatMiniNumber(a * b)}`
+        },
+        {
+            key: 'x100_divide',
+            title: 'Dividierer',
+            description: 'Zwei Zahlen dividieren.',
+            icon: '➗',
+            category: 'Rechner',
+            run: (a, b) => (b === 0 ? 'Division durch 0 ist nicht erlaubt.' : `${formatMiniNumber(a)} / ${formatMiniNumber(b)} = ${formatMiniNumber(a / b)}`)
+        },
+        {
+            key: 'x100_power',
+            title: 'Potenz-Rechner',
+            description: 'Basis hoch Exponent berechnen.',
+            icon: '🧮',
+            category: 'Rechner',
+            run: (a, b) => `${formatMiniNumber(a)} ^ ${formatMiniNumber(b)} = ${formatMiniNumber(Math.pow(a, b))}`
+        },
+        {
+            key: 'x100_percent_of',
+            title: 'Prozent von Zahl',
+            description: 'Berechnet x Prozent von y.',
+            icon: '💯',
+            category: 'Rechner',
+            run: (a, b) => `${formatMiniNumber(a)}% von ${formatMiniNumber(b)} = ${formatMiniNumber((a / 100) * b)}`
+        },
+        {
+            key: 'x100_percent_change',
+            title: 'Prozentänderung',
+            description: 'Relative Veränderung zwischen zwei Werten.',
+            icon: '📈',
+            category: 'Rechner',
+            run: (a, b) => (a === 0 ? 'Startwert darf nicht 0 sein.' : `Änderung: ${formatMiniNumber(((b - a) / a) * 100)}%`)
+        },
+        {
+            key: 'x100_avg2',
+            title: 'Mittelwert aus 2',
+            description: 'Durchschnitt aus zwei Werten.',
+            icon: '📊',
+            category: 'Rechner',
+            run: (a, b) => `Mittelwert: ${formatMiniNumber((a + b) / 2)}`
+        },
+        {
+            key: 'x100_min2',
+            title: 'Kleinere Zahl',
+            description: 'Ermittelt den kleineren von zwei Werten.',
+            icon: '📉',
+            category: 'Rechner',
+            run: (a, b) => `Minimum: ${formatMiniNumber(Math.min(a, b))}`
+        },
+        {
+            key: 'x100_max2',
+            title: 'Größere Zahl',
+            description: 'Ermittelt den größeren von zwei Werten.',
+            icon: '🏁',
+            category: 'Rechner',
+            run: (a, b) => `Maximum: ${formatMiniNumber(Math.max(a, b))}`
+        }
+    ];
+
+    calcTools.forEach((tool) => {
+        defs[tool.key] = {
+            title: tool.title,
+            description: tool.description,
+            category: tool.category,
+            inputLabel: 'Wert A',
+            placeholder: 'z.B. 12.5',
+            input2Label: 'Wert B',
+            placeholder2: 'z.B. 3.4',
+            input2Visible: true,
+            actionText: 'Berechnen',
+            cardIcon: tool.icon,
+            cardBadge: 'Rechner',
+            generatedBatch: 'x100',
+            run: (value, value2) => {
+                const a = parseMiniNumber(value);
+                const b = parseMiniNumber(value2);
+                if (a === null || b === null) return 'Bitte zwei gültige Zahlen eingeben.';
+                return tool.run(a, b);
+            }
+        };
+    });
+
+    const randomTools = [
+        {
+            key: 'x100_rand_int',
+            title: 'Zufallszahl (Bereich)',
+            description: 'Zieht eine Zufallszahl zwischen Min und Max.',
+            icon: '🎯',
+            run: (a, b) => {
+                const min = Math.ceil(Math.min(a, b));
+                const max = Math.floor(Math.max(a, b));
+                return `Zahl: ${Math.floor(Math.random() * (max - min + 1)) + min}`;
+            }
+        },
+        {
+            key: 'x100_rand_even',
+            title: 'Zufällige gerade Zahl',
+            description: 'Liefert eine zufällige gerade Zahl im Bereich.',
+            icon: '2️⃣',
+            run: (a, b) => {
+                const min = Math.ceil(Math.min(a, b));
+                const max = Math.floor(Math.max(a, b));
+                const first = min % 2 === 0 ? min : min + 1;
+                if (first > max) return 'In diesem Bereich gibt es keine gerade Zahl.';
+                const count = Math.floor((max - first) / 2) + 1;
+                return `Gerade Zahl: ${first + Math.floor(Math.random() * count) * 2}`;
+            }
+        },
+        {
+            key: 'x100_rand_odd',
+            title: 'Zufällige ungerade Zahl',
+            description: 'Liefert eine zufällige ungerade Zahl im Bereich.',
+            icon: '1️⃣',
+            run: (a, b) => {
+                const min = Math.ceil(Math.min(a, b));
+                const max = Math.floor(Math.max(a, b));
+                const first = min % 2 !== 0 ? min : min + 1;
+                if (first > max) return 'In diesem Bereich gibt es keine ungerade Zahl.';
+                const count = Math.floor((max - first) / 2) + 1;
+                return `Ungerade Zahl: ${first + Math.floor(Math.random() * count) * 2}`;
+            }
+        },
+        {
+            key: 'x100_coin_flip',
+            title: 'Münzwurf',
+            description: 'Werfe eine digitale Münze.',
+            icon: '🪙',
+            single: true,
+            run: () => (Math.random() < 0.5 ? 'Kopf' : 'Zahl')
+        },
+        {
+            key: 'x100_dice6',
+            title: 'W6 Würfel',
+            description: 'Würfelt eine Zahl von 1 bis 6.',
+            icon: '🎲',
+            single: true,
+            run: () => `Wurf: ${1 + Math.floor(Math.random() * 6)}`
+        },
+        {
+            key: 'x100_dice20',
+            title: 'W20 Würfel',
+            description: 'Würfelt eine Zahl von 1 bis 20.',
+            icon: '🎲',
+            single: true,
+            run: () => `Wurf: ${1 + Math.floor(Math.random() * 20)}`
+        },
+        {
+            key: 'x100_pick_item',
+            title: 'Zufallsauswahl',
+            description: 'Wählt einen zufälligen Eintrag aus deiner Liste.',
+            icon: '🎰',
+            textList: true,
+            run: (value) => {
+                const items = String(value || '').split(/[\n,;]/).map((item) => item.trim()).filter(Boolean);
+                if (!items.length) return 'Bitte mindestens zwei Einträge angeben.';
+                return `Gewählt: ${items[Math.floor(Math.random() * items.length)]}`;
+            }
+        },
+        {
+            key: 'x100_random_color',
+            title: 'Random HEX Farbe',
+            description: 'Erzeugt eine zufällige Hex-Farbe.',
+            icon: '🎨',
+            single: true,
+            run: () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0').toUpperCase()}`
+        },
+        {
+            key: 'x100_random_password',
+            title: 'Quick Passwort',
+            description: 'Erstellt ein zufälliges Passwort mit gewünschter Länge.',
+            icon: '🔐',
+            singleInput: true,
+            run: (value) => {
+                const len = miniToolHelpers.clamp(parseInt(String(value || ''), 10) || 16, 8, 64);
+                const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*+-_?';
+                let out = '';
+                for (let i = 0; i < len; i += 1) out += chars[Math.floor(Math.random() * chars.length)];
+                return out;
+            }
+        },
+        {
+            key: 'x100_random_uuidlite',
+            title: 'Kurz-ID Generator',
+            description: 'Erstellt eine kurze zufällige ID.',
+            icon: '🆔',
+            single: true,
+            run: () => Math.random().toString(36).slice(2, 10).toUpperCase()
+        }
+    ];
+
+    randomTools.forEach((tool) => {
+        if (tool.single) {
+            defs[tool.key] = {
+                title: tool.title,
+                description: tool.description,
+                category: 'Zufall',
+                inputVisible: false,
+                actionText: 'Starten',
+                cardIcon: tool.icon,
+                cardBadge: 'Zufall',
+                generatedBatch: 'x100',
+                run: () => tool.run()
+            };
+            return;
+        }
+
+        if (tool.textList) {
+            defs[tool.key] = {
+                title: tool.title,
+                description: tool.description,
+                category: 'Zufall',
+                inputLabel: 'Einträge (mit Komma oder Zeilen)',
+                placeholder: 'Pizza, Pasta, Sushi',
+                actionText: 'Auswählen',
+                cardIcon: tool.icon,
+                cardBadge: 'Zufall',
+                generatedBatch: 'x100',
+                run: (value) => tool.run(value)
+            };
+            return;
+        }
+
+        if (tool.singleInput) {
+            defs[tool.key] = {
+                title: tool.title,
+                description: tool.description,
+                category: 'Zufall',
+                inputLabel: 'Länge',
+                placeholder: 'z.B. 16',
+                actionText: 'Generieren',
+                cardIcon: tool.icon,
+                cardBadge: 'Zufall',
+                generatedBatch: 'x100',
+                run: (value) => tool.run(value)
+            };
+            return;
+        }
+
+        defs[tool.key] = {
+            title: tool.title,
+            description: tool.description,
+            category: 'Zufall',
+            inputLabel: 'Min',
+            placeholder: 'z.B. 1',
+            input2Label: 'Max',
+            placeholder2: 'z.B. 100',
+            input2Visible: true,
+            actionText: 'Generieren',
+            cardIcon: tool.icon,
+            cardBadge: 'Zufall',
+            generatedBatch: 'x100',
+            run: (value, value2) => {
+                const a = parseMiniNumber(value);
+                const b = parseMiniNumber(value2);
+                if (a === null || b === null) return 'Bitte Min und Max als Zahlen eingeben.';
+                return tool.run(a, b);
+            }
+        };
+    });
+
+    const textTools = [
+        { key: 'x100_text_upper', title: 'Text -> GROSS', description: 'Wandelt Text in Großbuchstaben.', icon: '🔠', run: (v) => String(v || '').toUpperCase() },
+        { key: 'x100_text_lower', title: 'Text -> klein', description: 'Wandelt Text in Kleinbuchstaben.', icon: '🔡', run: (v) => String(v || '').toLowerCase() },
+        { key: 'x100_text_title', title: 'Text -> Titel', description: 'Wandelt Text in Titelschreibweise.', icon: '🅰️', run: (v) => miniToolHelpers.toTitleCase(v || '') },
+        { key: 'x100_text_reverse', title: 'Text umkehren', description: 'Dreht den Text rückwärts.', icon: '↩️', run: (v) => String(v || '').split('').reverse().join('') },
+        { key: 'x100_text_novowels', title: 'Vokale entfernen', description: 'Entfernt alle Vokale aus dem Text.', icon: '🚫', run: (v) => String(v || '').replace(/[aeiouäöüAEIOUÄÖÜ]/g, '') },
+        { key: 'x100_text_keep_letters', title: 'Nur Buchstaben', description: 'Filtert nur Buchstaben aus Text.', icon: '🔤', run: (v) => String(v || '').replace(/[^\p{L}\s]/gu, '') },
+        { key: 'x100_text_keep_numbers', title: 'Nur Zahlen', description: 'Filtert nur Ziffern aus Text.', icon: '🔢', run: (v) => String(v || '').replace(/\D/g, '') },
+        { key: 'x100_text_trim', title: 'Leerzeichen glätten', description: 'Reduziert Leerzeichen auf ein Zeichen.', icon: '🧹', run: (v) => String(v || '').replace(/\s+/g, ' ').trim() },
+        { key: 'x100_text_sort_lines', title: 'Zeilen sortieren', description: 'Sortiert Zeilen alphabetisch.', icon: '📚', run: (v) => String(v || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean).sort((a, b) => a.localeCompare(b, 'de')).join('\n') },
+        { key: 'x100_text_unique_lines', title: 'Duplikate (Zeilen) entfernen', description: 'Behält jede Zeile nur einmal.', icon: '🧾', run: (v) => [...new Set(String(v || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean))].join('\n') },
+        { key: 'x100_text_reverse_words', title: 'Wort-Reihenfolge umdrehen', description: 'Dreht die Wortreihenfolge um.', icon: '🔄', run: (v) => miniToolHelpers.words(v).reverse().join(' ') },
+        { key: 'x100_text_char_count', title: 'Zeichen zählen', description: 'Zählt alle Zeichen inklusive Leerzeichen.', icon: '📏', run: (v) => `Zeichen: ${String(v || '').length}` },
+        { key: 'x100_text_word_count', title: 'Wörter zählen', description: 'Zählt die Wörter im Text.', icon: '🧮', run: (v) => `Wörter: ${miniToolHelpers.words(v).length}` },
+        { key: 'x100_text_remove_spaces', title: 'Alle Leerzeichen entfernen', description: 'Entfernt alle Whitespaces.', icon: '✂️', run: (v) => String(v || '').replace(/\s+/g, '') },
+        { key: 'x100_text_url_encode', title: 'URL Encode', description: 'Kodiert Text für URL-Parameter.', icon: '🔗', run: (v) => encodeURIComponent(String(v || '')) },
+        { key: 'x100_text_url_decode', title: 'URL Decode', description: 'Dekodiert URL-kodierten Text.', icon: '🧩', run: (v) => {
+            try { return decodeURIComponent(String(v || '')); } catch { return 'Ungültige URL-Kodierung.'; }
+        } },
+        { key: 'x100_text_b64_encode', title: 'Base64 Encode', description: 'Kodiert Text in Base64.', icon: '📦', run: (v) => {
+            try { return btoa(unescape(encodeURIComponent(String(v || '')))); } catch { return 'Konnte nicht kodieren.'; }
+        } },
+        { key: 'x100_text_b64_decode', title: 'Base64 Decode', description: 'Dekodiert Base64 zu Text.', icon: '📭', run: (v) => {
+            try { return decodeURIComponent(escape(atob(String(v || '').trim()))); } catch { return 'Ungültiger Base64-Text.'; }
+        } },
+        { key: 'x100_text_rot13', title: 'ROT13', description: 'ROT13-Codierung für Text.', icon: '🔐', run: (v) => String(v || '').replace(/[a-zA-Z]/g, (c) => {
+            const base = c <= 'Z' ? 65 : 97;
+            return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base);
+        }) },
+        { key: 'x100_text_slug', title: 'Slugify', description: 'Erstellt URL-Slug aus Text.', icon: '🧷', run: (v) => miniToolHelpers.slugify(v || '') }
+    ];
+
+    textTools.forEach((tool) => {
+        defs[tool.key] = {
+            title: tool.title,
+            description: tool.description,
+            category: 'Text',
+            inputLabel: 'Text',
+            placeholder: 'Text hier eingeben...',
+            actionText: 'Ausführen',
+            cardIcon: tool.icon,
+            cardBadge: 'Text',
+            generatedBatch: 'x100',
+            run: (value) => {
+                const out = tool.run(value);
+                return String(out || '').trim() || 'Kein Ergebnis.';
+            }
+        };
+    });
+
+    const dateTools = [
+        {
+            key: 'x100_date_days_until',
+            title: 'Tage bis Datum',
+            description: 'Berechnet Tage von heute bis Ziel-Datum.',
+            icon: '📅',
+            run: (v) => {
+                const d = miniToolHelpers.parseDate(v);
+                if (!d) return 'Bitte ein gültiges Datum eingeben (YYYY-MM-DD).';
+                const today = new Date();
+                const ms = d.setHours(0, 0, 0, 0) - new Date(today.getFullYear(), today.getMonth(), today.getDate()).valueOf();
+                return `Differenz: ${Math.round(ms / 86400000)} Tage`;
+            }
+        },
+        {
+            key: 'x100_date_days_between',
+            title: 'Tage zwischen 2 Daten',
+            description: 'Berechnet Tage zwischen Start und Ende.',
+            icon: '🗓️',
+            twoInputs: true,
+            run: (a, b) => {
+                const start = miniToolHelpers.parseDate(a);
+                const end = miniToolHelpers.parseDate(b);
+                if (!start || !end) return 'Bitte zwei gültige Daten eingeben.';
+                return `Differenz: ${Math.round((end - start) / 86400000)} Tage`;
+            }
+        },
+        {
+            key: 'x100_date_add_days',
+            title: 'Datum + Tage',
+            description: 'Addiert Tage zu einem Datum.',
+            icon: '➕',
+            twoInputs: true,
+            run: (a, b) => {
+                const date = miniToolHelpers.parseDate(a);
+                const days = parseMiniNumber(b);
+                if (!date || days === null) return 'Bitte Datum und Tage eingeben.';
+                const out = new Date(date);
+                out.setDate(out.getDate() + Math.trunc(days));
+                return out.toLocaleDateString('de-DE');
+            }
+        },
+        {
+            key: 'x100_date_add_weeks',
+            title: 'Datum + Wochen',
+            description: 'Addiert Wochen zu einem Datum.',
+            icon: '📆',
+            twoInputs: true,
+            run: (a, b) => {
+                const date = miniToolHelpers.parseDate(a);
+                const weeks = parseMiniNumber(b);
+                if (!date || weeks === null) return 'Bitte Datum und Wochen eingeben.';
+                const out = new Date(date);
+                out.setDate(out.getDate() + Math.trunc(weeks) * 7);
+                return out.toLocaleDateString('de-DE');
+            }
+        },
+        {
+            key: 'x100_date_add_months',
+            title: 'Datum + Monate',
+            description: 'Addiert Monate zu einem Datum.',
+            icon: '🗃️',
+            twoInputs: true,
+            run: (a, b) => {
+                const date = miniToolHelpers.parseDate(a);
+                const months = parseMiniNumber(b);
+                if (!date || months === null) return 'Bitte Datum und Monate eingeben.';
+                const out = new Date(date);
+                out.setMonth(out.getMonth() + Math.trunc(months));
+                return out.toLocaleDateString('de-DE');
+            }
+        },
+        {
+            key: 'x100_date_weekday',
+            title: 'Wochentag Finder',
+            description: 'Zeigt den Wochentag für ein Datum.',
+            icon: '📍',
+            run: (v) => {
+                const d = miniToolHelpers.parseDate(v);
+                if (!d) return 'Bitte ein gültiges Datum eingeben.';
+                return d.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            }
+        },
+        {
+            key: 'x100_date_isoweek',
+            title: 'ISO Kalenderwoche',
+            description: 'Berechnet die ISO-Wochennummer.',
+            icon: '🔢',
+            run: (v) => {
+                const d = miniToolHelpers.parseDate(v);
+                if (!d) return 'Bitte ein gültiges Datum eingeben.';
+                return `KW ${miniToolHelpers.weekNumber(d)}`;
+            }
+        },
+        {
+            key: 'x100_date_leapyear',
+            title: 'Schaltjahr Check',
+            description: 'Prüft, ob ein Jahr ein Schaltjahr ist.',
+            icon: '🛰️',
+            run: (v) => {
+                const y = parseInt(String(v || '').trim(), 10);
+                if (!Number.isInteger(y) || y < 1) return 'Bitte ein gültiges Jahr eingeben.';
+                const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+                return leap ? `${y} ist ein Schaltjahr.` : `${y} ist kein Schaltjahr.`;
+            }
+        },
+        {
+            key: 'x100_date_timestamp_now',
+            title: 'Jetzt als Timestamp',
+            description: 'Zeigt aktuellen Unix-Timestamp in Sekunden und Millisekunden.',
+            icon: '⏱️',
+            noInput: true,
+            run: () => {
+                const now = Date.now();
+                return `Millisekunden: ${now}\nSekunden: ${Math.floor(now / 1000)}`;
+            }
+        },
+        {
+            key: 'x100_date_unix_to_date',
+            title: 'Unix -> Datum',
+            description: 'Wandelt Unix-Sekunden in Datum/Uhrzeit um.',
+            icon: '🕰️',
+            run: (v) => {
+                const ts = parseMiniNumber(v);
+                if (ts === null) return 'Bitte Unix-Sekunden eingeben.';
+                const d = new Date(ts * 1000);
+                if (Number.isNaN(d.valueOf())) return 'Ungültiger Timestamp.';
+                return d.toLocaleString('de-DE');
+            }
+        }
+    ];
+
+    dateTools.forEach((tool) => {
+        if (tool.noInput) {
+            defs[tool.key] = {
+                title: tool.title,
+                description: tool.description,
+                category: 'Datum/Zeit',
+                inputVisible: false,
+                actionText: 'Anzeigen',
+                cardIcon: tool.icon,
+                cardBadge: 'Datum/Zeit',
+                generatedBatch: 'x100',
+                run: () => tool.run()
+            };
+            return;
+        }
+
+        if (tool.twoInputs) {
+            defs[tool.key] = {
+                title: tool.title,
+                description: tool.description,
+                category: 'Datum/Zeit',
+                inputLabel: 'Startdatum',
+                placeholder: 'YYYY-MM-DD',
+                input2Label: 'Wert / Enddatum',
+                placeholder2: 'z.B. 7 oder 2026-12-31',
+                input2Visible: true,
+                actionText: 'Berechnen',
+                cardIcon: tool.icon,
+                cardBadge: 'Datum/Zeit',
+                generatedBatch: 'x100',
+                run: (a, b) => tool.run(a, b)
+            };
+            return;
+        }
+
+        defs[tool.key] = {
+            title: tool.title,
+            description: tool.description,
+            category: 'Datum/Zeit',
+            inputLabel: tool.key === 'x100_date_leapyear' ? 'Jahr' : 'Datum / Timestamp',
+            placeholder: tool.key === 'x100_date_leapyear' ? 'z.B. 2028' : (tool.key === 'x100_date_unix_to_date' ? 'z.B. 1735689600' : 'YYYY-MM-DD'),
+            actionText: 'Berechnen',
+            cardIcon: tool.icon,
+            cardBadge: 'Datum/Zeit',
+            generatedBatch: 'x100',
+            run: (value) => tool.run(value)
+        };
+    });
+
+    return defs;
+}
+
+function createPremiumMiniToolDefinitions() {
+    const defs = {};
+    const safe = (value) => String(value || '').replace(/[&<>\"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] || ch));
+    const words = (value) => String(value || '').trim().split(/\s+/).filter(Boolean);
+
+    defs.prolab_cyber_terminal = {
+        title: 'Cyber Terminal Simulator',
+        description: 'Simuliert Befehle wie nmap, whois, ping und traceroute in einer sicheren Lernumgebung.',
+        category: 'Cyber Lab',
+        inputLabel: 'Befehl',
+        placeholder: 'z.B. nmap school.local oder ping api.example.com',
+        actionText: 'Simulieren',
+        cardIcon: '💻',
+        cardBadge: 'Cyber Lab',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const command = String(value || '').trim();
+            if (!command) return 'Beispiel: nmap school.local';
+            const cmd = command.toLowerCase();
+            if (cmd.startsWith('nmap')) {
+                return { html: `<pre style="margin:0;white-space:pre-wrap;">Nmap Scan Report (Simulation)
+Target: ${safe(command.split(/\s+/).slice(1).join(' ') || 'unknown.local')}
+22/tcp   open   ssh
+80/tcp   open   http
+443/tcp  open   https
+3306/tcp filtered mysql
+Hinweis: Nur Trainingsdaten, kein echter Netzwerkscan.</pre>` };
+            }
+            if (cmd.startsWith('whois')) {
+                return { html: `<pre style="margin:0;white-space:pre-wrap;">WHOIS (Simulation)
+Domain: ${safe(command.split(/\s+/).slice(1).join(' ') || 'example.com')}
+Registrar: Demo Registrar GmbH
+Created: 2022-04-17
+Nameserver: ns1.demo.net, ns2.demo.net
+Status: clientTransferProhibited</pre>` };
+            }
+            if (cmd.startsWith('ping')) {
+                return { html: `<pre style="margin:0;white-space:pre-wrap;">PING (Simulation)
+reply #1 time=21ms
+reply #2 time=19ms
+reply #3 time=23ms
+reply #4 time=20ms
+packet loss: 0%</pre>` };
+            }
+            if (cmd.startsWith('traceroute') || cmd.startsWith('tracert')) {
+                return { html: `<pre style="margin:0;white-space:pre-wrap;">Traceroute (Simulation)
+1  192.168.0.1   1ms
+2  10.0.0.1      7ms
+3  80.157.x.x   14ms
+4  edge-${Math.floor(Math.random() * 8) + 1}.ix  19ms
+5  target         23ms</pre>` };
+            }
+            return 'Unterstützte Demo-Befehle: nmap, whois, ping, traceroute.';
+        }
+    };
+
+    defs.prolab_log_forensics = {
+        title: 'Log Forensics Analyzer',
+        description: 'Analysiert Server-Logs auf verdächtige Muster wie Brute-Force, SQLi und 5xx-Spitzen.',
+        category: 'Cyber Lab',
+        inputLabel: 'Log-Text',
+        placeholder: 'Logzeilen hier einfügen...',
+        actionText: 'Analysieren',
+        cardIcon: '🕵️',
+        cardBadge: 'Forensics',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const lines = String(value || '').split(/\r?\n/).filter(Boolean);
+            if (!lines.length) return 'Füge Logzeilen ein, um verdächtige Muster zu erkennen.';
+            let errors5xx = 0;
+            let loginFails = 0;
+            let sqlInjectionHints = 0;
+            let xssHints = 0;
+            lines.forEach((line) => {
+                if (/\s5\d\d\s/.test(line)) errors5xx += 1;
+                if (/login failed|unauthorized|invalid password|401/i.test(line)) loginFails += 1;
+                if (/(union\s+select|or\s+1=1|sleep\(|information_schema)/i.test(line)) sqlInjectionHints += 1;
+                if (/(<script>|onerror=|javascript:)/i.test(line)) xssHints += 1;
+            });
+            const risk = (errors5xx * 1.2) + (loginFails * 1.5) + (sqlInjectionHints * 3) + (xssHints * 2.5);
+            const level = risk >= 12 ? 'Hoch' : risk >= 6 ? 'Mittel' : 'Niedrig';
+            return { html: `<div style="display:grid;gap:8px;">
+<div><strong>Risiko-Level:</strong> ${level}</div>
+<div>5xx-Fehler: ${errors5xx}</div>
+<div>Login-Fehler: ${loginFails}</div>
+<div>SQLi-Indikatoren: ${sqlInjectionHints}</div>
+<div>XSS-Indikatoren: ${xssHints}</div>
+<small style="opacity:.8;">Hinweis: Heuristik für Training, keine produktive SIEM-Engine.</small>
+</div>` };
+        }
+    };
+
+    defs.prolab_password_audit = {
+        title: 'Password Audit Pro',
+        description: 'Bewertet Passwortstärke mit Entropie-Schätzung und Crack-Time-Modell.',
+        category: 'Cyber Lab',
+        inputLabel: 'Passwort',
+        placeholder: 'Passwort hier eingeben...',
+        actionText: 'Prüfen',
+        cardIcon: '🛡️',
+        cardBadge: 'Security',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const pw = String(value || '');
+            if (!pw) return 'Bitte ein Passwort eingeben.';
+            const hasLower = /[a-z]/.test(pw);
+            const hasUpper = /[A-Z]/.test(pw);
+            const hasNumber = /\d/.test(pw);
+            const hasSpecial = /[^A-Za-z0-9]/.test(pw);
+            let charset = 0;
+            if (hasLower) charset += 26;
+            if (hasUpper) charset += 26;
+            if (hasNumber) charset += 10;
+            if (hasSpecial) charset += 33;
+            charset = Math.max(charset, 1);
+            const entropy = pw.length * Math.log2(charset);
+            const guesses = Math.pow(2, entropy);
+            const gps = 5e9;
+            const seconds = guesses / gps;
+            const toHuman = (s) => {
+                if (s < 60) return `${Math.round(s)} Sek`;
+                if (s < 3600) return `${Math.round(s / 60)} Min`;
+                if (s < 86400) return `${Math.round(s / 3600)} Std`;
+                if (s < 31536000) return `${Math.round(s / 86400)} Tage`;
+                return `${Math.round(s / 31536000)} Jahre`;
+            };
+            const score = entropy >= 80 ? 'Sehr stark' : entropy >= 60 ? 'Stark' : entropy >= 45 ? 'Mittel' : 'Schwach';
+            return `Entropie: ${entropy.toFixed(1)} bit\nBewertung: ${score}\nBrute-Force Modell: ${toHuman(seconds)}`;
+        }
+    };
+
+    defs.prolab_zero_trust_check = {
+        title: 'Zero Trust Check',
+        description: 'Prüft Architektur-Text auf Zero-Trust-Prinzipien.',
+        category: 'Cyber Lab',
+        inputLabel: 'Architektur-Beschreibung',
+        placeholder: 'Beschreibe kurz dein System...',
+        actionText: 'Check ausführen',
+        cardIcon: '🧱',
+        cardBadge: 'Architektur',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const txt = String(value || '').toLowerCase();
+            if (!txt.trim()) return 'Bitte eine kurze Systembeschreibung eingeben.';
+            const checks = [
+                ['mfa', /mfa|2fa|multi.?factor/],
+                ['least_privilege', /least privilege|minimalrechte|rollenmodell|rbac/],
+                ['device_posture', /device posture|geräteprüfung|compliance check/],
+                ['microsegmentation', /microsegmentation|segmentierung|netzsegment/],
+                ['continuous_verification', /continuous|laufend|verifizieren|telemetrie/],
+                ['encrypted_transport', /tls|https|verschlüsselt|encryption/]
+            ];
+            const found = checks.filter(([, pattern]) => pattern.test(txt)).map(([name]) => name);
+            return `Erkannte Prinzipien: ${found.length}/6\n${found.join(', ') || 'Keine'}\nEmpfehlung: Fehlende Prinzipien ergänzen und Zugriff kontextabhängig prüfen.`;
+        }
+    };
+
+    defs.prolab_study_formula_coach = {
+        title: 'Formel-Coach Schule',
+        description: 'Erzeugt verständliche Formel-Erklärungen inklusive Variablen-Legende.',
+        category: 'Schule Pro',
+        inputLabel: 'Thema/Formel',
+        placeholder: 'z.B. pythagoras, v=s/t, flaeche kreis',
+        actionText: 'Erklären',
+        cardIcon: '📐',
+        cardBadge: 'Schule Pro',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const q = String(value || '').toLowerCase();
+            if (!q) return 'Gib ein Thema ein, z.B. pythagoras.';
+            if (q.includes('pyth')) return 'Pythagoras: a² + b² = c²\na,b = Katheten, c = Hypotenuse\nNutzen: rechtwinklige Dreiecke.';
+            if (q.includes('v=') || q.includes('geschwindigkeit')) return 'Geschwindigkeit: v = s / t\nv = Geschwindigkeit, s = Strecke, t = Zeit\nUmstellen: s = v·t, t = s/v.';
+            if (q.includes('kreis')) return 'Kreis: A = πr² und U = 2πr\nA = Fläche, U = Umfang, r = Radius.';
+            return 'Lernhilfe: Definiere Variablen, notiere Einheit, stelle Formel um, setze Zahlen ein, Einheit prüfen.';
+        }
+    };
+
+    defs.prolab_exam_trainer = {
+        title: 'Prüfungs-Trainer',
+        description: 'Erstellt einen Lernplan statt Cheats: Fokusblöcke, Wiederholung und Recall.',
+        category: 'Schule Pro',
+        inputLabel: 'Prüfung in Tagen',
+        placeholder: 'z.B. 14',
+        input2Label: 'Themen (Komma-getrennt)',
+        placeholder2: 'z.B. Algebra, Geometrie, Physik',
+        input2Visible: true,
+        actionText: 'Plan bauen',
+        cardIcon: '🎓',
+        cardBadge: 'Lernplan',
+        generatedBatch: 'prolab',
+        run: (value, value2) => {
+            const days = miniToolHelpers.clamp(parseInt(String(value || ''), 10) || 7, 1, 120);
+            const topics = String(value2 || '').split(',').map((t) => t.trim()).filter(Boolean);
+            if (!topics.length) return 'Bitte mindestens ein Thema eingeben.';
+            const rows = [];
+            for (let d = 1; d <= Math.min(days, 12); d += 1) {
+                const topic = topics[(d - 1) % topics.length];
+                rows.push(`Tag ${d}: ${topic} (45m Fokus + 15m aktive Wiederholung)`);
+            }
+            return `Lernplan (${days} Tage, Vorschau):\n${rows.join('\n')}\n\nTipp: Alle 3 Tage Mini-Test ohne Unterlagen.`;
+        }
+    };
+
+    defs.prolab_flashcard_generator = {
+        title: 'Flashcard Generator',
+        description: 'Wandelt Stichwörter in Lernkarten-Format Frage/Antwort um.',
+        category: 'Schule Pro',
+        inputLabel: 'Stichwörter',
+        placeholder: 'z.B. Mitose, DNA, Osmose',
+        actionText: 'Karten erzeugen',
+        cardIcon: '🗂️',
+        cardBadge: 'Lernen',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const items = String(value || '').split(/[\n,;]/).map((s) => s.trim()).filter(Boolean);
+            if (!items.length) return 'Bitte Stichwörter eingeben.';
+            const out = items.slice(0, 20).map((item, i) => `${i + 1}. Frage: Was ist ${item}?\n   Antwort: Definiere ${item} in 2 Sätzen + 1 Beispiel.`);
+            return out.join('\n');
+        }
+    };
+
+    defs.prolab_essay_structure = {
+        title: 'Essay Struktur Pro',
+        description: 'Baut aus einem Thema eine klare Struktur mit Einleitung, Argumenten und Fazit.',
+        category: 'Schule Pro',
+        inputLabel: 'Thema',
+        placeholder: 'z.B. Sollte KI Hausaufgaben korrigieren?',
+        actionText: 'Struktur erstellen',
+        cardIcon: '🧠',
+        cardBadge: 'Writing',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const topic = String(value || '').trim();
+            if (!topic) return 'Bitte ein Thema eingeben.';
+            return { html: `<div style="display:grid;gap:8px;">
+<div><strong>Einleitung:</strong> Kontext + These zu "${safe(topic)}"</div>
+<div><strong>Hauptteil 1:</strong> Pro-Argument mit Beispiel</div>
+<div><strong>Hauptteil 2:</strong> Gegenargument + Entkräftung</div>
+<div><strong>Hauptteil 3:</strong> Auswirkungen auf Schule/Gesellschaft</div>
+<div><strong>Fazit:</strong> Bewertung + Ausblick</div>
+</div>` };
+        }
+    };
+
+    defs.prolab_grade_target = {
+        title: 'Notenziel Rechner',
+        description: 'Berechnet welche Note du brauchst, um dein Ziel im Schnitt zu erreichen.',
+        category: 'Schule Pro',
+        inputLabel: 'Aktueller Schnitt',
+        placeholder: 'z.B. 2.7',
+        input2Label: 'Zielschnitt',
+        placeholder2: 'z.B. 2.3',
+        input2Visible: true,
+        actionText: 'Berechnen',
+        cardIcon: '📘',
+        cardBadge: 'Schule Pro',
+        generatedBatch: 'prolab',
+        run: (value, value2) => {
+            const now = parseMiniNumber(value);
+            const goal = parseMiniNumber(value2);
+            if (now === null || goal === null) return 'Bitte zwei gültige Notenwerte eingeben.';
+            const needed = goal * 2 - now;
+            return `Wenn die nächste Leistung gleich gewichtet ist, brauchst du etwa: ${formatMiniNumber(needed, 2)}.`;
+        }
+    };
+
+    defs.prolab_palette_lab = {
+        title: 'Design Palette Lab',
+        description: 'Erzeugt 5er-Paletten mit klarer Rolle: Primary, Secondary, Accent, Surface, Text.',
+        category: 'Design Pro',
+        inputLabel: 'Basisfarbe (#HEX)',
+        placeholder: 'z.B. #0e8a9b',
+        actionText: 'Palette generieren',
+        cardIcon: '🎨',
+        cardBadge: 'Design Pro',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const rgb = miniToolHelpers.parseHexColor(value || '#0e8a9b');
+            if (!rgb) return 'Bitte eine gültige HEX-Farbe eingeben.';
+            const shift = (f) => rgb.map((n) => miniToolHelpers.clamp(Math.round(n * f), 0, 255));
+            const p = miniToolHelpers.rgbToHex(...rgb);
+            const s = miniToolHelpers.rgbToHex(...shift(0.75));
+            const a = miniToolHelpers.rgbToHex(...shift(1.25));
+            const surf = '#0F172A';
+            const text = '#E2E8F0';
+            return { html: `<div style="display:grid;gap:8px;">
+<div>Primary: <strong>${p}</strong></div>
+<div>Secondary: <strong>${s}</strong></div>
+<div>Accent: <strong>${a}</strong></div>
+<div>Surface: <strong>${surf}</strong></div>
+<div>Text: <strong>${text}</strong></div>
+</div>` };
+        }
+    };
+
+    defs.prolab_typography_pairing = {
+        title: 'Typography Pairing Pro',
+        description: 'Schlägt starke Font-Kombinationen für Headline + Body vor.',
+        category: 'Design Pro',
+        inputLabel: 'Mood',
+        placeholder: 'z.B. modern, editorial, tech, playful',
+        actionText: 'Pairing finden',
+        cardIcon: '🅰️',
+        cardBadge: 'Typography',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const mood = String(value || '').toLowerCase();
+            if (mood.includes('editorial')) return 'Headline: Fraunces\nBody: Source Sans 3\nCharakter: elegant + gut lesbar';
+            if (mood.includes('tech')) return 'Headline: Space Grotesk\nBody: IBM Plex Sans\nCharakter: futuristisch + präzise';
+            if (mood.includes('play')) return 'Headline: Baloo 2\nBody: Nunito\nCharakter: freundlich + locker';
+            return 'Headline: Sora\nBody: Inter Tight\nCharakter: modern + klar';
+        }
+    };
+
+    defs.prolab_ui_copy_polish = {
+        title: 'UI Copy Polish',
+        description: 'Verbessert kurze Button-/Hint-Texte auf klar, präzise, handlungsorientiert.',
+        category: 'Design Pro',
+        inputLabel: 'UI-Text',
+        placeholder: 'z.B. klicken sie hier um fortzufahren',
+        actionText: 'Verbessern',
+        cardIcon: '✍️',
+        cardBadge: 'UX Writing',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const text = String(value || '').trim();
+            if (!text) return 'Bitte einen UI-Text eingeben.';
+            const cleaned = text.replace(/\s+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+            return `Klar: ${cleaned}\nCTA-Variante: Jetzt fortfahren\nKurz-Variante: Weiter`;
+        }
+    };
+
+    defs.prolab_grid_system_builder = {
+        title: 'Grid System Builder',
+        description: 'Berechnet responsive Spaltenbreiten für Desktop/Tablet/Mobile.',
+        category: 'Design Pro',
+        inputLabel: 'Desktop-Breite (px)',
+        placeholder: 'z.B. 1200',
+        input2Label: 'Spalten',
+        placeholder2: 'z.B. 12',
+        input2Visible: true,
+        actionText: 'Grid berechnen',
+        cardIcon: '📐',
+        cardBadge: 'Layout',
+        generatedBatch: 'prolab',
+        run: (value, value2) => {
+            const width = parseMiniNumber(value);
+            const cols = parseInt(String(value2 || ''), 10);
+            if (width === null || !cols || cols < 2 || cols > 24) return 'Bitte Breite und Spaltenzahl (2-24) angeben.';
+            const gutter = 24;
+            const totalGutter = gutter * (cols - 1);
+            const col = (width - totalGutter) / cols;
+            return `Desktop: ${cols} Spalten, ${col.toFixed(2)}px pro Spalte, Gutter ${gutter}px\nTablet: 8 Spalten\nMobile: 4 Spalten`;
+        }
+    };
+
+    defs.prolab_css_component_generator = {
+        title: 'CSS Component Generator',
+        description: 'Erstellt moderne CSS-Snippets für Card, Button und Panel.',
+        category: 'Design Pro',
+        inputLabel: 'Typ',
+        placeholder: 'card, button oder panel',
+        actionText: 'Snippet erzeugen',
+        cardIcon: '🧩',
+        cardBadge: 'CSS',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const type = String(value || '').toLowerCase().trim();
+            if (type === 'button') {
+                return `.btn-pro {\n  padding: 12px 18px;\n  border-radius: 12px;\n  border: 1px solid rgba(255,255,255,0.2);\n  background: linear-gradient(135deg, #0e8a9b, #1d4ed8);\n  color: #fff;\n  font-weight: 700;\n}`;
+            }
+            if (type === 'panel') {
+                return `.panel-pro {\n  border-radius: 18px;\n  background: rgba(15,23,42,0.75);\n  backdrop-filter: blur(12px);\n  border: 1px solid rgba(148,163,184,0.25);\n  box-shadow: 0 24px 48px rgba(2,6,23,0.35);\n}`;
+            }
+            return `.card-pro {\n  border-radius: 16px;\n  padding: 18px;\n  background: linear-gradient(160deg, #0f172a, #111827);\n  border: 1px solid rgba(56,189,248,0.3);\n}`;
+        }
+    };
+
+    defs.prolab_json_schema_maker = {
+        title: 'JSON Schema Maker',
+        description: 'Leitet aus einem JSON-Beispiel ein Schema-Grundgerüst ab.',
+        category: 'Tech Pro',
+        inputLabel: 'JSON Beispiel',
+        placeholder: '{"name":"Max","age":16}',
+        actionText: 'Schema bauen',
+        cardIcon: '🧬',
+        cardBadge: 'Tech Pro',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            try {
+                const obj = JSON.parse(String(value || '{}'));
+                if (obj === null || Array.isArray(obj) || typeof obj !== 'object') return 'Bitte ein JSON-Objekt eingeben.';
+                const props = Object.entries(obj).map(([k, v]) => {
+                    const t = Array.isArray(v) ? 'array' : typeof v;
+                    return `    "${k}": { "type": "${t}" }`;
+                });
+                return `{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+${props.join(',\n')}
+  },
+  "required": [${Object.keys(obj).map((k) => `"${k}"`).join(', ')}]
+}`;
+            } catch {
+                return 'Ungültiges JSON. Bitte zuerst validen JSON-Text eingeben.';
+            }
+        }
+    };
+
+    defs.prolab_api_blueprint = {
+        title: 'API Endpoint Blueprint',
+        description: 'Generiert Endpoint-Struktur mit Methode, Auth und Beispielantwort.',
+        category: 'Tech Pro',
+        inputLabel: 'Ressource',
+        placeholder: 'z.B. users, orders, tasks',
+        actionText: 'Blueprint erzeugen',
+        cardIcon: '🛰️',
+        cardBadge: 'Backend',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const res = miniToolHelpers.slugify(value || 'resource') || 'resource';
+            return `GET /api/${res}\nPOST /api/${res}\nGET /api/${res}/{id}\nPATCH /api/${res}/{id}\nDELETE /api/${res}/{id}\n\nAuth: Bearer JWT\nResponse: { \"ok\": true, \"data\": [...] }`;
+        }
+    };
+
+    defs.prolab_sql_query_designer = {
+        title: 'SQL Query Designer',
+        description: 'Erstellt sichere SQL-Templates mit Parametern (Prepared Statements).',
+        category: 'Tech Pro',
+        inputLabel: 'Tabelle',
+        placeholder: 'z.B. users',
+        input2Label: 'Filter-Feld',
+        placeholder2: 'z.B. email',
+        input2Visible: true,
+        actionText: 'SQL erzeugen',
+        cardIcon: '🗄️',
+        cardBadge: 'SQL',
+        generatedBatch: 'prolab',
+        run: (value, value2) => {
+            const table = miniToolHelpers.slugify(value || '').replace(/-/g, '_');
+            const field = miniToolHelpers.slugify(value2 || '').replace(/-/g, '_');
+            if (!table || !field) return 'Bitte Tabelle und Feld angeben.';
+            return `-- Sicheres Template\nSELECT * FROM ${table} WHERE ${field} = ?;\nUPDATE ${table} SET updated_at = NOW() WHERE ${field} = ?;\n-- Immer Parameter binden, nie String-Konkatenation.`;
+        }
+    };
+
+    defs.prolab_latency_simulator = {
+        title: 'Latency Simulator',
+        description: 'Schätzt User-Impact bei unterschiedlicher API-Latenz.',
+        category: 'Tech Pro',
+        inputLabel: 'Requests pro View',
+        placeholder: 'z.B. 12',
+        input2Label: 'Ø Latenz pro Request (ms)',
+        placeholder2: 'z.B. 180',
+        input2Visible: true,
+        actionText: 'Impact berechnen',
+        cardIcon: '📡',
+        cardBadge: 'Performance',
+        generatedBatch: 'prolab',
+        run: (value, value2) => {
+            const req = parseMiniNumber(value);
+            const lat = parseMiniNumber(value2);
+            if (req === null || lat === null) return 'Bitte Requests und Latenz angeben.';
+            const serial = req * lat;
+            const parallelApprox = Math.ceil(req / 4) * lat;
+            return `Seriell: ~${Math.round(serial)}ms\nParallel (4er): ~${Math.round(parallelApprox)}ms\nEmpfehlung: Bündeln, Caching, kritische Pfade priorisieren.`;
+        }
+    };
+
+    defs.prolab_compression_estimator = {
+        title: 'Compression Estimator',
+        description: 'Schätzt Dateigröße nach gzip/brotli für typische Web-Assets.',
+        category: 'Tech Pro',
+        inputLabel: 'Dateigröße (KB)',
+        placeholder: 'z.B. 420',
+        actionText: 'Schätzen',
+        cardIcon: '🗜️',
+        cardBadge: 'Web Perf',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const kb = parseMiniNumber(value);
+            if (kb === null || kb <= 0) return 'Bitte eine positive Dateigröße in KB eingeben.';
+            const gzip = kb * 0.33;
+            const brotli = kb * 0.26;
+            return `Original: ${kb.toFixed(1)} KB\ngzip: ~${gzip.toFixed(1)} KB\nbrotli: ~${brotli.toFixed(1)} KB`;
+        }
+    };
+
+    defs.prolab_regex_architect = {
+        title: 'Regex Architect',
+        description: 'Schlägt robuste Regex-Muster für typische Validierungen vor.',
+        category: 'Tech Pro',
+        inputLabel: 'Use Case',
+        placeholder: 'z.B. email, ipv4, url, date',
+        actionText: 'Pattern zeigen',
+        cardIcon: '🔬',
+        cardBadge: 'Regex',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const q = String(value || '').toLowerCase();
+            if (q.includes('email')) return '/^[^\s@]+@[^\s@]+\.[^\s@]+$/';
+            if (q.includes('ipv4')) return '/^(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)(\\.(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)){3}$/';
+            if (q.includes('url')) return '/^https?:\/\/[^\s$.?#].[^\s]*$/i';
+            if (q.includes('date')) return '/^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$/';
+            return 'Use Cases: email, ipv4, url, date';
+        }
+    };
+
+    defs.prolab_ascii_circuit = {
+        title: 'ASCII Circuit Designer',
+        description: 'Erzeugt technische ASCII-Skizzen für Stromfluss und Module.',
+        category: 'Tech Pro',
+        inputLabel: 'Setup',
+        placeholder: 'z.B. sensor-controller-led',
+        actionText: 'Skizze bauen',
+        cardIcon: '🔌',
+        cardBadge: 'Engineering',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const parts = String(value || 'sensor-controller-led').split(/[-,>]/).map((s) => s.trim()).filter(Boolean);
+            if (parts.length < 2) return 'Bitte mindestens zwei Module angeben, z.B. sensor-controller-led';
+            const line = parts.map((p) => `[${p.toUpperCase()}]`).join(' -> ');
+            return `${line}\nPower: +5V -----> ${parts[0].toUpperCase()} ... GND`; 
+        }
+    };
+
+    defs.prolab_hacker_story_mode = {
+        title: 'Hacker Simulator Story',
+        description: 'Erzeugt missionsartige Cyber-Trainingsszenarien ohne echte Angriffsanleitung.',
+        category: 'Cyber Lab',
+        inputLabel: 'Mission-Typ',
+        placeholder: 'z.B. phishing-detect, incident-response, blue-team',
+        actionText: 'Mission starten',
+        cardIcon: '🧠',
+        cardBadge: 'Simulator',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const mission = String(value || 'blue-team').toLowerCase();
+            const scenarios = {
+                'phishing-detect': 'Mission: Erkenne 5 Anzeichen einer Phishing-Mail und markiere Risiko-Level pro Mail.',
+                'incident-response': 'Mission: Priorisiere Alerts, isoliere betroffene Systeme, dokumentiere Timeline + Lessons Learned.',
+                'blue-team': 'Mission: Hardening-Check für 3 Server, MFA-Quote erhöhen, Logs auf Anomalien prüfen.'
+            };
+            return `${scenarios[mission] || scenarios['blue-team']}\n\nZiel: defensive Security-Kompetenz aufbauen.`;
+        }
+    };
+
+    defs.prolab_design_brief_generator = {
+        title: 'Design Brief Generator',
+        description: 'Generiert ein professionelles Design-Briefing für App/Website-Projekte.',
+        category: 'Design Pro',
+        inputLabel: 'Projektname',
+        placeholder: 'z.B. Nova Learning App',
+        actionText: 'Brief erstellen',
+        cardIcon: '📋',
+        cardBadge: 'Creative',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const name = String(value || 'Projekt').trim();
+            return `Projekt: ${name}\nZielgruppe: 16-35\nTonality: klar, mutig, hochwertig\nVisuelle Richtung: starke Typografie + dynamische Flächen\nDeliverables: Moodboard, UI-Kit, Click-Prototype, QA.`;
+        }
+    };
+
+    defs.prolab_prompt_engineer = {
+        title: 'Prompt Engineer Assistant',
+        description: 'Baut präzise Prompt-Strukturen für Coding, Design und Analyse.',
+        category: 'Tech Pro',
+        inputLabel: 'Task',
+        placeholder: 'z.B. landing page redesign',
+        actionText: 'Prompt bauen',
+        cardIcon: '🧩',
+        cardBadge: 'AI Tech',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const task = String(value || '').trim();
+            if (!task) return 'Bitte einen Task eingeben.';
+            return `Rolle: Senior Specialist\nAufgabe: ${task}\nConstraints: klare Kriterien, keine Annahmen\nOutput-Format: nummerierte Schritte + Checkliste + Edge Cases.`;
+        }
+    };
+
+    defs.prolab_brainstorm_engine = {
+        title: 'Innovation Brainstorm Engine',
+        description: 'Erzeugt 12 technisch ambitionierte Feature-Ideen rund um dein Thema.',
+        category: 'Tech Pro',
+        inputLabel: 'Thema',
+        placeholder: 'z.B. education app, cyber dashboard',
+        actionText: 'Ideen generieren',
+        cardIcon: '🚀',
+        cardBadge: 'Innovation',
+        generatedBatch: 'prolab',
+        run: (value) => {
+            const topic = String(value || 'digitales produkt').trim();
+            const items = [
+                'Realtime-Event-Feed mit Prioritätsstufen',
+                'Adaptive UI je nach Nutzungsmuster',
+                'Auto-Tagging via Semantik',
+                'Offline-first Sync mit Konfliktauflösung',
+                'Security Scorecard mit Trendlinien',
+                'Voice Shortcuts für Power-User',
+                'Role-based Quick Actions',
+                'Scenario-Simulator für Risikoentscheidungen',
+                'Learning Replay aus User Sessions',
+                'Contextual AI Copilot pro Ansicht',
+                'Heatmap-basierte UX-Optimierung',
+                'Plugin-SDK für Drittanbieter'
+            ];
+            return `Innovation-Ideen für ${topic}:\n- ${items.join('\n- ')}`;
+        }
+    };
+
+    const extraCyber = [
+        { key: 'prolab_threat_model_canvas', title: 'Threat Model Canvas', desc: 'Bedrohungsmodell für App/Service in STRIDE-ähnlichen Blöcken.', icon: '🧭' },
+        { key: 'prolab_soc_alert_triage', title: 'SOC Alert Triage', desc: 'Priorisiert Alarme nach Impact, Confidence und Exploitability.', icon: '🚨' },
+        { key: 'prolab_incident_timeline', title: 'Incident Timeline Builder', desc: 'Strukturiert Security-Vorfälle in saubere Zeitachsen.', icon: '🕒' },
+        { key: 'prolab_phishing_mail_checker', title: 'Phishing Mail Checker', desc: 'Checkt Mailtext auf typische Social-Engineering-Merkmale.', icon: '📩' },
+        { key: 'prolab_network_segmentation_guide', title: 'Network Segmentation Guide', desc: 'Erzeugt Segmentierungs-Vorschläge für sichere Netzwerke.', icon: '🧱' },
+        { key: 'prolab_blue_team_checklist', title: 'Blue Team Checklist', desc: 'Defensive Security-Checkliste für tägliche Operation.', icon: '🛡️' }
+    ];
+
+    extraCyber.forEach((tool) => {
+        defs[tool.key] = {
+            title: tool.title,
+            description: tool.desc,
+            category: 'Cyber Lab',
+            inputLabel: 'Kontext',
+            placeholder: 'z.B. webshop api / school portal / mobile app',
+            actionText: 'Analysieren',
+            cardIcon: tool.icon,
+            cardBadge: 'Cyber Lab',
+            generatedBatch: 'prolab',
+            run: (value) => {
+                const ctx = String(value || 'System').trim();
+                return `${tool.title} für: ${ctx}\n1) Assets definieren\n2) Angriffsfläche kartieren\n3) Risiko priorisieren\n4) Gegenmaßnahmen planen\n5) Review-Termin festlegen`;
+            }
+        };
+    });
+
+    const extraSchool = [
+        { key: 'prolab_oral_exam_trainer', title: 'Mündlich-Prüfung Trainer', desc: 'Trainiert Antworten mit klarer Struktur.', icon: '🗣️' },
+        { key: 'prolab_summary_compressor', title: 'Zusammenfassung Kompressor', desc: 'Macht aus langen Texten lernbare Kurzfassungen.', icon: '🧾' },
+        { key: 'prolab_topic_quiz_builder', title: 'Themen-Quiz Builder', desc: 'Erstellt Schnellquiz zu einem Thema.', icon: '❓' },
+        { key: 'prolab_revision_scheduler', title: 'Wiederholungs-Scheduler', desc: 'Plant Wiederholungen nach Spaced-Repetition-Logik.', icon: '📅' },
+        { key: 'prolab_concept_map_helper', title: 'Concept Map Helper', desc: 'Baut Begriffsnetze für bessere Lernverknüpfung.', icon: '🕸️' },
+        { key: 'prolab_math_drill_generator', title: 'Mathe-Drill Generator', desc: 'Erzeugt Übungsblöcke in steigender Schwierigkeit.', icon: '➗' }
+    ];
+
+    extraSchool.forEach((tool) => {
+        defs[tool.key] = {
+            title: tool.title,
+            description: tool.desc,
+            category: 'Schule Pro',
+            inputLabel: 'Thema',
+            placeholder: 'z.B. lineare Funktionen, Weimarer Republik, DNA',
+            actionText: 'Lernhilfe bauen',
+            cardIcon: tool.icon,
+            cardBadge: 'Schule Pro',
+            generatedBatch: 'prolab',
+            run: (value) => {
+                const topic = String(value || 'Thema').trim();
+                const n = Math.max(3, Math.min(8, words(topic).length + 3));
+                const bullets = Array.from({ length: n }, (_, i) => `${i + 1}. Kernpunkt ${i + 1} zu ${topic}`);
+                return `${tool.title}: ${topic}\n${bullets.join('\n')}\n\nHinweis: Lernhilfe, kein Prüfungsbetrug.`;
+            }
+        };
+    });
+
+    const extraDesign = [
+        { key: 'prolab_brand_voice_studio', title: 'Brand Voice Studio', desc: 'Definiert Tonalität, Do/Don\'t und Sprachbeispiele.', icon: '🎙️' },
+        { key: 'prolab_landing_wireframe_plan', title: 'Landing Wireframe Plan', desc: 'Erstellt Struktur für Hero, Proof, CTA und Footer.', icon: '🧱' },
+        { key: 'prolab_component_state_matrix', title: 'Component State Matrix', desc: 'Plant Zustände wie default, hover, focus, disabled.', icon: '🧩' },
+        { key: 'prolab_motion_concept_lab', title: 'Motion Concept Lab', desc: 'Definiert sinnvolle Animationen mit Dauer und Zweck.', icon: '🎞️' },
+        { key: 'prolab_accessibility_pass', title: 'Accessibility Pass', desc: 'Checkliste für Kontrast, Fokus, Semantik und Labels.', icon: '♿' },
+        { key: 'prolab_icon_system_builder', title: 'Icon System Builder', desc: 'Legt Stil, Strichstärke und Raster für Icons fest.', icon: '🧿' }
+    ];
+
+    extraDesign.forEach((tool) => {
+        defs[tool.key] = {
+            title: tool.title,
+            description: tool.desc,
+            category: 'Design Pro',
+            inputLabel: 'Projektkontext',
+            placeholder: 'z.B. fintech app, gaming dashboard, school portal',
+            actionText: 'Framework bauen',
+            cardIcon: tool.icon,
+            cardBadge: 'Design Pro',
+            generatedBatch: 'prolab',
+            run: (value) => {
+                const ctx = String(value || 'Projekt').trim();
+                return `${tool.title} für ${ctx}\n- Zielgruppe\n- Visuelle Leitplanken\n- Komponenten-Regeln\n- Qualitätskriterien\n- QA-Check`;
+            }
+        };
+    });
+
+    const extraTech = [
+        { key: 'prolab_system_design_canvas', title: 'System Design Canvas', desc: 'Skizziert Services, Datenflüsse und Engpässe.', icon: '🏗️' },
+        { key: 'prolab_cache_strategy_advisor', title: 'Cache Strategy Advisor', desc: 'Empfiehlt Cache-Layer und Invalidation-Ansatz.', icon: '🧠' },
+        { key: 'prolab_queue_pipeline_planner', title: 'Queue Pipeline Planner', desc: 'Plant Worker/Retry/Dead-Letter-Strukturen.', icon: '📬' },
+        { key: 'prolab_monitoring_kpi_builder', title: 'Monitoring KPI Builder', desc: 'Definiert SLO, SLI und Alert-Grenzwerte.', icon: '📈' },
+        { key: 'prolab_release_risk_checker', title: 'Release Risk Checker', desc: 'Bewertet Risiko vor Deploy mit klaren Gates.', icon: '🚦' },
+        { key: 'prolab_data_model_studio', title: 'Data Model Studio', desc: 'Leitet Entitäten, Relationen und Constraints ab.', icon: '🗃️' }
+    ];
+
+    extraTech.forEach((tool) => {
+        defs[tool.key] = {
+            title: tool.title,
+            description: tool.desc,
+            category: 'Tech Pro',
+            inputLabel: 'Use Case',
+            placeholder: 'z.B. chat app with realtime updates',
+            actionText: 'Blueprint erstellen',
+            cardIcon: tool.icon,
+            cardBadge: 'Tech Pro',
+            generatedBatch: 'prolab',
+            run: (value) => {
+                const useCase = String(value || 'Use Case').trim();
+                return `${tool.title}: ${useCase}\nA) Kernmodule\nB) Datenfluss\nC) Failure-Mode\nD) Skalierungshebel\nE) Observability-Punkte`;
+            }
+        };
+    });
+
+    return defs;
+}
+
+const extraMiniToolDefinitions = createExtraMiniToolDefinitions();
+Object.keys(extraMiniToolDefinitions).forEach((mode) => {
+    if (!MINI_TOOL_DEFINITIONS[mode]) {
+        MINI_TOOL_DEFINITIONS[mode] = extraMiniToolDefinitions[mode];
+    }
+});
+
+const premiumMiniToolDefinitions = createPremiumMiniToolDefinitions();
+Object.keys(premiumMiniToolDefinitions).forEach((mode) => {
+    if (!MINI_TOOL_DEFINITIONS[mode]) {
+        MINI_TOOL_DEFINITIONS[mode] = premiumMiniToolDefinitions[mode];
+    }
+});
+
+function renderGeneratedMiniToolCards() {
+    const grid = document.getElementById('modeCardsGrid');
+    if (!grid) return;
+
+    const existingModes = new Set();
+    grid.querySelectorAll('.mode-card').forEach((card) => {
+        const onclick = card.getAttribute('onclick') || '';
+        const match = onclick.match(/selectMode\('([^']+)'\)/);
+        if (match) existingModes.add(match[1]);
+    });
+
+    const generatedModes = Object.entries(MINI_TOOL_DEFINITIONS)
+        .filter(([, def]) => def?.generatedBatch === 'x100' || def?.generatedBatch === 'prolab')
+        .sort((a, b) => (a[1].title || '').localeCompare(b[1].title || '', 'de'));
+
+    const frag = document.createDocumentFragment();
+
+    generatedModes.forEach(([mode, def]) => {
+        if (existingModes.has(mode)) return;
+
+        const btn = document.createElement('button');
+        btn.className = `mode-card mode-card-${mode}`;
+        btn.setAttribute('onclick', `selectMode('${mode}')`);
+
+        const icon = document.createElement('div');
+        icon.className = 'mode-card-icon';
+        icon.textContent = def.cardIcon || '🛠️';
+
+        const body = document.createElement('div');
+        body.className = 'mode-card-body';
+
+        const h3 = document.createElement('h3');
+        h3.textContent = def.title || mode;
+
+        const p = document.createElement('p');
+        p.textContent = def.description || 'Neues Mini-Tool';
+
+        const badge = document.createElement('span');
+        badge.className = 'mode-badge';
+        badge.textContent = def.cardBadge || def.category || 'Tool';
+
+        body.appendChild(h3);
+        body.appendChild(p);
+        body.appendChild(badge);
+        btn.appendChild(icon);
+        btn.appendChild(body);
+        frag.appendChild(btn);
+    });
+
+    if (frag.childNodes.length) {
+        grid.appendChild(frag);
+    }
+}
+
 const MINI_TOOL_MODES = new Set(Object.keys(MINI_TOOL_DEFINITIONS));
 let currentUser = null;
 let currentProfile = null;
@@ -1920,6 +3342,7 @@ async function startApp() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    renderGeneratedMiniToolCards();
     if (isDesktopMode()) {
         decorateDesktopModeCards();
         initDesktopUpdates();
