@@ -3343,6 +3343,7 @@ async function startApp() {
 
 document.addEventListener('DOMContentLoaded', () => {
     renderGeneratedMiniToolCards();
+    initSecurityExperience();
     if (isDesktopMode()) {
         decorateDesktopModeCards();
         initDesktopUpdates();
@@ -3571,6 +3572,8 @@ function showLoggedInUI() {
         : `Hallo, ${escapeHtml(displayName)}.`;
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
+        <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
+        <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
         <a href="admin.html" class="nav-link">Admin</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
         <button onclick="openPricingModal()" class="plan-badge ${hasPremiumAccess() ? 'premium' : (hasProAccess() ? 'pro' : '')}" style="border:0;cursor:pointer;">${plan}</button>
@@ -3595,7 +3598,7 @@ function showLoggedInUI() {
 function showLoggedOutUI() {
     const navLinks = document.getElementById('navLinks');
     if (!navLinks) return;
-    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a><a href="admin.html" class="nav-link">Admin</a>';
+    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a><button type="button" class="nav-pill" onclick="showSection(\'auth\')">Hinzufügen</button><button type="button" class="nav-pill" onclick="showSection(\'updates\')">Updates</button><a href="admin.html" class="nav-link">Admin</a>';
 }
 
 function showAdminGuestPreviewUI() {
@@ -3603,6 +3606,8 @@ function showAdminGuestPreviewUI() {
     if (!navLinks) return;
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
+        <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
+        <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
         <a href="admin.html" class="nav-link">Admin</a>
         <span class="plan-badge">Gast-Test</span>
         <button onclick="exitAdminGuestPreview()" class="logout-btn">Test verlassen</button>
@@ -3867,6 +3872,47 @@ async function loadMyApps() {
     }
 }
 
+function runSecurityCheck() {
+    const input = document.getElementById('securityCheckInput');
+    const meterFill = document.getElementById('securityMeterFill');
+    const hints = document.getElementById('securityHints');
+    if (!input || !meterFill || !hints) return;
+
+    const value = String(input.value || '').trim();
+    let score = 0;
+    const checks = [];
+
+    if (value.length >= 12) { score += 1; checks.push('Länge >= 12'); }
+    if (/[A-Z]/.test(value)) { score += 1; checks.push('Großbuchstaben'); }
+    if (/[0-9]/.test(value)) { score += 1; checks.push('Zahl'); }
+    if (/[^A-Za-z0-9]/.test(value)) { score += 1; checks.push('Sonderzeichen'); }
+    if (value.length >= 16) { score += 1; checks.push('Sehr lang'); }
+
+    const width = Math.min(100, score * 20);
+    const label = score >= 4 ? 'strong' : score >= 3 ? 'good' : score >= 2 ? 'medium' : 'weak';
+    meterFill.style.width = `${width}%`;
+    meterFill.className = label;
+
+    const headline = score >= 4 ? 'Stark' : score >= 3 ? 'Gut' : score >= 2 ? 'Mittel' : 'Schwach';
+    hints.innerHTML = `<strong>${headline}</strong><br>${checks.length ? checks.join(' • ') : 'Füge mehr Länge oder Sonderzeichen hinzu.'}`;
+}
+
+function toggleGhostMode() {
+    const button = document.getElementById('ghostModeToggle');
+    const isActive = document.body.classList.toggle('ghost-mode');
+    if (button) {
+        button.textContent = isActive ? '🌫️ Fokusmodus aktiv' : '🌫️ Fokusmodus aktivieren';
+    }
+}
+
+function initSecurityExperience() {
+    const input = document.getElementById('securityCheckInput');
+    if (input) {
+        input.addEventListener('input', runSecurityCheck);
+    }
+    runSecurityCheck();
+}
+
 function showSection(sectionId) {
     const token = localStorage.getItem('token');
     if (sectionId === 'auth' && token && !isAdminGuestPreview()) {
@@ -4034,6 +4080,8 @@ function showDesktopUI() {
     navLinks.innerHTML = `
         <span class="hello-user">Desktop-App - ehoser.de</span>
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Tools</a>
+        <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
+        <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
         <a href="#" onclick="showSection('auth')" class="nav-link desktop-online-link">Online-Konto</a>
     `;
 }
@@ -4041,8 +4089,9 @@ function showDesktopUI() {
 let _unlockCode = null;
 
 async function loadUnlockCode() {
+    const display = document.getElementById('unlockCodeDisplay');
     if (_unlockCode) {
-        document.getElementById('unlockCodeDisplay').textContent = _unlockCode;
+        if (display) display.textContent = _unlockCode;
         updateGoogleAuthVisibility();
         return;
     }
@@ -4050,10 +4099,10 @@ async function loadUnlockCode() {
         const res = await fetch(`${API_BASE}/unlock-code`);
         const data = await res.json();
         _unlockCode = data.code;
-        document.getElementById('unlockCodeDisplay').textContent = _unlockCode;
+        if (display) display.textContent = _unlockCode;
         updateGoogleAuthVisibility();
     } catch {
-        document.getElementById('unlockCodeDisplay').textContent = '–';
+        if (display) display.textContent = '–';
     }
 }
 

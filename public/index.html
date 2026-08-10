@@ -93,6 +93,7 @@
                 <div class="nav-links" id="navLinks">
                     <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
                     <a href="admin.html" class="nav-link">Admin</a>
+                    <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
                 </div>
             </div>
         </nav>
@@ -100,6 +101,40 @@
         <main class="main-content">
 
             <!-- ── Modus-Auswahl ─────────────────────────────────── -->
+            <section id="updates" class="section">
+                <div class="updates-shell">
+                    <div class="updates-header">
+                        <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
+                        <div>
+                            <p class="eyebrow">Update-Board</p>
+                            <h2>Was kommt als Nächstes?</h2>
+                        </div>
+                    </div>
+                    <div class="updates-grid">
+                        <article class="update-card update-card-main">
+                            <div class="update-kicker">Jetzt in Planung</div>
+                            <h3>Discord-ähnlicher Chat</h3>
+                            <p>Mehr Kanäle, bessere Gruppierungen und ein flüssigerer, moderner Messenger-Feel.</p>
+                            <ul>
+                                <li>Neue Channel-Ansicht</li>
+                                <li>Live-Status &amp; Online-Indikatoren</li>
+                                <li>Schönerer Nachrichteneingang</li>
+                            </ul>
+                        </article>
+                        <article class="update-card">
+                            <div class="update-kicker">Sicherheit</div>
+                            <h3>Stärkere Privat-Sessions</h3>
+                            <p>Mehr Schutz für Login, Uploads und private Workspaces.</p>
+                        </article>
+                        <article class="update-card">
+                            <div class="update-kicker">Produktivität</div>
+                            <h3>Neue Mini-Tools</h3>
+                            <p>Mehr Assistenten, Konverter und schnelle Helfer direkt im Workspace.</p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
             <section id="mode-select" class="section">
                 <div class="mode-select-container">
                     <div class="mode-hero">
@@ -111,6 +146,56 @@
                             <input type="text" id="modeSearchInput" class="mode-search-input" placeholder="Feature suchen…" oninput="filterModeCards(this.value)" autocomplete="off">
                         </div>
                     </div>
+
+                    <div class="experience-grid">
+                        <div class="experience-card experience-card-security">
+                            <div class="experience-card-header">
+                                <span class="experience-pill">🔐 Sicherheit</span>
+                                <h3>Mehr Schutz, weniger Aufwand</h3>
+                            </div>
+                            <div class="experience-points">
+                                <div class="experience-point">
+                                    <span>✓</span>
+                                    <div>
+                                        <strong>JWT-geschützte Sessions</strong>
+                                        <p>Deine Anmeldung bleibt abgesichert und wird nur mit gültigem Token verwendet.</p>
+                                    </div>
+                                </div>
+                                <div class="experience-point">
+                                    <span>✓</span>
+                                    <div>
+                                        <strong>Upload-Filter</strong>
+                                        <p>Nur erlaubte Bild- und APK-Dateien kommen sicher in den Upload-Flow.</p>
+                                    </div>
+                                </div>
+                                <div class="experience-point">
+                                    <span>✓</span>
+                                    <div>
+                                        <strong>Datenschutz im Fokus</strong>
+                                        <p>Private Sessions, klare Zustände und moderne UI-Hinweise ohne unnötige Ablenkung.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="experience-card experience-card-cool">
+                            <div class="experience-card-header">
+                                <span class="experience-pill">⚡ Neu</span>
+                                <h3>Neuer Look + sofortiger Sicherheits-Check</h3>
+                            </div>
+                            <div class="security-check-card">
+                                <label class="security-check-label" for="securityCheckInput">Passwort-Check</label>
+                                <input id="securityCheckInput" type="password" placeholder="Erstelle ein starkes Passwort" autocomplete="new-password">
+                                <div class="security-meter" aria-hidden="true">
+                                    <span id="securityMeterFill"></span>
+                                </div>
+                                <div id="securityHints" class="security-hints">Starte den Check, um sofort Feedback zu bekommen.</div>
+                                <button type="button" class="security-check-btn" onclick="runSecurityCheck()">Check starten</button>
+                            </div>
+                            <button type="button" id="ghostModeToggle" class="ghost-mode-toggle" onclick="toggleGhostMode()">🌫️ Fokusmodus aktivieren</button>
+                        </div>
+                    </div>
+
                     <div class="mode-cards" id="modeCardsGrid">
                         <button class="mode-card mode-card-games" onclick="selectMode('games')">
                             <div class="mode-card-icon">🎮</div>
@@ -2640,50 +2725,6 @@ Ramen</textarea>
                 <span class="ban-term-name">bash — system@ehoser</span>
             </div>
             <div class="ban-term-body" id="banTermBody"></div>
-        </div>
-    </div>
-
-    <button id="supportLauncher" class="support-launcher" type="button" onclick="openSupport()">Support</button>
-
-    <div id="supportModal" class="support-modal" aria-hidden="true">
-        <div class="support-panel" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
-            <div class="support-head">
-                <div>
-                    <div class="support-kicker">Ehoser Support</div>
-                    <h2 id="supportTitle">Wie können wir helfen?</h2>
-                </div>
-                <button class="support-close" type="button" onclick="closeSupport()" aria-label="Support schließen">×</button>
-            </div>
-
-            <div id="supportLoading" class="support-stage support-loading">
-                <div class="support-spinner"></div>
-                <strong>Support wird geladen</strong>
-                <span>Einen Moment bitte …</span>
-            </div>
-
-            <div id="supportReasons" class="support-stage" style="display:none">
-                <p class="support-copy">Wählen Sie den Grund für den Support aus.</p>
-                <div class="support-reason-grid">
-                    <button type="button" onclick="selectSupportReason('Anmeldung')">Anmeldung</button>
-                    <button type="button" onclick="selectSupportReason('Technik')">Technik</button>
-                    <button type="button" onclick="selectSupportReason('Bugs')">Bugs</button>
-                    <button type="button" onclick="selectSupportReason('Hilfe')">Hilfe</button>
-                    <button type="button" onclick="selectSupportReason('Sonstiges')">Sonstiges</button>
-                </div>
-            </div>
-
-            <div id="supportConnecting" class="support-stage support-connecting" style="display:none">
-                <div class="support-avatar">E</div>
-                <strong>Bitte warten Sie.</strong>
-                <span>Sie werden mit einem unserer Ehoser Mitarbeiter verbunden.</span>
-                <div class="support-progress"><div id="supportConnectBar"></div></div>
-            </div>
-
-            <div id="supportChat" class="support-chat" style="display:none">
-                <div id="supportChatKitMount" class="support-chatkit-mount">
-                    <div class="support-chatkit-loading">Ehoser Support wird verbunden...</div>
-                </div>
-            </div>
         </div>
     </div>
 
