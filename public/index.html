@@ -18,9 +18,222 @@
     <style>
         html { background: #000; }
         body.captcha-active { overflow: hidden !important; }
+        body.entry-locked { overflow: hidden; }
+        .entry-gate {
+            position: fixed;
+            inset: 0;
+            z-index: 12000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background:
+                radial-gradient(circle at top left, rgba(14, 138, 155, 0.28), transparent 34%),
+                radial-gradient(circle at bottom right, rgba(77, 159, 255, 0.22), transparent 38%),
+                linear-gradient(180deg, rgba(5, 12, 20, 0.98), rgba(5, 10, 16, 0.99));
+            backdrop-filter: blur(18px);
+        }
+        .entry-gate-panel {
+            width: min(100%, 920px);
+            display: grid;
+            grid-template-columns: 1.05fr .95fr;
+            gap: 18px;
+        }
+        .entry-gate-card {
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(8, 18, 30, 0.82);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+            overflow: hidden;
+        }
+        .entry-gate-hero {
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            min-height: 100%;
+        }
+        .entry-gate-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+            padding: 7px 12px;
+            border-radius: 999px;
+            background: rgba(14, 138, 155, 0.16);
+            color: #8ce3f0;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .entry-gate-hero h1 {
+            margin: 0;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(2rem, 5vw, 3.8rem);
+            line-height: 0.98;
+            color: #f5fbff;
+            letter-spacing: -0.05em;
+        }
+        .entry-gate-hero p {
+            margin: 0;
+            color: #9dbdd1;
+            font-size: 1rem;
+            line-height: 1.75;
+            max-width: 58ch;
+        }
+        .entry-gate-code-wrap {
+            display: grid;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .entry-gate-code-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .entry-gate-code-input {
+            flex: 1 1 200px;
+            min-height: 54px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+            color: #fff;
+            padding: 0 16px;
+            font-size: 1.05rem;
+            letter-spacing: 0.2em;
+            text-align: center;
+        }
+        .entry-gate-code-input::placeholder { letter-spacing: 0.08em; }
+        .entry-gate-btn {
+            min-height: 54px;
+            border-radius: 16px;
+            border: none;
+            padding: 0 18px;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #fff;
+            background: linear-gradient(135deg, #0e8a9b, #4d9fff);
+            box-shadow: 0 14px 30px rgba(77, 159, 255, 0.2);
+        }
+        .entry-gate-help {
+            min-height: 20px;
+            color: #8ab4c9;
+            font-size: 0.85rem;
+        }
+        .entry-choice-shell {
+            height: 100%;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 16px;
+        }
+        .entry-choice-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #fff;
+            margin: 0;
+        }
+        .entry-choice-grid {
+            display: grid;
+            gap: 14px;
+        }
+        .entry-choice-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            width: 100%;
+            text-align: left;
+            border-radius: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+            padding: 18px;
+            color: #e8f7ff;
+            cursor: pointer;
+            transition: transform .18s ease, border-color .18s ease, background .18s ease;
+        }
+        .entry-choice-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(77, 159, 255, 0.35);
+            background: linear-gradient(180deg, rgba(77, 159, 255, 0.12), rgba(255, 255, 255, 0.04));
+        }
+        .entry-choice-icon {
+            width: 54px;
+            height: 54px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+            font-size: 1.45rem;
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .entry-choice-copy h3 {
+            margin: 0 0 6px;
+            font-size: 1.1rem;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .entry-choice-copy p {
+            margin: 0;
+            color: #9dbdd1;
+            font-size: 0.93rem;
+            line-height: 1.6;
+        }
+        .entry-choice-note {
+            color: #7696aa;
+            font-size: 0.82rem;
+            line-height: 1.6;
+        }
+        @media (max-width: 900px) {
+            .entry-gate-panel { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
-<body>
+<body class="entry-locked">
+
+    <div id="entryGate" class="entry-gate">
+        <div class="entry-gate-panel">
+            <div class="entry-gate-card">
+                <div class="entry-gate-hero">
+                    <div class="entry-gate-kicker">Ehoser Startzugang</div>
+                    <h1>Bitte Code eingeben, um zu starten.</h1>
+                    <p>Das neue Starttor verteilt die App sauber: erst Code, dann die Auswahl zwischen Control Center und Learning. So landet nicht alles auf einem Haufen, sondern direkt in dem Bereich, den du wirklich willst.</p>
+                    <div class="entry-gate-code-wrap">
+                        <div class="entry-gate-code-row">
+                            <input id="entryGateCode" class="entry-gate-code-input" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="Code eingeben">
+                            <button type="button" class="entry-gate-btn" onclick="submitEntryCode()">Weiter</button>
+                        </div>
+                        <div id="entryGateHelp" class="entry-gate-help">Nutze den Zugangscode aus der Einladung.</div>
+                    </div>
+                </div>
+            </div>
+            <div id="entryChoiceCard" class="entry-gate-card" style="display:none;">
+                <div class="entry-choice-shell">
+                    <p class="entry-choice-title">Was möchtest du beitreten?</p>
+                    <div class="entry-choice-grid">
+                        <button type="button" class="entry-choice-card" onclick="enterControlCenter()">
+                            <span class="entry-choice-icon">🧭</span>
+                            <span class="entry-choice-copy">
+                                <h3>Ehoser Control Center</h3>
+                                <p>Der zentrale Workspace mit Tools, Apps, KI, Medien und allen bestehenden Bereichen.</p>
+                            </span>
+                        </button>
+                        <button type="button" class="entry-choice-card" onclick="enterLearningSpace()">
+                            <span class="entry-choice-icon">📚</span>
+                            <span class="entry-choice-copy">
+                                <h3>Ehoser Learning</h3>
+                                <p>Ein Lern-Chat für Übersetzungen, Grammatik, Sprachen und Beispiel-Sätze mit Vorlesefunktion.</p>
+                            </span>
+                        </button>
+                    </div>
+                    <div class="entry-choice-note">Der Code wird nur in dieser Sitzung benötigt. Danach kannst du direkt zwischen beiden Bereichen wechseln.</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- ── Update-Abstimmung Overlay ──────────────────────────────────────── -->
     <div id="voteScreen" style="display:none;position:fixed;inset:0;z-index:9999;background:#07131d;overflow-y:auto;padding:32px 16px;">
@@ -91,6 +304,8 @@
                     <h1>ehoser</h1>
                 </div>
                 <div class="nav-links" id="navLinks">
+                    <a href="/" class="nav-link">Dashboard</a>
+                    <a href="/learning/" class="nav-pill">Learning</a>
                     <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
                     <a href="admin.html" class="nav-link">Admin</a>
                     <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
@@ -113,12 +328,12 @@
                     <div class="updates-grid">
                         <article class="update-card update-card-main">
                             <div class="update-kicker">Jetzt in Planung</div>
-                            <h3>Discord-ähnlicher Chat</h3>
-                            <p>Mehr Kanäle, bessere Gruppierungen und ein flüssigerer, moderner Messenger-Feel.</p>
+                            <h3>Learning-Chat mit Vorlesefunktion</h3>
+                            <p>Ein Sprachlernraum für Übersetzung, Grammatik und Beispiele, der Antworten direkt vorlesen kann.</p>
                             <ul>
-                                <li>Neue Channel-Ansicht</li>
-                                <li>Live-Status &amp; Online-Indikatoren</li>
-                                <li>Schönerer Nachrichteneingang</li>
+                                <li>Mehr Sprachen und Grammatik-Hilfen</li>
+                                <li>Antworten mit Vorlesefunktion</li>
+                                <li>Beispielsätze und schnelle Wiederholungen</li>
                             </ul>
                         </article>
                         <article class="update-card">
@@ -144,6 +359,29 @@
                         <div id="personalizationBanner" class="personalization-banner" style="display:none;"></div>
                         <div class="mode-search-bar">
                             <input type="text" id="modeSearchInput" class="mode-search-input" placeholder="Feature suchen…" oninput="filterModeCards(this.value)" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="workspace-strip">
+                        <div class="workspace-chip is-live">
+                            <span>LIVE</span>
+                            <strong>Control Center</strong>
+                            <p>Dein zentraler Browser-Workspace</p>
+                        </div>
+                        <div class="workspace-chip">
+                            <span>KI</span>
+                            <strong>GPT-OSS 20B</strong>
+                            <p>Schnelle Antworten und Assistenten</p>
+                        </div>
+                        <div class="workspace-chip">
+                            <span>TOOLS</span>
+                            <strong>Mini-Apps</strong>
+                            <p>Rechner, Generatoren und Helfer</p>
+                        </div>
+                        <div class="workspace-chip">
+                            <span>MEDIA</span>
+                            <strong>Chat, Karte, YouTube</strong>
+                            <p>Alles direkt im Browser erreichbar</p>
                         </div>
                     </div>
 
@@ -209,8 +447,8 @@
                             <div class="mode-card-icon">🤖</div>
                             <div class="mode-card-body">
                                 <h3>KI</h3>
-                                <p>Stell der künstlichen Intelligenz Fragen – Konversation mit Verlauf, powered by Llama.</p>
-                                <span class="mode-badge mode-badge-ki">Llama 3.3 70B</span>
+                                <p>Stell der künstlichen Intelligenz Fragen – Konversation mit Verlauf, powered by GPT-OSS.</p>
+                                <span class="mode-badge mode-badge-ki">GPT-OSS 20B</span>
                             </div>
                         </button>
                         <button class="mode-card mode-card-facewarp" onclick="selectMode('facewarp')">
@@ -1152,6 +1390,23 @@
                                 <span>Media</span>
                             </div>
                             <div class="auth-preview-meter"><span></span></div>
+                        </div>
+                        <div class="auth-quick-grid">
+                            <div class="auth-quick-card">
+                                <span>Workspace</span>
+                                <strong>Apps verteilt</strong>
+                                <p>Keine überfüllte Startfläche mehr.</p>
+                            </div>
+                            <div class="auth-quick-card">
+                                <span>KI</span>
+                                <strong>GPT-OSS 20B</strong>
+                                <p>Direkt im Control Center sichtbar.</p>
+                            </div>
+                            <div class="auth-quick-card">
+                                <span>Learning</span>
+                                <strong>Eigener Chat</strong>
+                                <p>Sprachen, Grammatik, Vorlesen.</p>
+                            </div>
                         </div>
                     </div>
                     <div class="auth-card">

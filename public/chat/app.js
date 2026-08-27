@@ -14,6 +14,7 @@ let _recorder = null, _recChunks = [], _recTimer = null, _recSecs = 0;
 let _attachOpen = false;
 let _summaryAiEnabled = false;
 let _seenMessageIds = {};
+let _pendingMessages = {};
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 (async () => {
@@ -334,6 +335,36 @@ function appendMessage(m, plainJson) {
             <div class="msg-bubble">${content}</div>
             <span class="msg-time">${time}</span>
         </div>`;
+    // temp-id handling: if message id looks like a client-temp id, mark element as pending
+    if (String(m.id || '').startsWith('tmp-')) {
+        row.dataset.tempid = m.id;
+        row.classList.add('pending');
+        // store pending meta for potential matching
+        _pendingMessages[m.id] = { sender: senderName, content };
+        area.appendChild(row);
+        return;
+    }
+
+    // If there is an existing pending element that matches this content and sender (optimistic), upgrade it
+    const pendingEls = area.querySelectorAll('[data-tempid]');
+    for (const pe of pendingEls) {
+        try {
+            const pb = pe.querySelector('.msg-bubble')?.innerHTML || '';
+            const pSenderOwn = pe.classList.contains('own');
+            if (pb === content && pSenderOwn === own) {
+                // upgrade pending element
+                const tempKey = pe.getAttribute('data-tempid');
+                pe.dataset.msgid = String(m.id);
+                pe.removeAttribute('data-tempid');
+                pe.classList.remove('pending');
+                // update time
+                const timeEl = pe.querySelector('.msg-time'); if (timeEl) timeEl.textContent = time;
+                if (_activeGroupId && m.id) markMessageSeen(_activeGroupId, m.id);
+                if (tempKey) delete _pendingMessages[tempKey];
+                return;
+            }
+        } catch {}
+    }
     area.appendChild(row);
     if (m?.id && _activeGroupId) markMessageSeen(_activeGroupId, m.id);
 }
@@ -429,11 +460,14 @@ async function sendMessage() {
     const text = inp.value.trim();
     if (!text || !_activeGroupId) return;
     inp.value = ''; inp.style.height = ''; inp.disabled = true;
+    const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+    appendMessage({ id: tempId, sender: _me.username, created_at: new Date().toISOString(), encrypted_content: '' }, JSON.stringify({ t:'txt', v:text }));
     try {
         const key = await getGroupKey(_activeGroupId);
         const enc = await encryptMsg(JSON.stringify({ t:'txt', v:text }), key);
         const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, encryptedContent: enc });
-        appendMessage({ id, sender: _me.username, created_at, encrypted_content: enc }, JSON.stringify({ t:'txt', v:text }));
+        // finalize optimistic message (upgrade pending element or append if missing)
+        finalizePendingMessage(tempId, id, created_at, enc, JSON.stringify({ t:'txt', v:text }));
         _lastMsgId[_activeGroupId] = id;
         if (_summaryAiEnabled && _meProfile?.isPro) {
             const warning = '⚠️ Hinweis: Die Ende-zu-Ende-Verschlüsselung wurde für die KI-Zusammenfassung kurz aufgehoben.';
@@ -447,14 +481,35 @@ async function sendMessage() {
 
 async function sendMediaMessage(payload) {
     if (!_activeGroupId) return;
+    const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+    appendMessage({ id: tempId, sender: _me.username, created_at: new Date().toISOString(), encrypted_content: '' }, JSON.stringify(payload));
     try {
         const key = await getGroupKey(_activeGroupId);
         const enc = await encryptMsg(JSON.stringify(payload), key);
         const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, encryptedContent: enc });
-        appendMessage({ id, sender: _me.username, created_at, encrypted_content: enc }, JSON.stringify(payload));
+        finalizePendingMessage(tempId, id, created_at, enc, JSON.stringify(payload));
         _lastMsgId[_activeGroupId] = id;
         const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
-    } catch (e) { toast('Senden fehlgeschlagen: ' + e.message, 'err'); }
+    } catch (e) { const el = document.querySelector(`[data-tempid="${tempId}"]`); if (el) el.classList.add('send-failed'); toast('Senden fehlgeschlagen: ' + e.message, 'err'); }
+}
+
+function finalizePendingMessage(tempId, realId, created_at, encrypted_content, plainJson) {
+    try {
+        const area = document.getElementById('messagesArea'); if (!area) return;
+        const el = area.querySelector(`[data-tempid="${tempId}"]`);
+        if (el) {
+            el.dataset.msgid = String(realId);
+            el.removeAttribute('data-tempid');
+            el.classList.remove('pending');
+            const timeEl = el.querySelector('.msg-time'); if (timeEl) timeEl.textContent = new Date(created_at).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+            if (_activeGroupId && realId) markMessageSeen(_activeGroupId, realId);
+            delete _pendingMessages[tempId];
+            return;
+        }
+        // fallback: append server message if pending element not present
+        appendMessage({ id: realId, sender: _me.username, created_at, encrypted_content }, plainJson);
+        if (_activeGroupId && realId) markMessageSeen(_activeGroupId, realId);
+    } catch (e) { console.error('finalizePendingMessage error', e); }
 }
 
 function handleMsgKey(e) {

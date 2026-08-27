@@ -304,6 +304,16 @@ body {
     color: #e8d8ff;
 }
 
+/* Pending / optimistic UI */
+.msg-row.pending { opacity: 0.78; }
+.msg-row.pending .msg-bubble { position: relative; }
+.msg-row.pending .msg-bubble::after {
+    content: " • Senden…";
+    font-size: .8rem; color: var(--muted); margin-left: 6px;
+}
+.msg-row.send-failed { opacity: 0.9; }
+.msg-row.send-failed .msg-bubble::after { content: " • Senden fehlgeschlagen"; color: #ff7b7b; }
+
 .msg-time { font-size: .65rem; color: #2a5060; padding: 0 4px; align-self: flex-end; }
 .decrypt-err { font-size: .78rem; color: #7a4040; font-style: italic; }
 

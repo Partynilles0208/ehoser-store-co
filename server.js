@@ -138,6 +138,19 @@ const ensureColumnExists = (table, column, definition) => {
 
 ensureColumnExists('apps', 'source_url', 'TEXT');
 
+function toGroqMessages(messages) {
+  return (Array.isArray(messages) ? messages : [])
+    .filter((message) => message && message.role !== 'system')
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: String(message.content || '')
+    }));
+}
+
+function getGroqApiKey() {
+  return process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
+}
+
 const removeSeededDemoApps = () => {
   db.all('PRAGMA table_info(apps)', (schemaErr, rows) => {
     if (schemaErr) {
@@ -337,6 +350,86 @@ app.get('/api/my-apps', (req, res) => {
     );
   } catch (err) {
     res.status(401).json({ error: 'Authentifizierung erforderlich' });
+  }
+});
+
+app.post('/api/ki', async (req, res) => {
+  const groqKey = getGroqApiKey();
+  if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY nicht konfiguriert' });
+
+  const { messages } = req.body;
+  if (!Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'messages fehlt' });
+  }
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqKey}`
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-20b',
+        messages: toGroqMessages(messages),
+        stream: false,
+        max_tokens: 700
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return res.status(response.status).json(data);
+    res.json(data);
+  } catch (err) {
+    console.error('KI Error:', err);
+    res.status(502).json({ error: 'Verbindungsfehler zur Groq API' });
+  }
+});
+
+app.post('/api/learning/chat', async (req, res) => {
+  const groqKey = getGroqApiKey();
+  if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY nicht konfiguriert' });
+
+  const { messages, language = 'de' } = req.body;
+  if (!Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'messages fehlt' });
+  }
+
+  const systemPrompt = [
+    'Du bist Ehoser Learning, ein freundlicher Lern-Assistent für Sprachen, Grammatik und Übersetzungen.',
+    'Antworte kurz, klar und lernorientiert.',
+    'Wenn der Nutzer ein Wort oder einen Satz übersetzen will, gib die Übersetzung, eine kurze Erklärung, eine einfache Aussprachehilfe und 1-2 Beispiel-Sätze.',
+    'Wenn passend, nenne auch Artikel, Plural, Zeiten, Konjugation oder Grammatikregeln.',
+    'Wenn die gewünschte Zielsprache nicht klar ist, frage kurz nach.',
+    'Antworte standardmäßig auf Deutsch, außer die Aufgabe verlangt ausdrücklich eine andere Zielsprache.'
+  ].join(' ');
+
+  const chatMessages = [
+    { role: 'system', content: `${systemPrompt}\n\nZusatz: Die gewünschte Lernsprache des Nutzers ist ${String(language || 'de')}.` },
+    ...toGroqMessages(messages)
+  ];
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqKey}`
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-20b',
+        messages: chatMessages,
+        stream: false,
+        max_tokens: 700
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return res.status(response.status).json(data);
+    res.json(data);
+  } catch (err) {
+    console.error('Learning KI Error:', err);
+    res.status(502).json({ error: 'Lern-KI-Verbindungsfehler' });
   }
 });
 

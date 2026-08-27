@@ -87,6 +87,25 @@ function setupBackLink() {
 
 setupBackLink();
 
+// Require login: if no token in localStorage, prevent access
+function requireLoginForFacewarp() {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      // clear main UI and show a friendly message
+      const shell = document.getElementById('facewarpShell') || document.body;
+      shell.innerHTML = `\n        <div style="min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;color:#dfeeff;background:linear-gradient(135deg,rgba(8,18,30,0.96),rgba(4,14,24,0.92));">\n          <h2 style=\"margin:0 0 8px;font-family:Space Grotesk, sans-serif;\">Zugang geschützt</h2>\n          <p style=\"color:#9fbdd4;margin:0 0 16px;max-width:520px;text-align:center\">FaceWarp ist nur für angemeldete Benutzer verfügbar. Bitte melde dich an, um diese Funktion zu nutzen.</p>\n          <div style=\"display:flex;gap:12px\">\n            <a href=\"/\" style=\"padding:10px 14px;border-radius:10px;background:#2b6f9e;color:#fff;text-decoration:none;font-weight:700\">Zur Anmeldung</a>\n            <a href=\"/index.html?return=mode-select\" style=\"padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);color:#dfeeff;text-decoration:none;font-weight:700\">Zurück</a>\n          </div>\n        </div>`;
+      return false;
+    }
+    return true;
+  } catch (e) { return false; }
+}
+
+if (!requireLoginForFacewarp()) {
+  // stop further initialization
+  throw new Error('facewarp: user not logged in');
+}
+
 function updateSliderValues() {
   strengthValue.textContent = strength.toFixed(2);
   sizeValue.textContent = `${radius} px`;

@@ -3,6 +3,9 @@ const EHOSER_API_ORIGIN = EHOSER_DESKTOP_MODE
     ? (window.__EHOSER_API_ORIGIN__ || 'https://ehoser.de')
     : window.location.origin;
 const API_BASE = `${EHOSER_API_ORIGIN}/api`;
+const ENTRY_ACCESS_CODE = '020818';
+const ENTRY_UNLOCK_KEY = 'ehoserEntryUnlocked';
+const ENTRY_CHOICE_KEY = 'ehoserEntryChoice';
 const DESKTOP_AUTH_KEY = 'ehoserDesktopActivated';
 const DESKTOP_USER_CACHE_KEY = 'ehoserDesktopUserCache';
 const DESKTOP_ONLINE_MODES = new Set(['games', 'ki', 'chat', 'map', 'youtube', 'news', 'images', 'weather', 'gameCreator', 'ps']);
@@ -2085,6 +2088,77 @@ async function triggerInstallPrompt() {
 }
 
 setupInstallPrompt();
+
+function isEntryUnlocked() {
+    return sessionStorage.getItem(ENTRY_UNLOCK_KEY) === '1';
+}
+
+function showEntryGate(choiceVisible = false, message = '') {
+    const gate = document.getElementById('entryGate');
+    const choiceCard = document.getElementById('entryChoiceCard');
+    const help = document.getElementById('entryGateHelp');
+    if (!gate) return;
+    gate.style.display = 'flex';
+    document.body.classList.add('entry-locked');
+    if (choiceCard) choiceCard.style.display = choiceVisible ? 'block' : 'none';
+    if (help && message) help.textContent = message;
+    if (!choiceVisible) {
+        setTimeout(() => document.getElementById('entryGateCode')?.focus(), 50);
+    }
+}
+
+function hideEntryGate() {
+    const gate = document.getElementById('entryGate');
+    if (gate) gate.style.display = 'none';
+    document.body.classList.remove('entry-locked');
+}
+
+function submitEntryCode() {
+    const input = document.getElementById('entryGateCode');
+    const help = document.getElementById('entryGateHelp');
+    const code = String(input?.value || '').replace(/\s+/g, '');
+    if (code !== ENTRY_ACCESS_CODE) {
+        if (help) help.textContent = 'Der Code ist nicht korrekt. Bitte noch einmal prüfen.';
+        input?.focus();
+        input?.select?.();
+        return;
+    }
+
+    sessionStorage.setItem(ENTRY_UNLOCK_KEY, '1');
+    if (help) help.textContent = 'Code akzeptiert. Bitte wähle jetzt deinen Bereich.';
+    showEntryGate(true);
+}
+
+function enterControlCenter() {
+    sessionStorage.setItem(ENTRY_CHOICE_KEY, 'control-center');
+    hideEntryGate();
+    showSection('auth');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function enterLearningSpace() {
+    sessionStorage.setItem(ENTRY_CHOICE_KEY, 'learning');
+    hideEntryGate();
+    window.location.href = '/learning/';
+}
+
+function initEntryGate() {
+    const input = document.getElementById('entryGateCode');
+    if (!input) return;
+
+    if (isEntryUnlocked()) {
+        hideEntryGate();
+        return;
+    }
+
+    showEntryGate(false, 'Gib den Zugangscode ein, um die Auswahl freizuschalten.');
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            submitEntryCode();
+        }
+    });
+}
 
 function decodeMojibakeText(value) {
     const text = String(value ?? '');
@@ -5085,9 +5159,9 @@ function setKIModel(model) {
     _kiModel = ['ehoser1', 'premium'].includes(model) ? model : 'ehoser1';
     const config = {
         ehoser1: {
-            title: 'Ehoser 1',
+            title: 'GPT-OSS 20B',
             placeholder: 'Stell eine Frage...',
-            label: 'Schnell und direkt'
+            label: 'Offenes Sprachmodell'
         },
         premium: {
             title: 'Premium Ehoser',
@@ -8611,6 +8685,7 @@ async function sendSupportMessage() {
 
 window.addEventListener('DOMContentLoaded', () => {
     startMojibakeFixer();
+    initEntryGate();
     const modal = document.getElementById('supportModal');
     if (modal) {
         modal.addEventListener('click', (event) => {

@@ -2,6 +2,7 @@
 const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
@@ -17,10 +18,14 @@ const ADMIN_UPLOAD_KEY = '135797531lol';
 const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre – Token läuft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
-const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'gpt-5-mini';
+const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'qwen/qwen3.8-27b';
 const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
+const OASIS_DAILY_LIMIT_MS = Math.max(1000, Number(process.env.OASIS_DAILY_LIMIT_MS || 60000));
+const OASIS_USAGE_TIME_ZONE = process.env.OASIS_USAGE_TIME_ZONE || 'Europe/Berlin';
+const OASIS_PYTHON_BIN = process.env.OASIS_PYTHON_BIN || process.env.PYTHON_BIN || 'python';
+const OASIS_BRIDGE_PATH = path.join(__dirname, 'scripts', 'oasis_bridge.py');
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -386,6 +391,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/code-reset-complete',
   '/api/desktop-login/start',
   '/api/support/chat',
+  '/api/learning/chat',
   '/api/unlock-code',
   '/api/verify-token'
 ]);
@@ -394,11 +400,13 @@ function isPublicApiPath(pathname) {
   return PUBLIC_API_PATHS.has(pathname)
     || pathname.startsWith('/api/admin/')
     || pathname.startsWith('/api/ki')
+    || pathname.startsWith('/api/learning')
     || pathname === '/api/apps'
     || pathname.startsWith('/api/apps/')
     || pathname === '/api/games'
     || pathname === '/api/news'
     || pathname === '/api/repo/version'
+    || (pathname.startsWith('/api/oasis/session/') && pathname.endsWith('/stream'))
     || pathname.startsWith('/api/desktop-login/status/')
     || pathname.startsWith('/api/pixabay')
     || pathname === '/api/online-users'
@@ -478,7 +486,7 @@ function normalizePersonalization(raw) {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
   const allowedTone = new Set(['neutral', 'calm', 'focused', 'playful']);
   const allowedLayout = new Set(['standard', 'simple', 'explore']);
-  const allowedModes = new Set(['store', 'games', 'facewarp', 'chat', 'images', 'weather', 'map', 'youtube', 'ki', 'ps', 'gameCreator']);
+  const allowedModes = new Set(['store', 'games', 'facewarp', 'chat', 'images', 'weather', 'map', 'earth3d', 'oasis', 'youtube', 'ki', 'ps', 'gameCreator']);
   const highlightModes = uniqueStrings(src.highlightModes, 6).filter(mode => allowedModes.has(mode));
   return {
     tone: allowedTone.has(src.tone) ? src.tone : 'neutral',
@@ -489,6 +497,32 @@ function normalizePersonalization(raw) {
     summary: typeof src.summary === 'string' ? src.summary.trim().slice(0, 280) : '',
     interests: uniqueStrings(src.interests, 6),
     highlightModes,
+    updatedAt: typeof src.updatedAt === 'string' ? src.updatedAt : null
+  };
+}
+
+function getOasisUsageDayKey(date = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: OASIS_USAGE_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+function normalizeOasisUsage(raw) {
+  const today = getOasisUsageDayKey();
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const day = typeof src.day === 'string' ? src.day : today;
+  const usedMs = Math.max(0, Math.min(OASIS_DAILY_LIMIT_MS, Number(src.usedMs || 0)));
+  return {
+    day: day === today ? day : today,
+    usedMs: day === today ? Math.round(usedMs) : 0,
+    limitMs: OASIS_DAILY_LIMIT_MS,
     updatedAt: typeof src.updatedAt === 'string' ? src.updatedAt : null
   };
 }
@@ -524,6 +558,7 @@ function normalizeSettings(raw) {
     moderation: normalizeModerationSettings(src.moderation),
     credits: (src.credits && typeof src.credits === 'object' && !Array.isArray(src.credits)) ? src.credits : undefined,
     planRequests: Array.isArray(src.planRequests) ? src.planRequests.slice(-10) : undefined,
+    oasisUsage: normalizeOasisUsage(src.oasisUsage),
     passwordHash: typeof src.passwordHash === 'string' ? src.passwordHash : undefined,
     _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined
   };
@@ -902,6 +937,220 @@ async function upsertProfile(username, patch) {
     isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
     credits: Number(newSettings?.credits?.balance || 0)
   };
+}
+
+const oasisSessions = new Map();
+
+function getOasisUsagePayload(profile) {
+  const usage = normalizeOasisUsage(profile?.settings?.oasisUsage);
+  return {
+    day: usage.day,
+    usedMs: usage.usedMs,
+    limitMs: OASIS_DAILY_LIMIT_MS,
+    remainingMs: Math.max(0, OASIS_DAILY_LIMIT_MS - usage.usedMs)
+  };
+}
+
+async function getOasisUsageForUser(username) {
+  const profile = await getProfile(username);
+  return getOasisUsagePayload(profile);
+}
+
+async function persistOasisUsage(username, usedMs) {
+  const profile = await getProfile(username);
+  const current = normalizeOasisUsage(profile.settings?.oasisUsage);
+  const nextUsedMs = Math.max(
+    current.usedMs,
+    Math.min(OASIS_DAILY_LIMIT_MS, Math.round(Number(usedMs || 0)))
+  );
+  const settings = {
+    ...profile.settings,
+    oasisUsage: {
+      day: getOasisUsageDayKey(),
+      usedMs: nextUsedMs,
+      limitMs: OASIS_DAILY_LIMIT_MS,
+      updatedAt: new Date().toISOString()
+    }
+  };
+  const updated = await upsertProfile(username, { settings });
+  return getOasisUsagePayload(updated);
+}
+
+function sendOasisEvent(res, event, data) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function broadcastOasis(session, event, data) {
+  for (const client of session.clients) {
+    try {
+      sendOasisEvent(client, event, data);
+    } catch {}
+  }
+}
+
+function findActiveOasisSession(username) {
+  for (const session of oasisSessions.values()) {
+    if (session.username === username && !session.closed) return session;
+  }
+  return null;
+}
+
+function startOasisBilling(session) {
+  if (session.billingStarted || session.closed) return;
+  session.billingStarted = true;
+  session.lastBilledAt = Date.now();
+  session.billingTimer = setInterval(() => {
+    chargeOasisSession(session);
+  }, 1000);
+}
+
+function chargeOasisSession(session, { endOnLimit = true } = {}) {
+  if (!session || session.closed || !session.billingStarted) {
+    return Math.max(0, OASIS_DAILY_LIMIT_MS - Number(session?.usedMs || 0));
+  }
+  const now = Date.now();
+  const delta = Math.max(0, now - (session.lastBilledAt || now));
+  session.lastBilledAt = now;
+  if (delta > 0) {
+    session.usedMs = Math.min(OASIS_DAILY_LIMIT_MS, Number(session.usedMs || 0) + delta);
+  }
+  const remainingMs = Math.max(0, OASIS_DAILY_LIMIT_MS - session.usedMs);
+  if (now - (session.lastPersistedAt || 0) > 5000) {
+    session.lastPersistedAt = now;
+    persistOasisUsage(session.username, session.usedMs).catch(() => {});
+  }
+  if (remainingMs <= 0 && endOnLimit) {
+    endOasisSession(session, 'daily-limit').catch(() => {});
+  }
+  return remainingMs;
+}
+
+async function endOasisSession(sessionOrId, reason = 'stopped') {
+  const session = typeof sessionOrId === 'string' ? oasisSessions.get(sessionOrId) : sessionOrId;
+  if (!session || session.closed) return;
+
+  chargeOasisSession(session, { endOnLimit: false });
+  session.closed = true;
+  if (session.billingTimer) clearInterval(session.billingTimer);
+  if (session.clientCloseTimer) clearTimeout(session.clientCloseTimer);
+
+  const usage = await persistOasisUsage(session.username, session.usedMs).catch(() => ({
+    usedMs: Math.round(session.usedMs || 0),
+    limitMs: OASIS_DAILY_LIMIT_MS,
+    remainingMs: Math.max(0, OASIS_DAILY_LIMIT_MS - Math.round(session.usedMs || 0)),
+    day: getOasisUsageDayKey()
+  }));
+
+  broadcastOasis(session, 'ended', { reason, usage });
+  for (const client of session.clients) {
+    try { client.end(); } catch {}
+  }
+  session.clients.clear();
+
+  try {
+    session.child?.stdin?.write(JSON.stringify({ type: 'stop' }) + '\n');
+  } catch {}
+  setTimeout(() => {
+    try {
+      if (session.child && !session.child.killed) session.child.kill('SIGTERM');
+    } catch {}
+  }, 800);
+
+  oasisSessions.delete(session.id);
+}
+
+function handleOasisBridgeMessage(session, msg) {
+  if (!msg || typeof msg !== 'object' || session.closed) return;
+
+  if (msg.type === 'status') {
+    if (['prompted', 'running'].includes(msg.state)) {
+      startOasisBilling(session);
+    }
+    broadcastOasis(session, 'status', {
+      state: msg.state || 'running',
+      message: msg.message || '',
+      remainingMs: chargeOasisSession(session, { endOnLimit: false })
+    });
+    return;
+  }
+
+  if (msg.type === 'frame') {
+    startOasisBilling(session);
+    const remainingMs = chargeOasisSession(session);
+    if (session.closed) return;
+    broadcastOasis(session, 'frame', {
+      encoding: msg.encoding || 'jpeg',
+      mime: msg.mime || (msg.encoding === 'rgb' ? 'application/octet-stream' : 'image/jpeg'),
+      width: msg.width,
+      height: msg.height,
+      data: msg.data,
+      sequence: msg.sequence,
+      frame: msg.frame,
+      remainingMs
+    });
+    return;
+  }
+
+  if (msg.type === 'error') {
+    broadcastOasis(session, 'error', {
+      message: msg.message || 'Oasis konnte nicht gestartet werden.',
+      code: msg.code || 'bridge_error'
+    });
+    endOasisSession(session, 'error').catch(() => {});
+  }
+}
+
+function attachOasisBridge(session, prompt) {
+  const child = spawn(OASIS_PYTHON_BIN, [OASIS_BRIDGE_PATH], {
+    cwd: __dirname,
+    env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+  session.child = child;
+
+  let stdoutBuffer = '';
+  child.stdout.on('data', (chunk) => {
+    stdoutBuffer += chunk.toString('utf8');
+    let newlineIndex = stdoutBuffer.indexOf('\n');
+    while (newlineIndex >= 0) {
+      const line = stdoutBuffer.slice(0, newlineIndex).trim();
+      stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+      if (line) {
+        try {
+          handleOasisBridgeMessage(session, JSON.parse(line));
+        } catch {
+          broadcastOasis(session, 'error', { message: 'Oasis Bridge hat ungueltige Daten gesendet.' });
+        }
+      }
+      newlineIndex = stdoutBuffer.indexOf('\n');
+    }
+  });
+
+  child.stderr.on('data', (chunk) => {
+    const text = chunk.toString('utf8').trim();
+    if (!text) return;
+    session.lastStderr = `${session.lastStderr || ''}\n${text}`.slice(-4000);
+    broadcastOasis(session, 'log', { message: text.slice(0, 500) });
+  });
+
+  child.on('error', (err) => {
+    broadcastOasis(session, 'error', {
+      message: `Python/Oasis Bridge konnte nicht gestartet werden: ${err.message}`
+    });
+    endOasisSession(session, 'bridge-error').catch(() => {});
+  });
+
+  child.on('exit', (code) => {
+    if (session.closed) return;
+    const detail = session.lastStderr ? ` (${session.lastStderr.split('\n').slice(-1)[0]})` : '';
+    broadcastOasis(session, 'error', {
+      message: `Oasis Bridge wurde beendet${typeof code === 'number' ? ` (Code ${code})` : ''}${detail}`
+    });
+    endOasisSession(session, 'bridge-exit').catch(() => {});
+  });
+
+  child.stdin.write(JSON.stringify({ type: 'start', prompt }) + '\n');
 }
 
 async function extendProFor(username, ms = PRO_BONUS_MS) {
@@ -1704,6 +1953,153 @@ app.put('/api/me/settings', async (req, res) => {
   });
   const profile = await upsertProfile(auth.username, { settings });
   res.json({ ok: true, profile });
+});
+
+app.get('/api/oasis/usage', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  try {
+    const usage = await getOasisUsageForUser(auth.username);
+    res.json({ usage });
+  } catch (err) {
+    res.status(500).json({ error: 'Oasis-Verbrauch konnte nicht geladen werden' });
+  }
+});
+
+app.post('/api/oasis/session', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+
+  const prompt = String(req.body?.prompt || '').trim().slice(0, 600);
+  if (prompt.length < 3) {
+    return res.status(400).json({ error: 'Bitte beschreibe kurz, wo du landen willst.' });
+  }
+  if (!process.env.DECART_API_KEY) {
+    return res.status(503).json({ error: 'DECART_API_KEY ist auf dem Server nicht konfiguriert.' });
+  }
+
+  try {
+    const existing = findActiveOasisSession(auth.username);
+    if (existing) await endOasisSession(existing, 'replaced');
+
+    const usage = await getOasisUsageForUser(auth.username);
+    if (usage.remainingMs <= 0) {
+      return res.status(429).json({ error: 'Deine Oasis-Minute fuer heute ist aufgebraucht.', usage });
+    }
+
+    const session = {
+      id: crypto.randomUUID(),
+      username: auth.username,
+      userId: auth.id,
+      prompt,
+      usedMs: usage.usedMs,
+      createdAt: Date.now(),
+      lastBilledAt: null,
+      lastPersistedAt: Date.now(),
+      billingStarted: false,
+      billingTimer: null,
+      clientCloseTimer: null,
+      clients: new Set(),
+      closed: false,
+      child: null,
+      lastStderr: ''
+    };
+    oasisSessions.set(session.id, session);
+    attachOasisBridge(session, prompt);
+
+    res.json({
+      ok: true,
+      sessionId: session.id,
+      usage,
+      dailyLimitMs: OASIS_DAILY_LIMIT_MS
+    });
+  } catch (err) {
+    console.error('Oasis Session Error:', err);
+    res.status(500).json({ error: 'Oasis-Session konnte nicht gestartet werden' });
+  }
+});
+
+app.get('/api/oasis/session/:id/stream', (req, res) => {
+  const token = String(req.query.token || '');
+  let auth = null;
+  try {
+    auth = jwt.verify(token, JWT_SECRET);
+  } catch {
+    return res.status(401).json({ error: 'Ungueltiger Token' });
+  }
+
+  const session = oasisSessions.get(req.params.id);
+  if (!session || session.closed || session.username !== auth.username) {
+    return res.status(404).json({ error: 'Oasis-Session nicht gefunden' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  session.clients.add(res);
+  if (session.clientCloseTimer) {
+    clearTimeout(session.clientCloseTimer);
+    session.clientCloseTimer = null;
+  }
+
+  sendOasisEvent(res, 'status', {
+    state: 'connecting',
+    message: 'Oasis wird verbunden...',
+    remainingMs: Math.max(0, OASIS_DAILY_LIMIT_MS - session.usedMs)
+  });
+
+  const keepalive = setInterval(() => {
+    try { res.write(': keepalive\n\n'); } catch {}
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(keepalive);
+    session.clients.delete(res);
+    if (!session.closed && session.clients.size === 0) {
+      session.clientCloseTimer = setTimeout(() => {
+        if (!session.closed && session.clients.size === 0) {
+          endOasisSession(session, 'viewer-disconnected').catch(() => {});
+        }
+      }, 5000);
+    }
+  });
+});
+
+app.post('/api/oasis/session/:id/action', (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const session = oasisSessions.get(req.params.id);
+  if (!session || session.closed || session.username !== auth.username) {
+    return res.status(404).json({ error: 'Oasis-Session nicht gefunden' });
+  }
+
+  const clamp = (value) => Math.max(-1, Math.min(1, Number(value) || 0));
+  const throttle = clamp(req.body?.throttle);
+  const steering = clamp(req.body?.steering);
+  const remainingMs = chargeOasisSession(session);
+  if (session.closed || remainingMs <= 0) {
+    return res.status(429).json({ error: 'Deine Oasis-Minute fuer heute ist aufgebraucht.' });
+  }
+
+  try {
+    session.child?.stdin?.write(JSON.stringify({ type: 'control', throttle, steering }) + '\n');
+    res.json({ ok: true, remainingMs });
+  } catch {
+    res.status(502).json({ error: 'Oasis Bridge nimmt gerade keine Steuerung an.' });
+  }
+});
+
+app.delete('/api/oasis/session/:id', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const session = oasisSessions.get(req.params.id);
+  if (!session || session.username !== auth.username) {
+    return res.json({ ok: true });
+  }
+  await endOasisSession(session, 'user-disconnect');
+  res.json({ ok: true, usage: await getOasisUsageForUser(auth.username) });
 });
 
 app.post('/api/me/plan-request', async (req, res) => {
@@ -4209,6 +4605,54 @@ app.post('/api/support/chat', async (req, res) => {
   }
 });
 
+app.post('/api/learning/chat', async (req, res) => {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY nicht konfiguriert' });
+
+  const { messages, language = 'de' } = req.body;
+  if (!Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'messages fehlt' });
+  }
+
+  const defaultSystemPrompt = [
+    'Du bist Ehoser Learning, ein freundlicher Lern-Assistent für Sprachen, Grammatik und Übersetzungen.',
+    'Antworte kurz, klar und lernorientiert.',
+    'Wenn der Nutzer ein Wort oder einen Satz übersetzen will, gib die Übersetzung, eine kurze Erklärung, eine Aussprachehilfe und 1-2 Beispiel-Sätze.',
+    'Wenn passend, nenne auch Artikel, Plural, Zeiten, Konjugation oder Grammatikregeln.',
+    'Wenn die gewünschte Zielsprache nicht klar ist, frage kurz nach.',
+    'Antworte standardmäßig auf Deutsch, außer die Aufgabe verlangt ausdrücklich eine andere Zielsprache.'
+  ].join(' ');
+
+  const systemPrompt = messages.find((msg) => msg.role === 'system')?.content || defaultSystemPrompt;
+  const chatMessages = [
+    { role: 'system', content: `${String(systemPrompt)}\n\nZusatz: Die gewünschte Lernsprache des Nutzers ist ${String(language || 'de')}.` },
+    ...messages.filter((msg) => msg.role !== 'system')
+  ];
+
+  try {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqKey}`
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-20b',
+        messages: chatMessages,
+        stream: false,
+        max_tokens: 700
+      })
+    });
+
+    const data = await groqRes.json();
+    if (!groqRes.ok) return res.status(groqRes.status).json(data);
+    res.json(data);
+  } catch (err) {
+    console.error('Learning Groq Error:', err);
+    res.status(502).json({ error: 'Lern-KI-Verbindungsfehler' });
+  }
+});
+
 app.post('/api/ki', async (req, res) => {
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY nicht konfiguriert' });
@@ -4299,7 +4743,7 @@ app.post('/api/ki', async (req, res) => {
                 const refRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
-                  body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: refusalMessages, stream: false, max_tokens: 300 })
+                  body: JSON.stringify({ model: 'openai/gpt-oss-20b', messages: refusalMessages, stream: false, max_tokens: 300 })
                 });
                 if (refRes.ok) return res.json(await refRes.json());
               } catch {}
@@ -4316,7 +4760,7 @@ app.post('/api/ki', async (req, res) => {
     const hasImage = messages.some(m =>
       Array.isArray(m.content) && m.content.some(c => c.type === 'image_url')
     );
-    const model = hasImage ? 'llama-3.2-11b-vision-preview' : 'llama-3.3-70b-versatile';
+    const model = hasImage ? 'llama-3.2-11b-vision-preview' : 'openai/gpt-oss-20b';
 
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',

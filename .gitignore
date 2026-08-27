@@ -23,3 +23,11 @@ build/*
 *.db-journal
 .vercel
 .env*.local
+
+# Ignore Android build outputs and IDE artifacts accidentally committed
+android-native/**/build/
+android-native/**/bin/
+android-native/**/.gradle/
+*.apk
+*.keystore
+.gradle/

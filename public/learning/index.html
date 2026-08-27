@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ehoser Learning</title>
+    <meta name="description" content="Ehoser Learning - Sprach- und Grammatik-Chat mit Vorlesefunktion und Beispielen.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;800&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../styles.css?v=17">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <div class="bg-grid"></div>
+
+    <div class="container">
+        <nav class="navbar">
+            <div class="navbar-content">
+                <div class="logo" style="cursor:pointer" onclick="window.location.href='/'">
+                    <span class="logo-icon">E</span>
+                    <h1>ehoser learning</h1>
+                </div>
+                <div class="nav-links">
+                    <a href="/" class="nav-link">Dashboard</a>
+                    <a href="/learning/" class="nav-pill">Learning</a>
+                    <button type="button" class="nav-pill" onclick="document.getElementById('messageInput')?.focus()">Frage stellen</button>
+                </div>
+            </div>
+        </nav>
+    </div>
+
+    <div id="lockedNotice" class="locked-notice" style="display:none;">
+        <div class="locked-card">
+            <div class="brand-mark">E</div>
+            <div class="locked-copy">
+                <p class="eyebrow">Ehoser Learning</p>
+                <h1>Bitte erst auf der Startseite den Code eingeben.</h1>
+                <p>Der Lern-Chat ist nur über das Starttor erreichbar. Danach kannst du hier direkt weiterlernen.</p>
+                <a href="/" class="primary-link">Zur Startseite</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="learningApp" class="learning-shell" style="display:none;">
+        <aside class="learning-sidebar">
+            <div class="brand-row">
+                <div class="brand-mark">E</div>
+                <div>
+                    <div class="brand-title">Ehoser Learning</div>
+                    <div class="brand-subtitle">GPT-OSS 20B · Sprach- &amp; Grammatikhilfe</div>
+                </div>
+            </div>
+
+            <div class="sidebar-card">
+                <label for="languageSelect">Zielsprache</label>
+                <select id="languageSelect">
+                    <option value="de">Deutsch</option>
+                    <option value="en">Englisch</option>
+                    <option value="fr">Französisch</option>
+                    <option value="es">Spanisch</option>
+                    <option value="it">Italienisch</option>
+                    <option value="pt">Portugiesisch</option>
+                    <option value="tr">Türkisch</option>
+                </select>
+                <div class="sidebar-note">Tipp: Frage einfach nach Übersetzungen, Grammatik oder Beispielsätzen.</div>
+            </div>
+
+            <div class="sidebar-card">
+                <div class="card-title">Schnellfragen</div>
+                <button class="chip" type="button" data-prompt="Wie heißt Decke auf Französisch?">Wie heißt Decke auf Französisch?</button>
+                <button class="chip" type="button" data-prompt="Erkläre den Unterschied zwischen ser und estar auf Spanisch.">ser vs. estar</button>
+                <button class="chip" type="button" data-prompt="Gib mir 5 englische Sätze im Present Simple mit Erklärung.">Present Simple Beispiele</button>
+                <button class="chip" type="button" data-prompt="Erkläre die deutsche Grammatik für Artikel mit Beispielen.">Artikel erklärt</button>
+            </div>
+
+            <div class="sidebar-card">
+                <div class="card-title">Vorlesen</div>
+                <button id="autoSpeakBtn" class="toggle-btn" type="button">Auto-Vorlesen: an</button>
+                <div class="slider-row">
+                    <label for="speechRate">Tempo</label>
+                    <input id="speechRate" type="range" min="0.75" max="1.15" step="0.05" value="0.95">
+                </div>
+                <div class="sidebar-note">Die Antwort wird nach jeder KI-Antwort vorgelesen, wenn Auto-Vorlesen aktiv ist.</div>
+            </div>
+
+            <div class="sidebar-card actions-card">
+                <button id="clearBtn" class="secondary-btn" type="button">Chat leeren</button>
+                <button id="copyLastBtn" class="secondary-btn" type="button">Letzte Antwort kopieren</button>
+                <a href="/" class="secondary-btn back-btn">Zum Control Center</a>
+            </div>
+        </aside>
+
+        <main class="learning-main">
+            <header class="hero-card">
+                <div class="hero-copy">
+                    <p class="eyebrow">Sprachen, Grammatik, Beispiele</p>
+                    <h1>Ein Lern-Chat, der dir direkt antwortet und vorliest.</h1>
+                    <p>Frage nach Übersetzungen, Aussprache, Beispielen oder Grammatik. Der Assistent bleibt kurz, klar und lernorientiert.</p>
+                </div>
+                <div class="hero-badges">
+                    <span>Mehr Sprachen</span>
+                    <span>Beispielsätze</span>
+                    <span>Speech Synthesis</span>
+                </div>
+            </header>
+
+            <div class="learning-strip">
+                <div class="learning-chip is-live">
+                    <span>LIVE</span>
+                    <strong>Sprachmodus</strong>
+                    <p>Übersetzung und Aussprache in einem Flow.</p>
+                </div>
+                <div class="learning-chip">
+                    <span>GRAMMAR</span>
+                    <strong>Regeln erklären</strong>
+                    <p>Artikel, Zeiten, Konjugation und Beispiele.</p>
+                </div>
+                <div class="learning-chip">
+                    <span>VOICE</span>
+                    <strong>Vorlesen</strong>
+                    <p>Antworten direkt mit TTS anhören.</p>
+                </div>
+                <div class="learning-chip">
+                    <span>GPT-OSS</span>
+                    <strong>20B Modell</strong>
+                    <p>Groß genug für Lernhilfen, klein genug für Tempo.</p>
+                </div>
+            </div>
+
+            <section class="chat-card">
+                <div id="chatMessages" class="chat-messages"></div>
+                <div class="composer">
+                    <textarea id="messageInput" rows="2" placeholder="Frag z.B. nach Übersetzung, Grammatik oder Aussprache..."></textarea>
+                    <div class="composer-actions">
+                        <button id="speakNowBtn" class="secondary-btn" type="button">Antwort vorlesen</button>
+                        <button id="sendBtn" class="primary-btn" type="button">Senden</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
