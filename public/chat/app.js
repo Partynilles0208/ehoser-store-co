@@ -462,23 +462,15 @@ function renderFile(p) {
 // Context menu handler for message edit (right-click) — attach globally to document
 function initMessageContextMenu() {
     if (window._ehoserCtxAttached) return;
-    const handler = function(e) {
+
+    function showCtxMenuForRow(row, x, y) {
         try {
-            const row = e.target.closest('.msg-row');
-            if (!row) return;
-            const msgId = row.dataset.msgid;
-            if (!msgId) return;
-            const debugEdit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug_edit') === '1';
-            const canEdit = (window._me && window._me.username === 'meisterlool_707') || debugEdit;
-            if (!canEdit) return;
-            e.preventDefault();
-            // remove existing menu
             const existing = document.getElementById('ehoser-ctx-menu'); if (existing) existing.remove();
             const menu = document.createElement('div');
             menu.id = 'ehoser-ctx-menu';
             menu.style.position = 'fixed';
-            menu.style.left = (e.clientX + 4) + 'px';
-            menu.style.top = (e.clientY + 4) + 'px';
+            menu.style.left = (x + 4) + 'px';
+            menu.style.top = (y + 4) + 'px';
             menu.style.background = '#0f1724';
             menu.style.color = '#e6eef6';
             menu.style.padding = '6px 8px';
@@ -497,13 +489,44 @@ function initMessageContextMenu() {
             it.onclick = (ev) => { ev.stopPropagation(); ev.preventDefault(); menu.remove(); startEditMessage(row); };
             menu.appendChild(it);
             document.body.appendChild(menu);
-            // remove on next click or scroll
             const closer = () => { menu.remove(); document.removeEventListener('click', closer); window.removeEventListener('scroll', closer, true); };
             document.addEventListener('click', closer);
             window.addEventListener('scroll', closer, true);
         } catch (err) { }
+    }
+
+    // handle contextmenu and mousedown to reliably catch right-clicks across browsers
+    const onCtx = function(e) {
+        try {
+            const row = e.target.closest('.msg-row');
+            if (!row) return;
+            const msgId = row.dataset.msgid;
+            if (!msgId) return;
+            const debugEdit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug_edit') === '1';
+            const canEdit = (window._me && window._me.username === 'meisterlool_707') || debugEdit;
+            if (!canEdit) return;
+            e.preventDefault();
+            showCtxMenuForRow(row, e.clientX, e.clientY);
+        } catch (err) {}
     };
-    document.addEventListener('contextmenu', handler);
+
+    const onMouseDown = function(e) {
+        try {
+            if (e.button !== 2) return; // right button
+            const row = e.target.closest('.msg-row');
+            if (!row) return;
+            const msgId = row.dataset.msgid; if (!msgId) return;
+            const debugEdit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug_edit') === '1';
+            const canEdit = (window._me && window._me.username === 'meisterlool_707') || debugEdit;
+            if (!canEdit) return;
+            // prevent native menu from appearing
+            e.preventDefault();
+            showCtxMenuForRow(row, e.clientX, e.clientY);
+        } catch (err) {}
+    };
+
+    document.addEventListener('contextmenu', onCtx);
+    document.addEventListener('mousedown', onMouseDown, true);
     window._ehoserCtxAttached = true;
 }
 
