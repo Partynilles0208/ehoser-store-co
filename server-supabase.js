@@ -3813,6 +3813,32 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   res.json({ messages: data || [] });
 });
 
+// PATCH /api/chat/messages/:id — Nachricht bearbeiten (ersetzt nur encrypted_content, kein Hinweis)
+app.patch('/api/chat/messages/:id', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const { encryptedContent } = req.body;
+  if (!id || !encryptedContent || typeof encryptedContent !== 'string') return res.status(400).json({ error: 'Ungültige Anfrage' });
+
+  // Existierende Nachricht holen
+  const { data: msgRow, error: selErr } = await supabaseAdmin.from('chat_messages').select('id,sender,group_id').eq('id', id).maybeSingle();
+  if (selErr) return res.status(500).json({ error: 'DB Fehler' });
+  if (!msgRow) return res.status(404).json({ error: 'Nachricht nicht gefunden' });
+
+  // Prüfen: Nutzer muss Mitglied der Gruppe sein
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', msgRow.group_id).eq('username', user.username).single();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+
+  // Erlaubt wenn Absender selbst ist oder der spezielle Benutzer meisterlool_707
+  if (msgRow.sender !== user.username && user.username !== 'meisterlool_707') {
+    return res.status(403).json({ error: 'Nicht berechtigt zu bearbeiten' });
+  }
+
+  const { error } = await supabaseAdmin.from('chat_messages').update({ encrypted_content: encryptedContent }).eq('id', id);
+  if (error) return res.status(500).json({ error: 'Fehler beim Aktualisieren' });
+  res.json({ ok: true });
+});
+
 // ─── VirusTotal Integration ───────────────────────────────────────────────────
 const VT_API_KEY = process.env.VIRUSTOTAL_API_KEY;
 const VT_BASE = 'https://www.virustotal.com/api/v3';

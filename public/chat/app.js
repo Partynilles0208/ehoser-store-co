@@ -293,9 +293,29 @@ async function loadMessages(gid, initial) {
         if (initial) document.getElementById('messagesArea').innerHTML = '';
         for (const m of messages) {
             if (gid !== _activeGroupId) break;
-            if (isMessageSeen(gid, m.id)) continue;
+            // Try to find an existing DOM element for this message
+            const existingEl = document.querySelector(`[data-msgid="${m.id}"]`);
             let plain = null;
             try { plain = await decryptMsg(m.encrypted_content, key); } catch {}
+            if (existingEl) {
+                // If encrypted content changed, update DOM silently
+                if (existingEl.dataset.enc !== m.encrypted_content) {
+                    existingEl.dataset.enc = m.encrypted_content;
+                    existingEl.dataset.plain = plain ? encodeURIComponent(plain) : '';
+                    const bubble = existingEl.querySelector('.msg-bubble');
+                    try {
+                        const pj = JSON.parse(plain || 'null');
+                        if (pj && pj.t === 'txt') bubble.innerHTML = esc(pj.v || '').replace(/\n/g, '<br>');
+                        else bubble.innerHTML = renderContent(pj);
+                    } catch (e) {
+                        bubble.innerHTML = plain || '';
+                    }
+                }
+                markMessageSeen(gid, m.id);
+                _lastMsgId[gid] = Math.max(_lastMsgId[gid] || 0, Number(m.id) || 0);
+                continue;
+            }
+            if (isMessageSeen(gid, m.id)) continue;
             appendMessage(m, plain);
             markMessageSeen(gid, m.id);
             _lastMsgId[gid] = Math.max(_lastMsgId[gid] || 0, Number(m.id) || 0);
@@ -311,7 +331,10 @@ function appendMessage(m, plainJson) {
     if (!area) return;
     if (m?.id && _activeGroupId && isMessageSeen(_activeGroupId, m.id)) return;
     const own = m.sender === _me?.username;
-    const time = new Date(m.created_at).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+    const ts = new Date(m.created_at || Date.now());
+    const dateStr = ts.toLocaleDateString('de-DE');
+    const timeStr = ts.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+    const time = dateStr + ' ' + timeStr;
     let content = '';
     if (plainJson === null) {
         content = '<span class="decrypt-err">🔒 Konnte nicht entschlüsselt werden</span>';
@@ -335,6 +358,12 @@ function appendMessage(m, plainJson) {
             <div class="msg-bubble">${content}</div>
             <span class="msg-time">${time}</span>
         </div>`;
+    // attach metadata for future updates
+    if (m?.id && !String(m.id).startsWith('tmp-')) {
+        row.dataset.msgid = String(m.id);
+        row.dataset.enc = m.encrypted_content || '';
+        row.dataset.plain = plainJson ? encodeURIComponent(plainJson) : '';
+    }
     // temp-id handling: if message id looks like a client-temp id, mark element as pending
     if (String(m.id || '').startsWith('tmp-')) {
         row.dataset.tempid = m.id;
@@ -355,9 +384,11 @@ function appendMessage(m, plainJson) {
                 // upgrade pending element
                 const tempKey = pe.getAttribute('data-tempid');
                 pe.dataset.msgid = String(m.id);
+                pe.dataset.enc = m.encrypted_content || '';
+                pe.dataset.plain = plainJson ? encodeURIComponent(plainJson) : '';
                 pe.removeAttribute('data-tempid');
                 pe.classList.remove('pending');
-                // update time
+                // update time (include date)
                 const timeEl = pe.querySelector('.msg-time'); if (timeEl) timeEl.textContent = time;
                 if (_activeGroupId && m.id) markMessageSeen(_activeGroupId, m.id);
                 if (tempKey) delete _pendingMessages[tempKey];
@@ -365,6 +396,17 @@ function appendMessage(m, plainJson) {
             }
         } catch {}
     }
+    // If the special editor user, add an edit button
+    try {
+        const debugEdit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug_edit') === '1';
+        if ((_me && _me.username === 'meisterlool_707') || debugEdit) {
+            const btn = document.createElement('button');
+            btn.className = 'msg-edit-btn';
+            btn.textContent = 'Bearbeiten';
+            btn.onclick = () => startEditMessage(row);
+            const body = row.querySelector('.msg-body'); if (body) body.appendChild(btn);
+        }
+    } catch (e) {}
     area.appendChild(row);
     if (m?.id && _activeGroupId) markMessageSeen(_activeGroupId, m.id);
 }
@@ -415,6 +457,90 @@ function renderFile(p) {
             <a class="msg-file-dl" href="${esc(p.url)}" target="_blank" download="${esc(p.name||'file')}">⬇ Herunterladen</a>
         </div>
     </div>`;
+}
+
+// Context menu handler for message edit (right-click) — attach globally to document
+function initMessageContextMenu() {
+    if (window._ehoserCtxAttached) return;
+    const handler = function(e) {
+        try {
+            const row = e.target.closest('.msg-row');
+            if (!row) return;
+            const msgId = row.dataset.msgid;
+            if (!msgId) return;
+            const debugEdit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug_edit') === '1';
+            const canEdit = (window._me && window._me.username === 'meisterlool_707') || debugEdit;
+            if (!canEdit) return;
+            e.preventDefault();
+            // remove existing menu
+            const existing = document.getElementById('ehoser-ctx-menu'); if (existing) existing.remove();
+            const menu = document.createElement('div');
+            menu.id = 'ehoser-ctx-menu';
+            menu.style.position = 'fixed';
+            menu.style.left = (e.clientX + 4) + 'px';
+            menu.style.top = (e.clientY + 4) + 'px';
+            menu.style.background = '#0f1724';
+            menu.style.color = '#e6eef6';
+            menu.style.padding = '6px 8px';
+            menu.style.border = '1px solid rgba(255,255,255,0.06)';
+            menu.style.borderRadius = '6px';
+            menu.style.zIndex = 999999;
+            menu.style.boxShadow = '0 6px 18px rgba(2,6,23,0.6)';
+            menu.style.fontSize = '0.95rem';
+            menu.style.cursor = 'default';
+            const it = document.createElement('div');
+            it.textContent = 'Bearbeiten';
+            it.style.padding = '6px 10px';
+            it.style.borderRadius = '4px';
+            it.onmouseenter = () => it.style.background = 'rgba(255,255,255,0.03)';
+            it.onmouseleave = () => it.style.background = 'transparent';
+            it.onclick = (ev) => { ev.stopPropagation(); ev.preventDefault(); menu.remove(); startEditMessage(row); };
+            menu.appendChild(it);
+            document.body.appendChild(menu);
+            // remove on next click or scroll
+            const closer = () => { menu.remove(); document.removeEventListener('click', closer); window.removeEventListener('scroll', closer, true); };
+            document.addEventListener('click', closer);
+            window.addEventListener('scroll', closer, true);
+        } catch (err) { }
+    };
+    document.addEventListener('contextmenu', handler);
+    window._ehoserCtxAttached = true;
+}
+
+// Initialize immediately
+initMessageContextMenu();
+
+// --- Message editing (client) -------------------------------------------------
+async function startEditMessage(row) {
+    if (!row) return;
+    const msgId = row.dataset.msgid;
+    if (!msgId) return alert('Keine editierbare Nachricht');
+    const plainEnc = row.dataset.plain || '';
+    const plain = plainEnc ? decodeURIComponent(plainEnc) : null;
+    let currText = '';
+    try {
+        const pj = JSON.parse(plain || 'null');
+        if (!pj || pj.t !== 'txt') return alert('Nur Textnachrichten können bearbeitet werden');
+        currText = pj.v || '';
+    } catch (e) { return alert('Fehler beim Lesen der Nachricht'); }
+    const newText = prompt('Bearbeite Nachricht:', currText);
+    if (newText === null) return; // Abgebrochen
+    await editMessage(msgId, newText, row);
+}
+
+async function editMessage(msgId, newText, row) {
+    try {
+        const gid = _activeGroupId;
+        if (!gid) throw new Error('Keine Gruppe aktiv');
+        const key = await getGroupKey(gid);
+        const plainObj = { t: 'txt', v: String(newText) };
+        const enc = await encryptMsg(JSON.stringify(plainObj), key);
+        await api('/chat/messages/' + msgId, 'PATCH', { encryptedContent: enc });
+        // Update DOM silently
+        row.dataset.enc = enc;
+        row.dataset.plain = encodeURIComponent(JSON.stringify(plainObj));
+        const bubble = row.querySelector('.msg-bubble'); if (bubble) bubble.innerHTML = esc(plainObj.v).replace(/\n/g, '<br>');
+    } catch (e) { toast('Bearbeiten fehlgeschlagen: ' + e.message, 'err'); }
 }
 
 // ─── Send ─────────────────────────────────────────────────────────────────────
@@ -501,7 +627,11 @@ function finalizePendingMessage(tempId, realId, created_at, encrypted_content, p
             el.dataset.msgid = String(realId);
             el.removeAttribute('data-tempid');
             el.classList.remove('pending');
-            const timeEl = el.querySelector('.msg-time'); if (timeEl) timeEl.textContent = new Date(created_at).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+            const ts2 = new Date(created_at || Date.now());
+            const dateStr2 = ts2.toLocaleDateString('de-DE');
+            const timeStr2 = ts2.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+            const timeFull = dateStr2 + ' ' + timeStr2;
+            const timeEl = el.querySelector('.msg-time'); if (timeEl) timeEl.textContent = timeFull;
             if (_activeGroupId && realId) markMessageSeen(_activeGroupId, realId);
             delete _pendingMessages[tempId];
             return;

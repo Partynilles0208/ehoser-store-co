@@ -1462,10 +1462,51 @@ textarea {
     transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
+/* Ensure option elements and selects keep readable background/foreground inside mini-apps */
+select, select option {
+    background: linear-gradient(135deg, rgba(3, 13, 22, 0.96), rgba(7, 24, 38, 0.92));
+    color: #f5fbff;
+}
+
+/* Some browsers render native select dropdowns white; force dark appearance for options */
+select option {
+    background-color: transparent;
+    color: #f5fbff;
+}
+
+/* inputs inside mode cards and tools */
+.mode-card .tool-input,
+.mode-card select,
+.tool-body select,
+.tool-body input {
+    background: linear-gradient(135deg, rgba(3, 13, 22, 0.96), rgba(7, 24, 38, 0.92));
+    color: #f5fbff;
+}
+
 input::placeholder,
 select::placeholder,
 textarea::placeholder {
     color: #7da2b6;
+}
+
+/* Strong override: ensure inputs, textareas and selects are dark across all mini-apps */
+input, textarea, select, .tool-textarea, .tool-input, .input-field, .note-body-input {
+    background: linear-gradient(135deg, rgba(3, 13, 22, 0.98), rgba(7, 24, 38, 0.96)) !important;
+    color: #f5fbff !important;
+    border-color: rgba(14, 240, 208, 0.18) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+/* Readonly/disabled fields should remain dark */
+input[readonly], textarea[readonly], input:disabled, textarea:disabled {
+    background: linear-gradient(135deg, rgba(3, 13, 22, 0.92), rgba(7, 24, 38, 0.90)) !important;
+    color: #cfeef6 !important;
+}
+
+/* Fallback for elements using inline background colors (force them dark) */
+[style*="background: #fff"], [style*="background:#fff"], [style*="background: white"] {
+    background: linear-gradient(135deg, rgba(3, 13, 22, 0.98), rgba(7, 24, 38, 0.96)) !important;
+    color: #f5fbff !important;
 }
 
 textarea {
