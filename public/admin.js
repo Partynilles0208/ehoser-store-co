@@ -14,12 +14,55 @@ let _reportContextPayload = null;
 
 setStatus('Als Gast fortfahren oeffnet die normale App zum Testen. Admin-Code ist nur fuer Verwaltung noetig.', 'info');
 
+async function autoUnlockAdminFromSession() {
+    const savedCode = sessionStorage.getItem('ehoserAdminCode');
+    if (!savedCode) return false;
+
+    try {
+        const res = await fetch(`${window.location.origin}/api/admin/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': savedCode }
+        });
+
+        if (!res.ok) {
+            sessionStorage.removeItem('ehoserAdminCode');
+            return false;
+        }
+
+        activeAdminCode = savedCode;
+        secureArea.style.display = '';
+        setStatus('Admin-Code aus der Sitzung bestätigt. Der Admin-Bereich ist freigeschaltet.', 'success');
+        setAdminEmptyStates('Lade Admin-Daten...');
+        await Promise.all([loadRegisteredUsers(), loadResetRequests(), loadPlanRequests(), loadAdminApps(), loadVotes(), loadChatReports()]);
+        clearInterval(adminRefreshInterval);
+        adminRefreshInterval = setInterval(() => {
+            loadRegisteredUsers();
+            loadResetRequests();
+            loadPlanRequests();
+            loadAdminApps();
+            loadVotes();
+            loadChatReports();
+        }, 8000);
+        return true;
+    } catch (err) {
+        sessionStorage.removeItem('ehoserAdminCode');
+        return false;
+    }
+}
+
 function openMainAsGuest() {
     sessionStorage.setItem('adminGuestPreview', '1');
     localStorage.removeItem('token');
     localStorage.removeItem('proStatus');
     window.location.href = 'index.html?guest=admin';
 }
+
+window.addEventListener('DOMContentLoaded', async () => {
+    const unlocked = await autoUnlockAdminFromSession();
+    if (!unlocked) {
+        document.getElementById('adminJoinCode').focus();
+    }
+});
 
 accessForm.addEventListener('submit', async (event) => {
     event.preventDefault();

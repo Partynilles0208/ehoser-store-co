@@ -1271,6 +1271,14 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+app.get('/admin-portal', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin-entry.html'));
+});
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 // News-Proxy (NewsAPI.org blockiert direkte Browser-Requests via CORS)
 app.get('/api/news', async (req, res) => {
   const apiKey = process.env.NEWS_API_KEY || '';
@@ -4172,6 +4180,55 @@ app.post('/api/me/chat-token', async (req, res) => {
     .upsert({ username: auth.username, chat_token: token }, { onConflict: 'username' });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ token });
+});
+
+// Public route to serve the standalone chat app
+app.get('/chat', (req, res) => {
+  try {
+    return res.sendFile(path.join(__dirname, 'public', 'chat', 'index.html'));
+  } catch (e) { return res.status(500).send('Fehler beim Laden der Chat-Seite'); }
+});
+
+// Tägliches Login-Belohnung: 30 Credits / Tag, 30 Tage = 1 Monat Premium
+app.post('/api/me/daily-claim', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  try {
+    const profile = await getProfile(auth.username);
+    const settings = { ...(profile.settings || {}) };
+    const daily = { ...(settings.dailyLogin || {}) };
+    const today = getOasisUsageDayKey(); // yyyy-mm-dd in configured tz
+    const yesterday = getOasisUsageDayKey(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    if (daily.lastDay === today) {
+      // Already claimed today
+      return res.status(409).json({ error: 'Heute bereits eingelöst', nextClaimInMs: 24 * 60 * 60 * 1000 });
+    }
+    let streak = Number(daily.streak || 0);
+    if (daily.lastDay === yesterday) {
+      streak = streak + 1;
+    } else {
+      streak = 1;
+    }
+    // give credits
+    const creditsGiven = 30;
+    await changeCredits(auth.username, creditsGiven);
+    const patch = { settings: { ...(settings || {}), dailyLogin: { lastDay: today, streak } } };
+    let premiumGranted = false;
+    if (streak >= 30) {
+      // grant 30 days premium
+      const now = Date.now();
+      const currentPremiumMs = profile.premiumUntil ? Date.parse(profile.premiumUntil) : 0;
+      const startMs = Math.max(now, currentPremiumMs);
+      const newPremiumUntil = new Date(startMs + 30 * 24 * 60 * 60 * 1000).toISOString();
+      patch.premiumUntil = newPremiumUntil;
+      patch.settings.dailyLogin.streak = 0;
+      premiumGranted = true;
+    }
+    const updated = await upsertProfile(auth.username, patch);
+    return res.json({ success: true, streak: patch.settings.dailyLogin.streak || streak, creditsGiven, premiumGranted });
+  } catch (e) {
+    return res.status(500).json({ error: 'Fehler beim Einlösen: ' + (e.message || e) });
+  }
 });
 
 // ─── Update-Abstimmung ────────────────────────────────────────────────────────

@@ -2,6 +2,20 @@
 const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : window.location.origin;
 const API = API_ORIGIN + '/api';
 
+// Robust date parser: server may return UTC timestamps without timezone
+function parseServerDate(s) {
+    if (!s) return new Date();
+    if (typeof s === 'number') return new Date(s);
+    let str = String(s).trim();
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(str)) {
+        str = str.replace(' ', 'T');
+    }
+    const date = new Date(str);
+    if (Number.isNaN(date.valueOf())) return new Date();
+    date.setHours(date.getHours() + 2);
+    return date;
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let _token = null, _me = null, _myKeys = null;
 let _meProfile = null;
@@ -331,7 +345,7 @@ function appendMessage(m, plainJson) {
     if (!area) return;
     if (m?.id && _activeGroupId && isMessageSeen(_activeGroupId, m.id)) return;
     const own = m.sender === _me?.username;
-    const ts = new Date(m.created_at || Date.now());
+    const ts = parseServerDate(m.created_at || Date.now());
     const dateStr = ts.toLocaleDateString('de-DE');
     const timeStr = ts.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
     const time = dateStr + ' ' + timeStr;
@@ -650,7 +664,7 @@ function finalizePendingMessage(tempId, realId, created_at, encrypted_content, p
             el.dataset.msgid = String(realId);
             el.removeAttribute('data-tempid');
             el.classList.remove('pending');
-            const ts2 = new Date(created_at || Date.now());
+            const ts2 = parseServerDate(created_at || Date.now());
             const dateStr2 = ts2.toLocaleDateString('de-DE');
             const timeStr2 = ts2.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
             const timeFull = dateStr2 + ' ' + timeStr2;

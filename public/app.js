@@ -3,6 +3,20 @@ const EHOSER_API_ORIGIN = EHOSER_DESKTOP_MODE
     ? (window.__EHOSER_API_ORIGIN__ || 'https://ehoser.de')
     : window.location.origin;
 const API_BASE = `${EHOSER_API_ORIGIN}/api`;
+
+function parseServerDate(value) {
+    if (!value) return new Date();
+    if (typeof value === 'number') return new Date(value);
+    let str = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(str)) {
+        str = str.replace(' ', 'T');
+    }
+    const date = new Date(str);
+    if (Number.isNaN(date.valueOf())) return new Date();
+    date.setHours(date.getHours() + 2);
+    return date;
+}
+
 const ENTRY_ACCESS_CODE = '020818';
 const ENTRY_UNLOCK_KEY = 'ehoserEntryUnlocked';
 const ENTRY_CHOICE_KEY = 'ehoserEntryChoice';
@@ -3648,7 +3662,6 @@ function showLoggedInUI() {
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
         <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
         <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
-        <a href="admin.html" class="nav-link">Admin</a>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
         <button onclick="openPricingModal()" class="plan-badge ${hasPremiumAccess() ? 'premium' : (hasProAccess() ? 'pro' : '')}" style="border:0;cursor:pointer;">${plan}</button>
         <span class="plan-badge" title="KI Credits">${credits} Credits</span>
@@ -3667,12 +3680,57 @@ function showLoggedInUI() {
     if (gameCard) gameCard.style.display = hasProAccess() ? '' : 'none';
 
     applyPersonalizationUI();
+    // initialize daily claim button in nav
+    try { initDailyClaimButton(); } catch (e) {}
+}
+
+// --- Daily login claim UI and actions --------------------------------------
+function initDailyClaimButton() {
+    const nav = document.getElementById('navLinks');
+    if (!nav) return;
+    if (document.getElementById('dailyClaimBtn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'dailyClaimBtn';
+    btn.className = 'nav-pill';
+    btn.textContent = 'Tägliches Geschenk';
+    btn.onclick = claimDaily;
+    nav.insertBefore(btn, nav.querySelector('.nav-pill') || null);
+    updateDailyBtn();
+}
+
+async function updateDailyBtn() {
+    const btn = document.getElementById('dailyClaimBtn');
+    if (!btn) return;
+    const token = localStorage.getItem('token');
+    if (!token) { btn.style.display = 'none'; return; }
+    try {
+        const res = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) { btn.style.display = ''; btn.textContent = 'Tägliches Geschenk'; return; }
+        const data = await res.json();
+        const dl = data.settings?.dailyLogin || {};
+        const streak = Number(dl.streak || 0);
+        btn.textContent = `Tagesbonus (${streak}d)`;
+    } catch {
+        btn.textContent = 'Tägliches Geschenk';
+    }
+}
+
+async function claimDaily() {
+    const token = localStorage.getItem('token');
+    if (!token) { alert('Bitte anmelden'); return; }
+    try {
+        const res = await fetch(`${API_BASE}/me/daily-claim`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+        const d = await res.json();
+        if (!res.ok) return alert(d.error || 'Fehler');
+        alert(`Erhalten: ${d.creditsGiven} Credits. Streak: ${d.streak} Tage.` + (d.premiumGranted ? '\nMonat PRO geschenkt!' : ''));
+        updateDailyBtn();
+    } catch (e) { alert('Fehler: ' + e.message); }
 }
 
 function showLoggedOutUI() {
     const navLinks = document.getElementById('navLinks');
     if (!navLinks) return;
-    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a><button type="button" class="nav-pill" onclick="showSection(\'auth\')">Hinzufügen</button><button type="button" class="nav-pill" onclick="showSection(\'updates\')">Updates</button><a href="admin.html" class="nav-link">Admin</a>';
+    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a><button type="button" class="nav-pill" onclick="showSection(\'auth\')">Hinzufügen</button><button type="button" class="nav-pill" onclick="showSection(\'updates\')">Updates</button>';
 }
 
 function showAdminGuestPreviewUI() {
@@ -3682,7 +3740,6 @@ function showAdminGuestPreviewUI() {
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
         <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
         <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
-        <a href="admin.html" class="nav-link">Admin</a>
         <span class="plan-badge">Gast-Test</span>
         <button onclick="exitAdminGuestPreview()" class="logout-btn">Test verlassen</button>
     `;
@@ -3722,7 +3779,7 @@ async function loadApps() {
         allApps = Array.isArray(apps) ? apps : [];
         displayApps(allApps, { searchText: '', category: 'all' });
     } catch (err) {
-        showAlert('Apps konnten nicht geladen werden.', 'error');
+        // Silent fallback: do not show a false startup error when apps are available.
     }
 }
 
@@ -4011,6 +4068,15 @@ function showSection(sectionId) {
 
     section.classList.add('active');
     document.body.dataset.section = sectionId;
+
+    // Games: enable immersive/fullscreen mode to hide top UI (online widget, navbar)
+    if (sectionId === 'games') {
+        document.body.classList.add('games-fullscreen');
+        try { document.getElementById('onlineWidget') && document.getElementById('onlineWidget').classList.add('hidden-by-games'); } catch {}
+    } else {
+        document.body.classList.remove('games-fullscreen');
+        try { document.getElementById('onlineWidget') && document.getElementById('onlineWidget').classList.remove('hidden-by-games'); } catch {}
+    }
 
     // Chat hat eigenes internes Scroll-Layout; Seiten-Scroll dafür sperren.
     document.body.classList.toggle('chat-scroll-lock', sectionId === 'chat');
@@ -5693,6 +5759,23 @@ async function fetchOnlineUsers() {
         const widget = document.getElementById('onlineWidget');
         const list = document.getElementById('onlineList');
         widget.style.display = '';
+        // Double-click to hide/show the online widget (persisted)
+        try {
+            if (widget && !widget._dblInit) {
+                widget.ondblclick = () => {
+                    const hidden = localStorage.getItem('onlineWidgetHidden') === '1';
+                    if (hidden) {
+                        widget.classList.remove('hidden-by-dbl');
+                        localStorage.removeItem('onlineWidgetHidden');
+                    } else {
+                        widget.classList.add('hidden-by-dbl');
+                        localStorage.setItem('onlineWidgetHidden','1');
+                    }
+                };
+                widget._dblInit = true;
+            }
+            if (localStorage.getItem('onlineWidgetHidden') === '1') widget.classList.add('hidden-by-dbl');
+        } catch (e) {}
         if (users.length === 0) {
             list.innerHTML = '<li style="color:var(--muted)">Niemand online</li>';
         } else {
@@ -6032,6 +6115,80 @@ let _chatCurrentGroupName = null;
 let _chatPollInterval = null;
 let _chatLastMsgId = 0;
 let _chatGroups = [];
+const CHAT_LOCAL_STORAGE_KEY = 'ehoser_chat_cache_v1';
+
+function chatGetLocalCache() {
+    try {
+        const raw = localStorage.getItem(CHAT_LOCAL_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+function chatSetLocalCache(cache) {
+    try {
+        localStorage.setItem(CHAT_LOCAL_STORAGE_KEY, JSON.stringify(cache));
+    } catch {}
+}
+
+function chatGetCachedMessages(groupId) {
+    const cache = chatGetLocalCache();
+    const list = Array.isArray(cache[groupId]) ? cache[groupId] : [];
+    return list.slice().sort((a, b) => {
+        const aId = Number(a?.id) || 0;
+        const bId = Number(b?.id) || 0;
+        if (aId && bId) return aId - bId;
+        return new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime();
+    });
+}
+
+function chatPersistCachedMessages(groupId, messages) {
+    const cache = chatGetLocalCache();
+    const unique = [];
+    const seen = new Set();
+    for (const msg of Array.isArray(messages) ? messages : []) {
+        const key = String(msg?.id || msg?.created_at || JSON.stringify(msg));
+        if (!seen.has(key)) { seen.add(key); unique.push(msg); }
+    }
+    cache[groupId] = unique.sort((a, b) => {
+        const aId = Number(a?.id) || 0;
+        const bId = Number(b?.id) || 0;
+        if (aId && bId) return aId - bId;
+        return new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime();
+    });
+    chatSetLocalCache(cache);
+}
+
+function chatRenderCachedMessages(groupId) {
+    const container = document.getElementById('chatMessages');
+    if (!container || !_chatCurrentGroupId || _chatCurrentGroupId !== groupId) return;
+    const msgs = chatGetCachedMessages(groupId);
+    if (!msgs.length) return;
+    container.innerHTML = '';
+    msgs.forEach(m => {
+        const isMe = m.sender === currentUser?.username;
+        const div = document.createElement('div');
+        div.className = `chat-msg ${isMe ? 'chat-msg-me' : 'chat-msg-other'}`;
+        const time = parseServerDate(m.created_at || Date.now()).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        const initial = (m.sender || '?')[0].toUpperCase();
+        const payload = chatParsePayload(m.encrypted_content);
+        const bodyHtml = chatRenderPayload(payload);
+        div.innerHTML = `
+            <div class="chat-msg-avatar">${escapeHtml(initial)}</div>
+            <div class="chat-msg-body">
+                <div class="chat-msg-sender">
+                    ${escapeHtml(m.sender)}
+                    <span class="chat-msg-time-inline">${time}</span>
+                </div>
+                <div class="chat-msg-bubble">${bodyHtml}</div>
+            </div>
+        `;
+        container.appendChild(div);
+        if (m.id) _chatLastMsgId = Math.max(_chatLastMsgId, Number(m.id) || 0);
+    });
+    chatScrollToBottom(false);
+}
 let _chatUserSearchTimer = null;
 let _chatSelectedUsers = new Set();
 let _chatLastUserDirectory = [];
@@ -6098,6 +6255,42 @@ function chatRenderPayload(payload) {
         return `<a class="chat-file-link" href="${escapeAttribute(p.url || '')}" target="_blank" rel="noopener" download="${escapeAttribute(label)}">${escapeHtml(label)}</a>`;
     }
     return escapeHtml(String(p.v || '')).replace(/\n/g, '<br>');
+}
+
+function appendOptimisticChatMessage(tempId, text) {
+    const container = document.getElementById('chatMessages');
+    if (!container || !_chatCurrentGroupId) return;
+
+    const div = document.createElement('div');
+    div.className = 'chat-msg chat-msg-me pending';
+    div.dataset.tempid = String(tempId);
+    const initial = (currentUser?.username || '?')[0].toUpperCase();
+    div.innerHTML = `
+        <div class="chat-msg-avatar">${escapeHtml(initial)}</div>
+        <div class="chat-msg-body">
+            <div class="chat-msg-sender">
+                ${escapeHtml(currentUser?.username || 'Du')}
+                <span class="chat-msg-time-inline">jetzt</span>
+            </div>
+            <div class="chat-msg-bubble">${escapeHtml(String(text || '')).replace(/\n/g, '<br>')}</div>
+        </div>
+    `;
+    container.appendChild(div);
+    chatScrollToBottom(false);
+}
+
+function finalizeOptimisticChatMessage(tempId, serverMsg) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    const selector = `[data-tempid="${CSS.escape(String(tempId))}"]`;
+    const el = container.querySelector(selector);
+    if (!el || !serverMsg) return;
+    el.removeAttribute('data-tempid');
+    el.classList.remove('pending');
+    const time = parseServerDate(serverMsg.created_at || Date.now()).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    const timeEl = el.querySelector('.chat-msg-time-inline');
+    if (timeEl) timeEl.textContent = time;
+    if (serverMsg.id) el.dataset.msgid = String(serverMsg.id);
 }
 
 async function chatUploadAndSendFile(inputEl) {
@@ -6334,6 +6527,30 @@ function openChatGroup(groupId, groupName) {
     const chatMessages = document.getElementById('chatMessages');
     chatMessages.innerHTML = '';
     chatMessages.onscroll = chatUpdateScrollButton;
+    const cached = chatGetCachedMessages(groupId);
+    if (cached.length) {
+        cached.forEach(m => {
+            const isMe = m.sender === currentUser?.username;
+            const div = document.createElement('div');
+            div.className = `chat-msg ${isMe ? 'chat-msg-me' : 'chat-msg-other'}`;
+            const time = parseServerDate(m.created_at || Date.now()).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+            const initial = (m.sender || '?')[0].toUpperCase();
+            const payload = chatParsePayload(m.encrypted_content);
+            const bodyHtml = chatRenderPayload(payload);
+            div.innerHTML = `
+                <div class="chat-msg-avatar">${escapeHtml(initial)}</div>
+                <div class="chat-msg-body">
+                    <div class="chat-msg-sender">
+                        ${escapeHtml(m.sender)}
+                        <span class="chat-msg-time-inline">${time}</span>
+                    </div>
+                    <div class="chat-msg-bubble">${bodyHtml}</div>
+                </div>
+            `;
+            if (m.id) _chatLastMsgId = Math.max(_chatLastMsgId, Number(m.id) || 0);
+            chatMessages.appendChild(div);
+        });
+    }
     clearInterval(_chatPollInterval);
     chatFetchMessages();
     _chatPollInterval = setInterval(chatFetchMessages, 3000);
@@ -6366,15 +6583,30 @@ async function chatFetchMessages() {
         const data = await res.json();
         const msgs = data.messages || [];
         if (!msgs.length) return;
+
         const container = document.getElementById('chatMessages');
         const wasAtBottom = chatIsNearBottom(container);
         const beforeLastMsgId = _chatLastMsgId;
-        msgs.forEach(m => {
-            _chatLastMsgId = Math.max(_chatLastMsgId, m.id);
+        const cache = chatGetCachedMessages(_chatCurrentGroupId);
+        const cachedIds = new Set(cache.map(m => String(m.id || '')));
+        const newMessages = msgs.filter(m => !cachedIds.has(String(m.id || '')));
+
+        if (newMessages.length) {
+            const merged = [...cache, ...newMessages].sort((a, b) => {
+                const aId = Number(a.id) || 0;
+                const bId = Number(b.id) || 0;
+                if (aId && bId) return aId - bId;
+                return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+            });
+            chatPersistCachedMessages(_chatCurrentGroupId, merged);
+        }
+
+        newMessages.forEach(m => {
+            _chatLastMsgId = Math.max(_chatLastMsgId, Number(m.id) || 0);
             const isMe = m.sender === currentUser?.username;
             const div = document.createElement('div');
             div.className = `chat-msg ${isMe ? 'chat-msg-me' : 'chat-msg-other'}`;
-            const time = new Date(m.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+            const time = parseServerDate(m.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             const initial = (m.sender || '?')[0].toUpperCase();
             const payload = chatParsePayload(m.encrypted_content);
             const bodyHtml = chatRenderPayload(payload);
@@ -6390,7 +6622,7 @@ async function chatFetchMessages() {
             `;
             container.appendChild(div);
 
-            if (!isMe && m.id > beforeLastMsgId && beforeLastMsgId > 0 && chatCanNotify()) {
+            if (!isMe && Number(m.id) > beforeLastMsgId && beforeLastMsgId > 0 && chatCanNotify()) {
                 const preview = chatPayloadPreview(payload);
                 try {
                     new Notification(`Neue Nachricht von ${m.sender}`, {
@@ -6412,17 +6644,50 @@ async function sendChatMsg() {
     if (!text) return;
     const token = localStorage.getItem('token');
     if (!token) return;
+    const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const payload = JSON.stringify({ t: 'txt', v: text });
+    const tempMessage = {
+        id: tempId,
+        sender: currentUser?.username || 'Du',
+        encrypted_content: payload,
+        created_at: new Date().toISOString()
+    };
+    const cache = chatGetLocalCache();
+    const groupList = Array.isArray(cache[_chatCurrentGroupId]) ? cache[_chatCurrentGroupId] : [];
+    cache[_chatCurrentGroupId] = [...groupList, tempMessage].sort((a, b) => {
+        const aId = Number(a?.id) || 0;
+        const bId = Number(b?.id) || 0;
+        if (aId && bId) return aId - bId;
+        return new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime();
+    });
+    chatSetLocalCache(cache);
+    appendOptimisticChatMessage(tempId, text);
     input.value = '';
     input.style.height = 'auto';
     try {
-        const payload = JSON.stringify({ t: 'txt', v: text });
-        await fetch(`${API_BASE}/chat/messages`, {
+        const res = await fetch(`${API_BASE}/chat/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ groupId: _chatCurrentGroupId, encryptedContent: payload })
         });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || 'Nachricht senden fehlgeschlagen');
+        }
+        const finalMessage = { id: data.id, sender: currentUser?.username || 'Du', encrypted_content: payload, created_at: data.created_at || new Date().toISOString() };
+        const nextCache = chatGetLocalCache();
+        nextCache[_chatCurrentGroupId] = (nextCache[_chatCurrentGroupId] || []).map(msg => String(msg.id || '') === String(tempId) ? finalMessage : msg);
+        chatSetLocalCache(nextCache);
+        finalizeOptimisticChatMessage(tempId, finalMessage);
         await chatFetchMessages();
-    } catch {
+    } catch (err) {
+        const container = document.getElementById('chatMessages');
+        const el = container?.querySelector(`[data-tempid="${CSS.escape(String(tempId))}"]`);
+        if (el) {
+            el.classList.add('send-failed');
+            const timeEl = el.querySelector('.chat-msg-time-inline');
+            if (timeEl) timeEl.textContent = 'Fehler';
+        }
         showAlert('Nachricht konnte nicht gesendet werden.', 'error');
     }
 }

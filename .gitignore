@@ -28,6 +28,8 @@ build/*
 android-native/**/build/
 android-native/**/bin/
 android-native/**/.gradle/
+android-native/.gradle-user-home/
+android-native/.gradle-user-home/**
 *.apk
 *.keystore
 .gradle/

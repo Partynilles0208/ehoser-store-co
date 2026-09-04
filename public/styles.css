@@ -29,6 +29,14 @@
     max-width: 200px;
 }
 
+/* Hidden by double-click */
+.online-widget.hidden-by-dbl { display: none !important; }
+
+/* When viewing games in immersive mode, hide top UI to enjoy fullscreen */
+body.games-fullscreen .navbar,
+body.games-fullscreen .mobile-install-bar,
+body.games-fullscreen .online-widget { display: none !important; }
+
 .online-header {
     font-weight: 700;
     font-size: 0.85rem;
