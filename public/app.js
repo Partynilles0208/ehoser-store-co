@@ -2760,8 +2760,7 @@ function updateGoogleAuthVisibility() {
 }
 
 function getPersonalization() {
-    if (currentProfile?.settings?.personalizationEnabled === false) return null;
-    return currentProfile?.settings?.personalization || null;
+    return null;
 }
 
 function hasPremiumAccess() {
@@ -2818,24 +2817,7 @@ window.addEventListener('focus', () => {
 });
 
 async function trackPersonalizationEvent(type, payload) {
-    if (currentProfile?.settings?.personalizationEnabled === false) return;
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    try {
-        const res = await fetch(`${API_BASE}/me/personalization/event`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({ type, ...(payload || {}) })
-        });
-        const data = await res.json();
-        if (!res.ok || !data?.profile) return;
-        currentProfile = data.profile;
-        applyProfileSettings();
-        showLoggedInUI();
-    } catch {}
+    return;
 }
 
 function applyPersonalizationUI() {
@@ -2844,29 +2826,23 @@ function applyPersonalizationUI() {
     const bannerEl = document.getElementById('personalizationBanner');
     const searchInput = document.getElementById('searchInput');
     const cardsWrap = document.querySelector('.mode-cards');
-    const personalization = getPersonalization();
     const defaultTitle = 'Ehoser Control Center';
     const defaultSubtitle = 'Ein neu sortierter Workspace für Spiele, KI, Karten, Medien und schnelle Tools. Alles startet direkt im Browser.';
 
-    document.body.dataset.personalizationTone = personalization?.tone || 'neutral';
-    document.body.dataset.personalizationLayout = personalization?.layout || 'standard';
-    document.body.dataset.personalizationPrimaryMode = personalization?.highlightModes?.[0] || 'default';
-    document.body.classList.toggle('personalized-ui', Boolean(personalization));
+    document.body.dataset.personalizationTone = 'neutral';
+    document.body.dataset.personalizationLayout = 'standard';
+    document.body.dataset.personalizationPrimaryMode = 'default';
+    document.body.classList.remove('personalized-ui');
 
     if (titleEl) {
         titleEl.textContent = currentUser ? `Ehoser für ${currentUser.username}` : defaultTitle;
     }
     if (subtitleEl) {
-        subtitleEl.textContent = personalization?.summary || defaultSubtitle;
+        subtitleEl.textContent = defaultSubtitle;
     }
     if (bannerEl) {
-        if (currentUser && personalization?.heroLine) {
-            bannerEl.textContent = `${currentUser.username}: ${personalization.heroLine}`;
-            bannerEl.style.display = 'block';
-        } else {
-            bannerEl.style.display = 'none';
-            bannerEl.textContent = '';
-        }
+        bannerEl.style.display = 'none';
+        bannerEl.textContent = '';
     }
 
     if (searchInput) {
@@ -5832,7 +5808,12 @@ function openSettingsModal() {
     document.getElementById('settingLanguage').value = p.settings?.language || 'de';
     document.getElementById('settingDesign').value = p.settings?.design || 'standard';
     document.getElementById('settingEnergySaver').checked = Boolean(p.settings?.energySaver);
-    document.getElementById('settingPersonalizationEnabled').checked = p.settings?.personalizationEnabled !== false;
+    const personalizationToggle = document.getElementById('settingPersonalizationEnabled');
+    if (personalizationToggle) {
+        personalizationToggle.checked = false;
+        personalizationToggle.disabled = true;
+        personalizationToggle.closest('.form-group')?.style.setProperty('display', 'none');
+    }
     const displayNameInput = document.getElementById('accountDisplayName');
     if (displayNameInput) displayNameInput.value = p.settings?.displayName || currentUser?.username || '';
     const avatarInput = document.getElementById('accountAvatarUrl');
