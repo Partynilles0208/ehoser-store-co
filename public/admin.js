@@ -12,6 +12,20 @@ const reportMessageContext = document.getElementById('reportMessageContext');
 let adminRefreshInterval = null;
 let _reportContextPayload = null;
 
+function resetAdminSessionState({ clearCode = true, clearStatus = true } = {}) {
+    if (clearCode) {
+        activeAdminCode = null;
+        sessionStorage.removeItem('ehoserAdminCode');
+    }
+    clearInterval(adminRefreshInterval);
+    adminRefreshInterval = null;
+    if (secureArea) secureArea.style.display = 'none';
+    setAdminEmptyStates('Admin-Status zurückgesetzt. Bitte erneut einloggen.');
+    if (clearStatus) setStatus('Admin-Sitzung wurde zurückgesetzt. Bitte Admin-Code erneut eingeben.', 'info');
+    const codeInput = document.getElementById('adminJoinCode');
+    if (codeInput) codeInput.focus();
+}
+
 setStatus('Als Gast fortfahren oeffnet die normale App zum Testen. Admin-Code ist nur fuer Verwaltung noetig.', 'info');
 
 async function autoUnlockAdminFromSession() {
@@ -25,7 +39,7 @@ async function autoUnlockAdminFromSession() {
         });
 
         if (!res.ok) {
-            sessionStorage.removeItem('ehoserAdminCode');
+            resetAdminSessionState({ clearCode: true, clearStatus: false });
             return false;
         }
 
@@ -45,7 +59,7 @@ async function autoUnlockAdminFromSession() {
         }, 8000);
         return true;
     } catch (err) {
-        sessionStorage.removeItem('ehoserAdminCode');
+        resetAdminSessionState({ clearCode: true, clearStatus: false });
         return false;
     }
 }
@@ -75,6 +89,7 @@ accessForm.addEventListener('submit', async (event) => {
             headers: { 'Content-Type': 'application/json', 'x-admin-key': code }
         });
         if (!res.ok) {
+            resetAdminSessionState({ clearCode: true, clearStatus: true });
             setStatus('Falscher Admin-Code.', 'error');
             return;
         }
@@ -94,9 +109,9 @@ accessForm.addEventListener('submit', async (event) => {
             loadChatReports();
         }, 8000);
     } catch (err) {
-        secureArea.style.display = '';
+        resetAdminSessionState({ clearCode: true, clearStatus: true });
         setAdminEmptyStates('Ohne Anmeldung: keine Verbindung zu den Admin-Daten.');
-        setStatus('Admin-Oberflaeche offen, aber Daten konnten nicht geladen werden.', 'error');
+        setStatus('Admin-Oberflaeche offen, aber Daten konnten nicht geladen werden. Bitte erneut versuchen.', 'error');
     }
 });
 
