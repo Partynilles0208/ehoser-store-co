@@ -305,6 +305,7 @@
                 </div>
                 <div class="nav-links" id="navLinks">
                     <a href="/" class="nav-link">Dashboard</a>
+                    <button type="button" class="nav-chat-button" onclick="window.location.href = (location.hostname.includes('localhost') || location.hostname.includes('127.0.0.1')) ? location.origin + '/chat' : 'https://ehoser.de/chat'" aria-label="Chat öffnen"><img src="/chat.png" alt="Chat" /></button>
                     <a href="/learning/" class="nav-pill">Learning</a>
                     <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
                     <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
@@ -1028,63 +1029,6 @@
                 </div>
 
             </div>
-
-            <!-- ── Chat Sektion ─────────────────────────────────────── -->
-            <section id="chat" class="section">
-                <div class="chat-wrapper">
-                    <!-- Sidebar: Gespräche -->
-                    <div class="chat-sidebar" id="chatSidebar">
-                        <div class="chat-sidebar-header">
-                            <button class="btn-back" onclick="selectMode('mode-select')">← Zurück</button>
-                            <h2 class="chat-sidebar-title">💬 Chat</h2>
-                        </div>
-                        <div class="chat-new-dm">
-                            <input type="text" id="chatDmInput" class="chat-dm-input" placeholder="Nutzer suchen oder leer lassen für alle…" oninput="chatSearchUsers(this.value)" autocomplete="off">
-                            <div class="chat-user-actions">
-                                <button class="chat-small-btn" onclick="chatSearchUsers(document.getElementById('chatDmInput').value)">Alle anzeigen</button>
-                                <button class="chat-small-btn" onclick="chatApplySelectedUsers()">Anwenden</button>
-                                <button class="chat-small-btn" onclick="inviteClassToWebsite()">Klasse einladen</button>
-                            </div>
-                            <div id="chatUserDropdown" class="chat-user-dropdown" style="display:none;"></div>
-                        </div>
-                        <div id="chatGroupList" class="chat-group-list">
-                            <div class="chat-loading">Gespräche werden geladen…</div>
-                        </div>
-                    </div>
-                    <!-- Hauptbereich: Nachrichten -->
-                    <div class="chat-main" id="chatMain">
-                        <div class="chat-empty-state" id="chatEmptyState">
-                            <div class="chat-empty-icon">💬</div>
-                            <h3>Wähle ein Gespräch</h3>
-                            <p>Suche nach einem Nutzernamen links, um ein neues Gespräch zu starten.</p>
-                        </div>
-                        <div class="chat-conv" id="chatConv" style="display:none;">
-                            <div class="chat-conv-header" id="chatConvHeader">
-                                <button class="chat-back-btn" onclick="closeChatConv()">←</button>
-                                <div class="chat-conv-name" id="chatConvName"></div>
-                                <div class="chat-conv-status" id="chatConvStatus"></div>
-                                <button class="chat-notify-btn" id="chatManageBtn" style="display:none;" onclick="chatOpenGroupManage()">Gruppe verwalten</button>
-                                <button class="chat-notify-btn" onclick="chatReportCurrentGroup()">Gruppe melden</button>
-                                <button class="chat-notify-btn" onclick="requestChatNotificationsManually()">Benachrichtigung aktivieren</button>
-                            </div>
-                            <div class="chat-messages" id="chatMessages"></div>
-                            <div class="chat-scroll-controls">
-                                <button class="chat-scroll-btn" onclick="chatScrollBy(-260)" title="Nach oben">↑</button>
-                                <button class="chat-scroll-btn" onclick="chatScrollBy(260)" title="Nach unten">↓</button>
-                            </div>
-                            <button id="chatScrollBottomBtn" class="chat-scroll-bottom-btn" onclick="chatScrollToBottom(true)" style="display:none;">⬇ Neueste</button>
-                            <div class="chat-input-row">
-                                <div class="chat-input-wrap">
-                                    <button class="chat-attach-btn" onclick="triggerChatFilePicker()">+</button>
-                                    <input id="chatFileInput" type="file" style="display:none;" onchange="chatUploadAndSendFile(this)">
-                                    <textarea id="chatMsgInput" class="chat-msg-input" placeholder="Nachricht schreiben…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMsg();}"></textarea>
-                                    <button class="chat-send-btn" onclick="sendChatMsg()">↩</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
 
             <section id="ki" class="section">
                 <!-- Name-Eingabe Modal -->
@@ -2225,18 +2169,35 @@ Ramen</textarea>
                     </span>
                 </label>
             </div>
-            <div class="form-group">
-                <label for="accountDisplayName">Anzeigename</label>
-                <input id="accountDisplayName" type="text" maxlength="40" placeholder="Wie du angezeigt wirst">
-            </div>
-            <div class="form-group">
-                <label for="accountAvatarUrl">Profilbild</label>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <input id="accountAvatarUrl" type="url" placeholder="https://..." oninput="refreshAccountAvatarPreview()" style="flex:1;min-width:220px;">
-                    <input id="accountAvatarFile" type="file" accept="image/*" style="max-width:220px;">
-                    <button class="btn-small" onclick="uploadAccountAvatar()" style="width:auto;">Bild hochladen</button>
+            <div class="settings-profile-card">
+                <div class="settings-profile-header">
+                    <div class="settings-profile-avatar-wrap">
+                        <img id="accountAvatarPreview" alt="Profilbild Vorschau" class="settings-profile-avatar" style="display:none;">
+                        <div id="accountAvatarFallback" class="settings-profile-avatar settings-profile-avatar-fallback" style="display:none;">👤</div>
+                    </div>
+                    <div class="settings-profile-meta">
+                        <div class="settings-profile-kicker">Profil</div>
+                        <div id="accountProfileUsernameLabel" class="settings-profile-username">Lädt...</div>
+                    </div>
                 </div>
-                <img id="accountAvatarPreview" alt="Profilbild Vorschau" style="display:none;width:64px;height:64px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.15);margin-top:10px;">
+                <div class="settings-profile-fields">
+                    <div class="form-group">
+                        <label for="accountDisplayName">Anzeigename</label>
+                        <input id="accountDisplayName" type="text" maxlength="40" placeholder="Wie du angezeigt wirst">
+                    </div>
+                    <div class="form-group">
+                        <label for="accountUsername">Benutzername</label>
+                        <input id="accountUsername" type="text" readonly placeholder="Dein Nutzername">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="accountAvatarUrl">Profilbild</label>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <input id="accountAvatarUrl" type="url" placeholder="https://..." oninput="refreshAccountAvatarPreview()" style="flex:1;min-width:220px;">
+                        <input id="accountAvatarFile" type="file" accept="image/*" style="max-width:220px;">
+                        <button class="btn-small" onclick="uploadAccountAvatar()" style="width:auto;">Bild hochladen</button>
+                    </div>
+                </div>
             </div>
             <div class="settings-pro-box">
                 <div id="planBadge" class="plan-badge">Plan: Gratis</div>

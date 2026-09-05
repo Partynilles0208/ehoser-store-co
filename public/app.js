@@ -3619,6 +3619,12 @@ async function handleRegister(event) {
     }
 }
 
+function openStandaloneChat() {
+    const isLocalDev = /localhost|127\.0\.0\.1/.test(window.location.hostname);
+    const url = isLocalDev ? `${window.location.origin}/chat` : 'https://ehoser.de/chat';
+    window.location.href = url;
+}
+
 function showLoggedInUI() {
     const navLinks = document.getElementById('navLinks');
     syncPlanStatus();
@@ -3636,6 +3642,7 @@ function showLoggedInUI() {
         : `Hallo, ${escapeHtml(displayName)}.`;
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
+        <button type="button" class="nav-chat-button" onclick="openStandaloneChat()" aria-label="Chat öffnen"><img src="/chat.png" alt="Chat" /></button>
         <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
         <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
@@ -3706,7 +3713,7 @@ async function claimDaily() {
 function showLoggedOutUI() {
     const navLinks = document.getElementById('navLinks');
     if (!navLinks) return;
-    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a><button type="button" class="nav-pill" onclick="showSection(\'auth\')">Hinzufügen</button><button type="button" class="nav-pill" onclick="showSection(\'updates\')">Updates</button>';
+    navLinks.innerHTML = '<a href="#" onclick="showSection(\'auth\')" class="nav-link">Anmelden</a><button type="button" class="nav-chat-button" onclick="openStandaloneChat()" aria-label="Chat öffnen"><img src="/chat.png" alt="Chat" /></button><button type="button" class="nav-pill" onclick="showSection(\'auth\')">Hinzufügen</button><button type="button" class="nav-pill" onclick="showSection(\'updates\')">Updates</button>';
 }
 
 function showAdminGuestPreviewUI() {
@@ -3714,6 +3721,7 @@ function showAdminGuestPreviewUI() {
     if (!navLinks) return;
     navLinks.innerHTML = `
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Start</a>
+        <button type="button" class="nav-chat-button" onclick="openStandaloneChat()" aria-label="Chat öffnen"><img src="/chat.png" alt="Chat" /></button>
         <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
         <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
         <span class="plan-badge">Gast-Test</span>
@@ -4196,6 +4204,7 @@ function showDesktopUI() {
     navLinks.innerHTML = `
         <span class="hello-user">Desktop-App - ehoser.de</span>
         <a href="#" onclick="showSection('mode-select')" class="nav-link">Tools</a>
+        <button type="button" class="nav-chat-button" onclick="openStandaloneChat()" aria-label="Chat öffnen"><img src="/chat.png" alt="Chat" /></button>
         <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
         <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
         <a href="#" onclick="showSection('auth')" class="nav-link desktop-online-link">Online-Konto</a>
@@ -4313,19 +4322,8 @@ function selectMode(mode) {
     } else if (mode === 'facewarp') {
         openFacewarpModeModal();
     } else if (mode === 'chat') {
-        const token = localStorage.getItem('token');
-        if (!token && !isAdminGuestPreview()) {
-            showAlert('Bitte zuerst anmelden, um den Chat zu nutzen.', 'error');
-            showSection('auth');
-            return;
-        }
-        if (!token && isAdminGuestPreview()) {
-            showSection('chat');
-            showAlert('Chat ist im Gast-Test sichtbar, Nachrichten brauchen spaeter ein Konto.', 'info');
-            return;
-        }
-        showSection('chat');
-        initChatSection();
+        openStandaloneChat();
+        showAlert('Chat öffnet sich jetzt in der eigenen Chat-Seite.', 'success');
     } else if (mode === 'qr') {
         showSection('qr');
         setTimeout(() => document.getElementById('qrInput')?.focus(), 50);
@@ -5816,6 +5814,10 @@ function openSettingsModal() {
     }
     const displayNameInput = document.getElementById('accountDisplayName');
     if (displayNameInput) displayNameInput.value = p.settings?.displayName || currentUser?.username || '';
+    const usernameInput = document.getElementById('accountUsername');
+    if (usernameInput) usernameInput.value = currentUser?.username || '';
+    const usernameLabel = document.getElementById('accountProfileUsernameLabel');
+    if (usernameLabel) usernameLabel.textContent = currentUser?.username || 'Gast';
     const avatarInput = document.getElementById('accountAvatarUrl');
     if (avatarInput) avatarInput.value = p.settings?.avatarUrl || '';
     refreshAccountAvatarPreview();
@@ -5972,14 +5974,23 @@ async function sendPlanRequest() {
 
 function refreshAccountAvatarPreview() {
     const preview = document.getElementById('accountAvatarPreview');
-    if (!preview) return;
-    const avatarUrl = document.getElementById('accountAvatarUrl')?.value?.trim() || '';
+    const fallback = document.getElementById('accountAvatarFallback');
+    const usernameLabel = document.getElementById('accountProfileUsernameLabel');
+    const usernameInput = document.getElementById('accountUsername');
+    if (usernameInput) usernameInput.value = currentUser?.username || usernameInput.value || '';
+    if (usernameLabel) usernameLabel.textContent = currentUser?.username || 'Gast';
+    const avatarUrl = document.getElementById('accountAvatarUrl')?.value?.trim() || (currentProfile?.settings?.avatarUrl || '');
     if (avatarUrl) {
         preview.src = avatarUrl;
         preview.style.display = 'block';
+        if (fallback) fallback.style.display = 'none';
     } else {
         preview.removeAttribute('src');
         preview.style.display = 'none';
+        if (fallback) {
+            fallback.textContent = (currentUser?.username || 'U').charAt(0).toUpperCase();
+            fallback.style.display = 'grid';
+        }
     }
 }
 
@@ -6536,7 +6547,10 @@ function openChatGroup(groupId, groupName) {
     chatFetchMessages();
     _chatPollInterval = setInterval(chatFetchMessages, 3000);
     chatUpdateScrollButton();
-    setTimeout(() => document.getElementById('chatMsgInput')?.focus(), 50);
+    setTimeout(() => {
+        chatScrollToBottom(false);
+        document.getElementById('chatMsgInput')?.focus();
+    }, 40);
     // Highlight aktive Gruppe
     document.querySelectorAll('.chat-group-item').forEach(el => el.classList.remove('active'));
     const btn = document.querySelector(`.chat-group-item[onclick*="${groupId}"]`);
