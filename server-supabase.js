@@ -2762,7 +2762,7 @@ app.post('/api/admin/users/:id/refresh-chat-key', async (req, res) => {
     const username = data.username;
     const cleanupTasks = [
       supabaseAdmin.from('chat_user_keys').delete().eq('username', username),
-      supabaseAdmin.from('chat_group_members').update({ encrypted_group_key: null }).eq('username', username)
+      supabaseAdmin.from('chat_group_members').update({ encrypted_group_key: '' }).eq('username', username)
     ];
 
     const results = await Promise.allSettled(cleanupTasks);
