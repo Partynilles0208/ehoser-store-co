@@ -2743,6 +2743,47 @@ app.post('/api/admin/users/:id/ps-account', async (req, res) => {
   }
 });
 
+// Admin: Chat-Key für einen Nutzer neu initialisieren
+app.post('/api/admin/users/:id/refresh-chat-key', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+  }
+
+  try {
+    const { data, error } = await supabase.from('users').select('username').eq('id', userId).single();
+    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const username = data.username;
+    const cleanupTasks = [
+      supabaseAdmin.from('chat_user_keys').delete().eq('username', username),
+      supabaseAdmin.from('chat_group_members').update({ encrypted_group_key: null }).eq('username', username)
+    ];
+
+    const results = await Promise.allSettled(cleanupTasks);
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed) {
+      console.error('Admin refresh chat key failed:', failed.reason);
+      return res.status(500).json({ error: 'Chat-Key konnte nicht aktualisiert werden.' });
+    }
+
+    const dbError = results.find((result) => result.status === 'fulfilled' && result.value?.error)?.value?.error;
+    if (dbError) {
+      return res.status(500).json({ error: 'Chat-Key konnte nicht aktualisiert werden: ' + (dbError.message || 'Datenbankfehler') });
+    }
+
+    return res.json({ ok: true, username });
+  } catch (err) {
+    console.error('Admin Refresh Chat Key Error:', err);
+    return res.status(500).json({ error: err.message || 'Chat-Key konnte nicht aktualisiert werden' });
+  }
+});
+
 // Admin: offene Code-Reset-Anfragen
 app.get('/api/admin/reset-requests', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];

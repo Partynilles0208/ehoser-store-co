@@ -266,6 +266,7 @@ async function loadRegisteredUsers() {
                         <button class="btn-small" style="background:${user.update_unlocked ? 'rgba(220,50,50,0.2)' : 'rgba(45,190,108,0.2)'}" onclick="unlockUserUpdate(${user.id}, ${user.update_unlocked ? 'false' : 'true'})">${user.update_unlocked ? '🔒 Update sperren' : '🔓 Update freischalten'}</button>
                         <button class="btn-small" style="background:${user.ps_account ? 'rgba(220,50,50,0.2)' : 'rgba(77,159,255,0.2)'}" onclick="toggleUserPs(${user.id}, ${user.ps_account ? 'false' : 'true'})">${user.ps_account ? '🔵 PS entfernen' : '🔵 PS geben'}</button>
                         <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
+                        <button class="btn-small" style="background:rgba(34,197,94,0.18);" onclick="refreshUserChatKey(${user.id}, '${escapeJs(user.username)}')">🔐 Chat-Key refresh</button>
                         <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
                     </span>
                 </li>`
@@ -663,6 +664,34 @@ async function deleteAllChats() {
 document.addEventListener('click', () => {
     closeReportContextMenu();
 });
+
+async function refreshUserChatKey(userId, username) {
+    if (!activeAdminCode) {
+        setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
+        return;
+    }
+
+    const confirmed = window.confirm(`Chat-Key für "${username}" wirklich neu initialisieren? Der Nutzer muss danach den Chat erneut öffnen, damit ein neuer Schlüssel gespeichert wird.`);
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/refresh-chat-key`, {
+            method: 'POST',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Chat-Key konnte nicht aktualisiert werden.', 'error');
+            return;
+        }
+
+        setStatus(`Chat-Key für ${username} wurde zurückgesetzt und neu initialisiert.`, 'success');
+        await loadRegisteredUsers();
+    } catch (error) {
+        setStatus(`Fehler beim Chat-Key-Refresh: ${error.message}`, 'error');
+    }
+}
 
 async function deleteUser(userId, username) {
     if (!activeAdminCode) {
