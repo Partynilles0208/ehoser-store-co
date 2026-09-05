@@ -628,6 +628,36 @@ async function adminUnbanUser() {
         setStatus(`Fehler: ${error.message}`, 'error');
     }
 }
+
+async function deleteAllChats() {
+    if (!activeAdminCode) {
+        setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
+        return;
+    }
+
+    const confirmed = window.confirm('ALLE Chat-Daten auf ehoser wirklich löschen? Nutzerkonten und ehoser-Accounts bleiben dabei erhalten. Diese Aktion kann nicht rückgängig gemacht werden.');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/chats/reset-all`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-admin-key': activeAdminCode
+            }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Alle Chats konnten nicht gelöscht werden.', 'error');
+            return;
+        }
+
+        setStatus('Alle Chats wurden erfolgreich gelöscht.', 'success');
+        await loadChatReports();
+    } catch (error) {
+        setStatus(`Fehler beim Löschen aller Chats: ${error.message}`, 'error');
+    }
+}
 }
 
 document.addEventListener('click', () => {

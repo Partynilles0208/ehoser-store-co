@@ -2822,6 +2822,46 @@ app.post('/api/admin/reset-requests/:id/reject', async (req, res) => {
   }
 });
 
+app.post('/api/admin/chats/reset-all', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  try {
+    const deleteTasks = [
+      supabaseAdmin.from('chat_messages').delete().neq('id', 0),
+      supabaseAdmin.from('chat_group_members').delete().neq('group_id', ''),
+      supabaseAdmin.from('chat_group_admins').delete().neq('group_id', ''),
+      supabaseAdmin.from('chat_group_meta').delete().neq('group_id', ''),
+      supabaseAdmin.from('chat_reports').delete().neq('id', 0),
+      supabaseAdmin.from('chat_groups').delete().neq('id', ''),
+      supabaseAdmin.from('chat_user_keys').delete().neq('username', '')
+    ];
+
+    const results = await Promise.allSettled(deleteTasks);
+    const rejected = results.find((result) => result.status === 'rejected');
+    if (rejected) {
+      console.error('Admin reset all chats failed:', rejected.reason);
+      return res.status(500).json({ error: 'Alle Chats konnten nicht gelöscht werden.' });
+    }
+
+    const failed = results.find((result) => result.status === 'fulfilled' && result.value?.error);
+    if (failed) {
+      const err = failed.value.error;
+      console.error('Admin reset all chats failed with DB error:', err);
+      return res.status(500).json({ error: 'Alle Chats konnten nicht gelöscht werden: ' + (err.message || 'Datenbankfehler') });
+    }
+
+    chatGroupMetaMemory.clear();
+    chatGroupAdminsMemory.clear();
+    return res.json({ ok: true, deleted: true });
+  } catch (error) {
+    console.error('Admin reset all chats error:', error);
+    return res.status(500).json({ error: 'Alle Chats konnten nicht gelöscht werden.' });
+  }
+});
+
 // Admin: Chat-Meldungen abrufen
 app.get('/api/admin/chat-reports', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
