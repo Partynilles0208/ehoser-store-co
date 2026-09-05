@@ -1279,6 +1279,10 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+app.get('/chat.png', (req, res) => {
+  res.sendFile(path.join(__dirname, 'chat.png'));
+});
+
 // News-Proxy (NewsAPI.org blockiert direkte Browser-Requests via CORS)
 app.get('/api/news', async (req, res) => {
   const apiKey = process.env.NEWS_API_KEY || '';
@@ -3511,7 +3515,11 @@ app.post('/api/chat/groups', async (req, res) => {
   const rows = allMembers.map((username) => ({
     group_id: id,
     username,
-    encrypted_group_key: String(memberKeys[username] || 'plain').substring(0, 8192)
+    encrypted_group_key: (() => {
+      const raw = memberKeys[username];
+      const value = typeof raw === 'string' ? raw.trim() : '';
+      return (value && value !== 'plain' && value.startsWith('{')) ? value.substring(0, 8192) : '';
+    })()
   }));
   const { error: mErr } = await supabaseAdmin.from('chat_group_members').insert(rows);
   if (mErr) {

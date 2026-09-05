@@ -6447,8 +6447,8 @@ async function chatCreateConversation(targetUsers) {
         return;
     }
 
-    const memberKeys = { [myUsername]: 'plain' };
-    uniqueUsers.forEach(u => { memberKeys[u] = 'plain'; });
+    const memberKeys = { [myUsername]: '' };
+    uniqueUsers.forEach(u => { memberKeys[u] = ''; });
 
     try {
         const res = await fetch(`${API_BASE}/chat/groups`, {
@@ -8673,7 +8673,7 @@ async function chatOpenGroupManage() {
             const res = await fetch(`${API_BASE}/chat/groups/${_chatCurrentGroupId}/members`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ username, encryptedGroupKey: 'plain' })
+                body: JSON.stringify({ username, encryptedGroupKey: '' })
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.error || 'Mitglied konnte nicht hinzugefügt werden');

@@ -16,6 +16,19 @@ function parseServerDate(s) {
     return date;
 }
 
+function safeJsonParse(value, fallback = null) {
+    if (typeof value !== 'string') {
+        return value && typeof value === 'object' ? value : fallback;
+    }
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === 'plain' || trimmed === 'null') return fallback;
+    try {
+        return JSON.parse(trimmed);
+    } catch {
+        return fallback;
+    }
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let _token = null, _me = null, _myKeys = null;
 let _meProfile = null;
@@ -177,8 +190,16 @@ async function wrapKey(groupKeyB64, recipPubJwk) {
 }
 
 async function unwrapKey(wrapped) {
-    const { eph, iv, c } = JSON.parse(wrapped);
-    const wk = await deriveWrap(_myKeys.privateKey, await importPub(JSON.parse(eph)));
+    const parsed = safeJsonParse(wrapped, null);
+    if (!parsed || typeof parsed !== 'object' || !parsed.eph || !parsed.iv || !parsed.c) {
+        throw new Error('Ungültiger verschlüsselter Gruppenschlüssel');
+    }
+    const { eph, iv, c } = parsed;
+    const ephParsed = safeJsonParse(eph, null);
+    if (!ephParsed || typeof ephParsed !== 'object') {
+        throw new Error('Ungültiger Schlüssel-Wrapper');
+    }
+    const wk = await deriveWrap(_myKeys.privateKey, await importPub(ephParsed));
     const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: new Uint8Array(b64d(iv)) }, wk, b64d(c));
     return new TextDecoder().decode(pt);
 }
@@ -194,7 +215,11 @@ async function encryptMsg(text, key) {
 }
 
 async function decryptMsg(enc, key) {
-    const { iv, c } = JSON.parse(enc);
+    const parsed = safeJsonParse(enc, null);
+    if (!parsed || typeof parsed !== 'object' || !parsed.iv || !parsed.c) {
+        throw new Error('Ungültige verschlüsselte Nachricht');
+    }
+    const { iv, c } = parsed;
     const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: new Uint8Array(b64d(iv)) }, key, b64d(c));
     return new TextDecoder().decode(pt);
 }
@@ -318,7 +343,7 @@ async function loadMessages(gid, initial) {
                     existingEl.dataset.plain = plain ? encodeURIComponent(plain) : '';
                     const bubble = existingEl.querySelector('.msg-bubble');
                     try {
-                        const pj = JSON.parse(plain || 'null');
+                        const pj = safeJsonParse(plain, { t: 'txt', v: String(plain || '') });
                         if (pj && pj.t === 'txt') bubble.innerHTML = esc(pj.v || '').replace(/\n/g, '<br>');
                         else bubble.innerHTML = renderContent(pj);
                     } catch (e) {
@@ -353,8 +378,7 @@ function appendMessage(m, plainJson) {
     if (plainJson === null) {
         content = '<span class="decrypt-err">🔒 Konnte nicht entschlüsselt werden</span>';
     } else {
-        let parsed;
-        try { parsed = JSON.parse(plainJson); } catch { parsed = { t:'txt', v: plainJson }; }
+        const parsed = safeJsonParse(plainJson, { t: 'txt', v: String(plainJson || '') });
         content = renderContent(parsed);
     }
     const row = document.createElement('div');
@@ -556,7 +580,7 @@ async function startEditMessage(row) {
     const plain = plainEnc ? decodeURIComponent(plainEnc) : null;
     let currText = '';
     try {
-        const pj = JSON.parse(plain || 'null');
+        const pj = safeJsonParse(plain, null);
         if (!pj || pj.t !== 'txt') return alert('Nur Textnachrichten können bearbeitet werden');
         currText = pj.v || '';
     } catch (e) { return alert('Fehler beim Lesen der Nachricht'); }
@@ -607,7 +631,7 @@ async function triggerChatAiSummary() {
             try {
                 const plain = await decryptMsg(m.encrypted_content, key);
                 if (!plain) continue;
-                const parsed = (() => { try { return JSON.parse(plain); } catch { return { t: 'txt', v: plain }; } })();
+                const parsed = safeJsonParse(plain, { t: 'txt', v: String(plain || '') });
                 if (parsed?.t === 'txt' && typeof parsed.v === 'string' && parsed.v.trim()) summaries.push(parsed.v.trim());
             } catch {}
         }
