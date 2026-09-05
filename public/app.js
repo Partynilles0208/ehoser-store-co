@@ -2821,6 +2821,7 @@ async function trackPersonalizationEvent(type, payload) {
 }
 
 function applyPersonalizationUI() {
+    const personalization = getPersonalization();
     const titleEl = document.getElementById('modeTitle');
     const subtitleEl = document.getElementById('modeSubtitle');
     const bannerEl = document.getElementById('personalizationBanner');
