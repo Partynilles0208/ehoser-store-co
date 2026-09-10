@@ -91,6 +91,9 @@
     const statusEl = document.getElementById('status');
     const loginBtn = document.getElementById('loginBtn');
     const frame = document.getElementById('gameFrame');
+    let currentUser = null;
+    let matchStarted = false;
+    let refreshTimer = null;
 
     function loginUrl() {
       const sameSite = location.hostname === 'ehoser.de' || location.hostname.endsWith('.ehoser.de') || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -102,6 +105,127 @@
       const username = String(user?.username || 'ehoser Spieler').trim().slice(0, 24);
       localStorage.setItem(authKey, JSON.stringify({ username, token, at: Date.now() }));
       localStorage.setItem('ehoserUsername', username);
+    }
+
+    function headers() {
+      return { Authorization: 'Bearer ' + localStorage.getItem('token') };
+    }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      })[char]);
+    }
+
+    function getFriends() {
+      try { return new Set(JSON.parse(localStorage.getItem('skybreakFriends') || '[]')); } catch { return new Set(); }
+    }
+
+    function setFriends(friends) {
+      localStorage.setItem('skybreakFriends', JSON.stringify([...friends]));
+    }
+
+    async function fetchSkybreakMembers() {
+      const [onlineRes, allRes] = await Promise.allSettled([
+        fetch('/api/online-users', { headers: headers() }).then(res => res.ok ? res.json() : { users: [] }),
+        fetch('/api/chat/users/search?limit=200', { headers: headers() }).then(res => res.ok ? res.json() : { users: [] })
+      ]);
+      const onlineUsers = onlineRes.status === 'fulfilled' ? (onlineRes.value.users || []) : [];
+      const allUsers = allRes.status === 'fulfilled' ? (allRes.value.users || []) : [];
+      const onlineSet = new Set(onlineUsers.filter(u => u.kind !== 'guest').map(u => String(u.username || '').toLowerCase()));
+      const names = new Set([
+        ...allUsers.map(String),
+        ...onlineUsers.filter(u => u.kind !== 'guest').map(u => u.username)
+      ].filter(Boolean));
+
+      return [...names]
+        .filter(name => name.toLowerCase() !== String(currentUser?.username || '').toLowerCase())
+        .sort((a, b) => Number(onlineSet.has(b.toLowerCase())) - Number(onlineSet.has(a.toLowerCase())) || a.localeCompare(b))
+        .map(name => ({ username: name, online: onlineSet.has(name.toLowerCase()) }));
+    }
+
+    function injectGameStyle(doc) {
+      if (doc.getElementById('skybreak-real-multiplayer-style')) return;
+      const style = doc.createElement('style');
+      style.id = 'skybreak-real-multiplayer-style';
+      style.textContent = `
+        .skybreak-party-live-dot{display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:6px;background:#6b7c85}
+        .skybreak-party-live-dot.on{background:#36ff8a;box-shadow:0 0 12px #36ff8a}
+        .skybreak-party-row button[disabled]{opacity:.55;cursor:not-allowed}
+        .skybreak-party-note strong{color:#d9ff53}
+      `;
+      doc.head.append(style);
+    }
+
+    async function renderRealMembers(doc) {
+      const root = doc.getElementById('skybreak-member-list');
+      if (!root) return;
+      const note = doc.querySelector('.skybreak-party-note');
+      if (note) note.innerHTML = '<strong>Supabase live:</strong> echte ehoser Mitglieder. Online-Spieler koennen direkt fuer die Runde markiert werden.';
+      let members = [];
+      try {
+        members = await fetchSkybreakMembers();
+      } catch {
+        root.innerHTML = '<p class="skybreak-party-note">Konnte ehoser Mitglieder gerade nicht laden.</p>';
+        return;
+      }
+
+      if (!members.length) {
+        root.innerHTML = '<p class="skybreak-party-note">Noch keine anderen ehoser Mitglieder gefunden.</p>';
+        return;
+      }
+
+      const friends = getFriends();
+      root.replaceChildren(...members.map(member => {
+        const row = doc.createElement('div');
+        row.className = 'skybreak-party-row';
+        const copy = doc.createElement('div');
+        copy.innerHTML = `<strong><span class="skybreak-party-live-dot ${member.online ? 'on' : ''}"></span>${escapeHtml(member.username)}</strong><small>${member.online ? 'Online · einladbar' : 'ehoser Mitglied · offline'}</small>`;
+        const btn = doc.createElement('button');
+        btn.type = 'button';
+        btn.textContent = friends.has(member.username) ? 'Einladen' : 'Adden';
+        btn.disabled = !member.online && friends.has(member.username);
+        btn.addEventListener('click', () => {
+          const next = getFriends();
+          if (!next.has(member.username)) {
+            next.add(member.username);
+            setFriends(next);
+            doc.defaultView.toast?.(member.username + ' zu SKYBREAK hinzugefuegt.', 2);
+            renderRealMembers(doc);
+            return;
+          }
+          localStorage.setItem('skybreakPendingInvite', JSON.stringify({ to: member.username, from: currentUser?.username || 'ehoser Spieler', at: Date.now() }));
+          doc.defaultView.toast?.(member.username + ' ist fuer deine SKYBREAK-Runde markiert.', 3);
+        });
+        row.append(copy, btn);
+        return row;
+      }));
+    }
+
+    function startMatchmakingInGame(doc) {
+      if (matchStarted) return;
+      const findButton = doc.getElementById('skybreak-find-match');
+      if (!findButton) return;
+      matchStarted = true;
+      findButton.click();
+    }
+
+    function installGameBridge() {
+      const doc = frame.contentDocument;
+      if (!doc) return;
+      injectGameStyle(doc);
+      const tick = () => {
+        renderRealMembers(doc);
+        startMatchmakingInGame(doc);
+      };
+      tick();
+      doc.getElementById('skybreak-menu-toggle')?.addEventListener('click', () => setTimeout(() => renderRealMembers(doc), 0));
+      clearInterval(refreshTimer);
+      refreshTimer = setInterval(() => renderRealMembers(doc), 10000);
     }
 
     async function verify() {
@@ -121,6 +245,7 @@
     async function start() {
       try {
         const user = await verify();
+        currentUser = user;
         document.body.classList.add('authed');
         frame.src = '/skybreak/';
         statusEl.textContent = 'Angemeldet als ' + (user.username || 'ehoser Spieler') + '.';
@@ -133,6 +258,11 @@
     loginBtn.addEventListener('click', () => {
       localStorage.setItem('ehoserReturnTo', returnTo);
       window.location.href = loginUrl();
+    });
+
+    frame.addEventListener('load', () => {
+      setTimeout(installGameBridge, 300);
+      setTimeout(installGameBridge, 1600);
     });
 
     start();
