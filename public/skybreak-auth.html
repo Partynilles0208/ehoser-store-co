@@ -92,7 +92,6 @@
     const loginBtn = document.getElementById('loginBtn');
     const frame = document.getElementById('gameFrame');
     let currentUser = null;
-    let matchStarted = false;
     let refreshTimer = null;
 
     function loginUrl() {
@@ -206,12 +205,12 @@
       }));
     }
 
-    function startMatchmakingInGame(doc) {
-      if (matchStarted) return;
+    function disableMatchmakingInGame(doc) {
       const findButton = doc.getElementById('skybreak-find-match');
       if (!findButton) return;
-      matchStarted = true;
-      findButton.click();
+      findButton.disabled = true;
+      findButton.textContent = 'Spielersuche aus';
+      findButton.title = 'Spielersuche ist aktuell ausgeschaltet.';
     }
 
     function installGameBridge() {
@@ -220,7 +219,7 @@
       injectGameStyle(doc);
       const tick = () => {
         renderRealMembers(doc);
-        startMatchmakingInGame(doc);
+        disableMatchmakingInGame(doc);
       };
       tick();
       doc.getElementById('skybreak-menu-toggle')?.addEventListener('click', () => setTimeout(() => renderRealMembers(doc), 0));
