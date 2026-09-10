@@ -4,9 +4,21 @@
     {
       "src": "server-supabase.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "api/skybreak.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
+    {
+      "src": "/api/skybreak",
+      "dest": "api/skybreak.js"
+    },
+    {
+      "src": "/api/skybreak/(.*)",
+      "dest": "api/skybreak.js"
+    },
     {
       "src": "/(.*)",
       "dest": "server-supabase.js"
