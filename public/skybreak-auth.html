@@ -62,6 +62,23 @@
       font-size: 12px;
       color: #89aebc;
     }
+    .mp-status {
+      position: fixed;
+      left: 14px;
+      bottom: 14px;
+      z-index: 3;
+      display: none;
+      max-width: min(360px, calc(100vw - 28px));
+      padding: 10px 12px;
+      border: 1px solid #ffffff24;
+      border-radius: 8px;
+      background: #071927d9;
+      color: #d9ff53;
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: 0 12px 34px #0007;
+    }
+    body.authed .mp-status { display: block; }
     iframe {
       width: 100vw;
       height: 100vh;
@@ -84,6 +101,7 @@
     </section>
   </main>
   <iframe id="gameFrame" title="SKYBREAK" src="about:blank"></iframe>
+  <div id="mpStatus" class="mp-status">Supabase Multiplayer verbindet ...</div>
 
   <script>
     const authKey = 'skybreakAuthUser';
@@ -91,7 +109,10 @@
     const statusEl = document.getElementById('status');
     const loginBtn = document.getElementById('loginBtn');
     const frame = document.getElementById('gameFrame');
+    const mpStatus = document.getElementById('mpStatus');
     let currentUser = null;
+    let skybreakMatch = null;
+    let multiplayerInstalled = false;
     let refreshTimer = null;
 
     function loginUrl() {
@@ -107,7 +128,20 @@
     }
 
     function headers() {
-      return { Authorization: 'Bearer ' + localStorage.getItem('token') };
+      return {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + localStorage.getItem('token')
+      };
+    }
+
+    async function skybreakApi(path, options = {}) {
+      const response = await fetch('/api/skybreak' + path, {
+        ...options,
+        headers: { ...headers(), ...(options.headers || {}) }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'SKYBREAK Supabase Fehler');
+      return data;
     }
 
     function escapeHtml(value) {
@@ -120,26 +154,32 @@
       })[char]);
     }
 
-    function getFriends() {
-      try { return new Set(JSON.parse(localStorage.getItem('skybreakFriends') || '[]')); } catch { return new Set(); }
+    async function getFriends() {
+      const data = await skybreakApi('/friends');
+      return new Set(data.friends || []);
     }
 
-    function setFriends(friends) {
-      localStorage.setItem('skybreakFriends', JSON.stringify([...friends]));
+    async function addFriend(username) {
+      const data = await skybreakApi('/friends', {
+        method: 'POST',
+        body: JSON.stringify({ username })
+      });
+      return new Set(data.friends || []);
+    }
+
+    async function sendInvite(username) {
+      if (!skybreakMatch?.id) throw new Error('Noch keine Supabase Lobby');
+      return skybreakApi('/invite', {
+        method: 'POST',
+        body: JSON.stringify({ username, matchId: skybreakMatch.id })
+      });
     }
 
     async function fetchSkybreakMembers() {
-      const [onlineRes, allRes] = await Promise.allSettled([
-        fetch('/api/online-users', { headers: headers() }).then(res => res.ok ? res.json() : { users: [] }),
-        fetch('/api/chat/users/search?limit=200', { headers: headers() }).then(res => res.ok ? res.json() : { users: [] })
-      ]);
-      const onlineUsers = onlineRes.status === 'fulfilled' ? (onlineRes.value.users || []) : [];
-      const allUsers = allRes.status === 'fulfilled' ? (allRes.value.users || []) : [];
-      const onlineSet = new Set(onlineUsers.filter(u => u.kind !== 'guest').map(u => String(u.username || '').toLowerCase()));
-      const names = new Set([
-        ...allUsers.map(String),
-        ...onlineUsers.filter(u => u.kind !== 'guest').map(u => u.username)
-      ].filter(Boolean));
+      const data = await skybreakApi('/users');
+      const users = data.users || [];
+      const onlineSet = new Set(users.filter(u => u.online).map(u => String(u.username || '').toLowerCase()));
+      const names = new Set(users.map(u => u.username).filter(Boolean));
 
       return [...names]
         .filter(name => name.toLowerCase() !== String(currentUser?.username || '').toLowerCase())
@@ -156,6 +196,7 @@
         .skybreak-party-live-dot.on{background:#36ff8a;box-shadow:0 0 12px #36ff8a}
         .skybreak-party-row button[disabled]{opacity:.55;cursor:not-allowed}
         .skybreak-party-note strong{color:#d9ff53}
+        .skybreak-mp-pill{display:block;margin-top:8px;color:#d9ff53;font-weight:900}
       `;
       doc.head.append(style);
     }
@@ -164,10 +205,11 @@
       const root = doc.getElementById('skybreak-member-list');
       if (!root) return;
       const note = doc.querySelector('.skybreak-party-note');
-      if (note) note.innerHTML = '<strong>Supabase live:</strong> echte ehoser Mitglieder. Online-Spieler koennen direkt fuer die Runde markiert werden.';
+      if (note) note.innerHTML = '<strong>Supabase Multiplayer:</strong> echte ehoser Mitglieder, Freunde und Einladungen laufen ueber Supabase.<span class="skybreak-mp-pill">Lobby: ' + escapeHtml(skybreakMatch?.id || 'verbindet') + '</span>';
       let members = [];
+      let friends = new Set();
       try {
-        members = await fetchSkybreakMembers();
+        [members, friends] = await Promise.all([fetchSkybreakMembers(), getFriends()]);
       } catch {
         root.innerHTML = '<p class="skybreak-party-note">Konnte ehoser Mitglieder gerade nicht laden.</p>';
         return;
@@ -178,7 +220,6 @@
         return;
       }
 
-      const friends = getFriends();
       root.replaceChildren(...members.map(member => {
         const row = doc.createElement('div');
         row.className = 'skybreak-party-row';
@@ -188,29 +229,230 @@
         btn.type = 'button';
         btn.textContent = friends.has(member.username) ? 'Einladen' : 'Adden';
         btn.disabled = !member.online && friends.has(member.username);
-        btn.addEventListener('click', () => {
-          const next = getFriends();
-          if (!next.has(member.username)) {
-            next.add(member.username);
-            setFriends(next);
-            doc.defaultView.toast?.(member.username + ' zu SKYBREAK hinzugefuegt.', 2);
-            renderRealMembers(doc);
-            return;
+        btn.addEventListener('click', async () => {
+          try {
+            if (!friends.has(member.username)) {
+              await addFriend(member.username);
+              doc.defaultView.toast?.(member.username + ' zu SKYBREAK hinzugefuegt.', 2);
+              renderRealMembers(doc);
+              return;
+            }
+            await sendInvite(member.username);
+            doc.defaultView.toast?.(member.username + ' wurde ueber Supabase eingeladen.', 3);
+          } catch (error) {
+            doc.defaultView.toast?.(error.message || 'Supabase Einladung fehlgeschlagen.', 3);
           }
-          localStorage.setItem('skybreakPendingInvite', JSON.stringify({ to: member.username, from: currentUser?.username || 'ehoser Spieler', at: Date.now() }));
-          doc.defaultView.toast?.(member.username + ' ist fuer deine SKYBREAK-Runde markiert.', 3);
         });
         row.append(copy, btn);
         return row;
       }));
     }
 
-    function disableMatchmakingInGame(doc) {
+    async function joinSupabaseMatch() {
+      const data = await skybreakApi('/join', {
+        method: 'POST',
+        body: JSON.stringify({ teamMode: 'squad', maxPlayers: 8, state: 'lobby' })
+      });
+      skybreakMatch = data.match;
+      mpStatus.textContent = 'Supabase Lobby aktiv · ' + (data.players?.length || 1) + ' Spieler';
+      return data;
+    }
+
+    function updateMatchmakingButton(doc) {
       const findButton = doc.getElementById('skybreak-find-match');
       if (!findButton) return;
       findButton.disabled = true;
-      findButton.textContent = 'Spielersuche aus';
-      findButton.title = 'Spielersuche ist aktuell ausgeschaltet.';
+      findButton.textContent = skybreakMatch ? 'Supabase Multiplayer aktiv' : 'Supabase verbindet';
+      findButton.title = 'Battle-Royale-Spielersuche ist aus. Multiplayer laeuft ueber Supabase.';
+    }
+
+    function createMultiplayerScript() {
+      const config = {
+        matchId: skybreakMatch?.id || '',
+        username: currentUser?.username || 'ehoser Spieler'
+      };
+      return `(${function skybreakSupabaseMultiplayer(config) {
+        const token = localStorage.getItem('token');
+        if (!token || !config.matchId) return;
+        const peers = new Map();
+        const colors = [0x74dadd, 0xd9ff53, 0xb7a1e4, 0xffa764, 0x86cfad, 0xff6f91];
+
+        async function api(path, options = {}) {
+          const response = await fetch('/api/skybreak' + path, {
+            ...options,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer ' + token,
+              ...(options.headers || {})
+            }
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || 'Supabase Multiplayer Fehler');
+          return data;
+        }
+
+        function status(text) {
+          const host = parent?.document?.getElementById('mpStatus');
+          if (host) host.textContent = text;
+        }
+
+        function localState() {
+          try {
+            if (typeof player !== 'undefined' && player) {
+              return {
+                x: Number(player.x) || 0,
+                y: Number(player.y) || 0,
+                z: Number(player.z) || 0,
+                yaw: typeof yaw !== 'undefined' ? Number(yaw) || 0 : 0,
+                hp: Number(player.health) || 200,
+                state: typeof state !== 'undefined' ? String(state) : 'playing'
+              };
+            }
+          } catch {}
+          return { x: 0, y: 0, z: 0, yaw: 0, hp: 200, state: 'lobby' };
+        }
+
+        function makeLabel(name) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 256;
+          canvas.height = 64;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = 'rgba(7,25,39,.82)';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#d9ff53';
+          ctx.font = '700 24px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(name.slice(0, 18), 128, 32);
+          const texture = new THREE.CanvasTexture(canvas);
+          const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+          sprite.position.set(0, 2.7, 0);
+          sprite.scale.set(4, 1, 1);
+          return sprite;
+        }
+
+        function createPeer(name, index) {
+          let root = null;
+          let avatar = null;
+          try {
+            if (typeof createCharacter === 'function' && typeof matchGroup !== 'undefined') {
+              const skin = typeof SKINS !== 'undefined' ? SKINS[(index + 1) % SKINS.length] : null;
+              avatar = createCharacter(skin?.color || colors[index % colors.length], skin?.accent || 0xebfbff, (index + 1) % 5);
+              root = avatar.root;
+              avatar.gun.visible = false;
+              matchGroup.add(root);
+            }
+          } catch {}
+          if (!root) {
+            root = new THREE.Group();
+            root.add(new THREE.Mesh(
+              new THREE.BoxGeometry(1, 2, 1),
+              new THREE.MeshStandardMaterial({ color: colors[index % colors.length] })
+            ));
+            scene.add(root);
+          }
+          root.add(makeLabel(name));
+          return { root, avatar, lastSeen: Date.now() };
+        }
+
+        function lobbyPoint(name, index) {
+          let base = { x: 0, y: 0, z: 0 };
+          try {
+            if (typeof world !== 'undefined' && world?.stage) {
+              base = world.stage.position;
+            }
+          } catch {}
+          const angle = (index / 8) * Math.PI * 2;
+          return {
+            x: base.x + Math.cos(angle) * 4,
+            y: base.y,
+            z: base.z + Math.sin(angle) * 4
+          };
+        }
+
+        function render(players) {
+          const others = (players || []).filter(p => p.username && p.username !== config.username);
+          const alive = new Set();
+          others.forEach((remote, index) => {
+            alive.add(remote.username);
+            if (!peers.has(remote.username)) peers.set(remote.username, createPeer(remote.username, index));
+            const peer = peers.get(remote.username);
+            const remoteState = String(remote.state || 'lobby');
+            const position = remoteState === 'lobby' ? lobbyPoint(remote.username, index) : remote;
+            peer.root.visible = true;
+            peer.root.position.set(Number(position.x) || 0, Number(position.y) || 0, Number(position.z) || 0);
+            peer.root.rotation.y = Number(remote.yaw) || 0;
+            peer.lastSeen = Date.now();
+            try {
+              if (peer.avatar && typeof animateCharacter === 'function') {
+                peer.avatar.action = { dt: .016, simple: false };
+                animateCharacter(peer.avatar, performance.now() / 1000 + index, remoteState !== 'lobby', false, false);
+                peer.avatar.gun.visible = false;
+              }
+            } catch {}
+          });
+          for (const [name, peer] of peers) {
+            if (alive.has(name)) continue;
+            peer.root.visible = false;
+            if (Date.now() - peer.lastSeen > 30000) {
+              peer.root.parent?.remove(peer.root);
+              peers.delete(name);
+            }
+          }
+          status('Supabase Multiplayer · ' + (others.length + 1) + ' Spieler · Lobby ' + config.matchId.slice(-6));
+        }
+
+        async function heartbeat() {
+          try {
+            const own = localState();
+            const data = await api('/heartbeat', {
+              method: 'POST',
+              body: JSON.stringify({
+                matchId: config.matchId,
+                teamId: config.username,
+                ...own,
+                meta: { ehoser: true }
+              })
+            });
+            render(data.players || []);
+          } catch (error) {
+            status(error.message || 'Supabase Multiplayer offline');
+          }
+        }
+
+        function markUi() {
+          const button = document.getElementById('skybreak-find-match');
+          if (button) {
+            button.disabled = true;
+            button.textContent = 'Supabase Multiplayer aktiv';
+            button.title = 'Battle-Royale-Spielersuche ist aus. Multiplayer laeuft ueber Supabase.';
+          }
+        }
+
+        markUi();
+        heartbeat();
+        const timer = setInterval(() => {
+          markUi();
+          heartbeat();
+        }, 700);
+        addEventListener('pagehide', () => {
+          clearInterval(timer);
+          fetch('/api/skybreak/leave', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ matchId: config.matchId }),
+            keepalive: true
+          }).catch(() => {});
+        });
+      }.toString()})(${JSON.stringify(config)});`;
+    }
+
+    function installSupabaseMultiplayer(doc) {
+      if (multiplayerInstalled || !skybreakMatch?.id) return;
+      multiplayerInstalled = true;
+      const script = doc.createElement('script');
+      script.textContent = createMultiplayerScript();
+      doc.body.append(script);
     }
 
     function installGameBridge() {
@@ -219,7 +461,8 @@
       injectGameStyle(doc);
       const tick = () => {
         renderRealMembers(doc);
-        disableMatchmakingInGame(doc);
+        updateMatchmakingButton(doc);
+        installSupabaseMultiplayer(doc);
       };
       tick();
       doc.getElementById('skybreak-menu-toggle')?.addEventListener('click', () => setTimeout(() => renderRealMembers(doc), 0));
@@ -245,12 +488,15 @@
       try {
         const user = await verify();
         currentUser = user;
+        mpStatus.textContent = 'Supabase Lobby wird erstellt ...';
+        await joinSupabaseMatch();
         document.body.classList.add('authed');
         frame.src = '/skybreak/';
         statusEl.textContent = 'Angemeldet als ' + (user.username || 'ehoser Spieler') + '.';
-      } catch {
+      } catch (error) {
         localStorage.removeItem(authKey);
-        statusEl.textContent = 'Du bist noch nicht mit ehoser angemeldet.';
+        statusEl.textContent = error.message || 'Du bist noch nicht mit ehoser angemeldet.';
+        mpStatus.textContent = 'Supabase Multiplayer nicht verbunden.';
       }
     }
 
