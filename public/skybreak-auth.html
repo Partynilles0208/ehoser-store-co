@@ -78,6 +78,30 @@
       font-weight: 800;
       box-shadow: 0 12px 34px #0007;
     }
+    .music-unlock {
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      z-index: 5;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: auto;
+      min-width: 178px;
+      max-width: calc(100vw - 28px);
+      margin: 0;
+      padding: 12px 14px;
+      border: 1px solid #d9ff5368;
+      border-radius: 999px;
+      background: #d9ff53;
+      color: #102c3f;
+      font-size: 13px;
+      font-weight: 950;
+      letter-spacing: .02em;
+      box-shadow: 0 14px 40px #0008, 0 0 28px #d9ff5338;
+      animation: skybreakMusicButton 1.6s ease-in-out infinite;
+    }
+    .music-unlock[hidden] { display: none; }
     body.authed .mp-status { display: block; }
     iframe {
       width: 100vw;
@@ -209,6 +233,10 @@
       92% { opacity: .26; }
       100% { opacity: 0; }
     }
+    @keyframes skybreakMusicButton {
+      0%, 100% { transform: translateY(0); filter: brightness(1); }
+      50% { transform: translateY(-2px); filter: brightness(1.08); }
+    }
   </style>
 </head>
 <body>
@@ -232,6 +260,7 @@
   </section>
   <iframe id="gameFrame" title="SKYBREAK" src="about:blank"></iframe>
   <div id="mpStatus" class="mp-status">Supabase Multiplayer verbindet ...</div>
+  <button id="musicUnlock" class="music-unlock" type="button" hidden>Lobby Musik starten</button>
 
   <script>
     const authKey = 'skybreakAuthUser';
@@ -241,11 +270,17 @@
     const frame = document.getElementById('gameFrame');
     const mpStatus = document.getElementById('mpStatus');
     const cinematicIntro = document.getElementById('cinematicIntro');
+    const musicUnlock = document.getElementById('musicUnlock');
     let currentUser = null;
     let skybreakMatch = null;
     let multiplayerInstalled = false;
     let polishInstalled = false;
+    let lobbyMusicWanted = true;
+    let lobbyAudio = null;
+    let lobbyMusicLoop = null;
+    let lobbyMusicPlaying = false;
     let refreshTimer = null;
+    let musicTimer = null;
 
     function loginUrl() {
       const sameSite = location.hostname === 'ehoser.de' || location.hostname.endsWith('.ehoser.de') || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -305,6 +340,71 @@
         method: 'POST',
         body: JSON.stringify({ username, matchId: skybreakMatch.id })
       });
+    }
+
+    function playLobbyTone(ctx, time, freq, duration, type, volume, filterFreq) {
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, time);
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(filterFreq, time);
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(volume, time + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(time);
+      osc.stop(time + duration + 0.05);
+    }
+
+    function tickLobbyMusic() {
+      if (!lobbyAudio || !lobbyMusicPlaying) return;
+      const ctx = lobbyAudio;
+      const now = ctx.currentTime + 0.035;
+      const step = Math.floor(now * 2) % 16;
+      const bass = [55, 55, 82.41, 73.42, 49, 49, 73.42, 65.41][Math.floor(step / 2) % 8];
+      if (step % 2 === 0) playLobbyTone(ctx, now, bass, 0.42, 'sawtooth', 0.045, 420);
+      if ([1, 4, 7, 11, 14].includes(step)) playLobbyTone(ctx, now, [220, 277.18, 329.63, 369.99, 440][step % 5], 0.18, 'triangle', 0.026, 1800);
+      if ([3, 7, 10, 15].includes(step)) playLobbyTone(ctx, now, 110 + step * 9, 0.055, 'square', 0.012, 900);
+    }
+
+    async function startLobbyMusic() {
+      if (!lobbyMusicWanted) return;
+      try {
+        if (!lobbyAudio) lobbyAudio = new (window.AudioContext || window.webkitAudioContext)();
+        if (lobbyAudio.state === 'suspended') await lobbyAudio.resume();
+        if (!lobbyMusicLoop) {
+          tickLobbyMusic();
+          lobbyMusicLoop = setInterval(tickLobbyMusic, 500);
+        }
+        lobbyMusicPlaying = true;
+        musicUnlock.hidden = true;
+      } catch {
+        if (document.body.classList.contains('authed')) musicUnlock.hidden = false;
+      }
+    }
+
+    function setLobbyMusicActive(active) {
+      if (active) {
+        startLobbyMusic();
+        return;
+      }
+      lobbyMusicPlaying = false;
+      musicUnlock.hidden = true;
+    }
+
+    function syncLobbyMusic(doc) {
+      let inLobby = true;
+      try {
+        const lobby = doc.getElementById('lobby');
+        const hud = doc.getElementById('hud');
+        if (lobby) inLobby = !lobby.hidden;
+        if (hud && !hud.hidden) inLobby = false;
+      } catch {}
+      setLobbyMusicActive(inLobby);
     }
 
     async function fetchSkybreakMembers() {
@@ -719,13 +819,18 @@
       const tick = () => {
         renderRealMembers(doc);
         updateMatchmakingButton(doc);
+        syncLobbyMusic(doc);
         installVisualPolish(doc);
         installSupabaseMultiplayer(doc);
       };
       tick();
       doc.getElementById('skybreak-menu-toggle')?.addEventListener('click', () => setTimeout(() => renderRealMembers(doc), 0));
       clearInterval(refreshTimer);
+      clearInterval(musicTimer);
       refreshTimer = setInterval(() => renderRealMembers(doc), 10000);
+      musicTimer = setInterval(() => {
+        syncLobbyMusic(doc);
+      }, 1000);
     }
 
     function playIntro() {
@@ -763,10 +868,12 @@
         await joinSupabaseMatch();
         frame.src = '/skybreak/';
         await playIntro();
+        startLobbyMusic();
         statusEl.textContent = 'Angemeldet als ' + (user.username || 'ehoser Spieler') + '.';
       } catch (error) {
         localStorage.removeItem(authKey);
         document.body.classList.remove('intro-running');
+        setLobbyMusicActive(false);
         statusEl.textContent = error.message || 'Du bist noch nicht mit ehoser angemeldet.';
         mpStatus.textContent = 'Supabase Multiplayer nicht verbunden.';
       }
@@ -775,6 +882,11 @@
     loginBtn.addEventListener('click', () => {
       localStorage.setItem('ehoserReturnTo', returnTo);
       window.location.href = loginUrl();
+    });
+
+    musicUnlock.addEventListener('click', () => {
+      lobbyMusicWanted = true;
+      startLobbyMusic();
     });
 
     frame.addEventListener('load', () => {
