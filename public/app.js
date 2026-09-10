@@ -2682,6 +2682,7 @@ async function handleGoogleCredentialResponse(response) {
         applyProfileSettings();
         showLoggedInUI();
         await loadApps();
+        if (redirectToReturnToIfNeeded()) return;
         showSection('mode-select');
         restoreReloadSnapshot();
         startOnlinePolling();
@@ -2903,6 +2904,32 @@ function updateMoreLoginOptionsVisibility() {
     if (desktopBox) desktopBox.style.display = isDesktopMode() ? 'block' : 'none';
 }
 
+function getSafeReturnTo(value) {
+    if (!value || typeof value !== 'string') return '';
+    if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '';
+    return value;
+}
+
+function rememberReturnToFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const returnTo = getSafeReturnTo(params.get('returnTo'));
+    if (returnTo) localStorage.setItem('ehoserReturnTo', returnTo);
+}
+
+function consumeReturnTo() {
+    const params = new URLSearchParams(window.location.search);
+    const returnTo = getSafeReturnTo(params.get('returnTo')) || getSafeReturnTo(localStorage.getItem('ehoserReturnTo'));
+    if (returnTo) localStorage.removeItem('ehoserReturnTo');
+    return returnTo;
+}
+
+function redirectToReturnToIfNeeded() {
+    const returnTo = consumeReturnTo();
+    if (!returnTo) return false;
+    window.location.href = returnTo;
+    return true;
+}
+
 function toggleMoreLoginOptions() {
     const box = document.getElementById('moreLoginOptions');
     if (!box) return;
@@ -2931,6 +2958,7 @@ async function finishDesktopWebLogin(data) {
     applyProfileSettings();
     showLoggedInUI();
     await loadApps();
+    if (redirectToReturnToIfNeeded()) return;
     showSection('mode-select');
     startOnlinePolling();
     showAlert('Desktop-App wurde mit deinem Web-Account angemeldet.', 'success');
@@ -3238,6 +3266,8 @@ async function handleLogin(event) {
             return;
         }
 
+        if (redirectToReturnToIfNeeded()) return;
+
         showLoggedInUI();
         await loadApps();
         showSection('mode-select');
@@ -3414,6 +3444,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initDesktopUpdates();
     }
     updateMoreLoginOptionsVisibility();
+    rememberReturnToFromUrl();
 
     // Referral-Code aus URL lesen
     const ref = new URLSearchParams(window.location.search).get('ref');
@@ -3536,6 +3567,7 @@ async function verifyToken(token) {
         applyProfileSettings();
         showLoggedInUI();
         await loadApps();
+        if (redirectToReturnToIfNeeded()) return;
         showSection('mode-select');
         restoreReloadSnapshot();
         startOnlinePolling();
@@ -3608,6 +3640,8 @@ async function handleRegister(event) {
             window.location.href = 'admin.html';
             return;
         }
+
+        if (redirectToReturnToIfNeeded()) return;
 
         showLoggedInUI();
         await loadApps();
