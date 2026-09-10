@@ -86,8 +86,129 @@
       display: none;
       background: #000;
     }
+    .cinematic-intro {
+      position: fixed;
+      inset: 0;
+      z-index: 4;
+      display: none;
+      place-items: center;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 76%, #d9ff5352, transparent 18%),
+        radial-gradient(circle at 22% 22%, #53eaff4a, transparent 30%),
+        linear-gradient(180deg, #02111d 0%, #072b46 52%, #061420 100%);
+      isolation: isolate;
+    }
+    body.intro-running .cinematic-intro { display: grid; }
+    .cinematic-intro::before,
+    .cinematic-intro::after {
+      content: "";
+      position: absolute;
+      inset: -20%;
+      z-index: -1;
+      background:
+        linear-gradient(108deg, transparent 18%, #7de5ec24 33%, transparent 46%),
+        linear-gradient(72deg, transparent 52%, #d9ff532b 62%, transparent 73%);
+      transform: translateX(-16%) rotate(-8deg);
+      animation: skybreakIntroSweep 3.2s ease-in-out forwards;
+    }
+    .cinematic-intro::after {
+      filter: blur(24px);
+      opacity: .58;
+      animation-delay: .25s;
+    }
+    .intro-panel {
+      width: min(720px, calc(100vw - 36px));
+      text-align: center;
+      transform: translateY(14px) scale(.96);
+      opacity: 0;
+      animation: skybreakIntroRise .85s cubic-bezier(.2, .8, .2, 1) .12s forwards;
+    }
+    .intro-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid #d9ff5366;
+      border-radius: 999px;
+      background: #061522cc;
+      color: #d9ff53;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      box-shadow: 0 0 32px #d9ff5330;
+    }
+    .intro-title {
+      margin: 18px 0 6px;
+      font-size: clamp(54px, 13vw, 124px);
+      line-height: .86;
+      font-weight: 950;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      color: #f8fcff;
+      text-shadow: 0 0 18px #53eaff80, 0 10px 50px #000;
+      animation: skybreakTitlePulse 1.6s ease-in-out infinite;
+    }
+    .intro-subtitle {
+      margin: 0 auto 24px;
+      max-width: 520px;
+      color: #d9eef6;
+      font-size: clamp(15px, 3.7vw, 20px);
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .intro-progress {
+      width: min(420px, 78vw);
+      height: 8px;
+      margin: 0 auto;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #ffffff1f;
+      box-shadow: inset 0 0 0 1px #ffffff24, 0 0 24px #53eaff44;
+    }
+    .intro-progress span {
+      display: block;
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #53eaff, #d9ff53);
+      box-shadow: 0 0 18px #d9ff53;
+      animation: skybreakIntroLoad 2.65s cubic-bezier(.18, .84, .26, 1) forwards;
+    }
+    .intro-flash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: #fff;
+      opacity: 0;
+      animation: skybreakIntroFlash 2.75s ease-in-out forwards;
+    }
     body.authed .gate { display: none; }
     body.authed iframe { display: block; }
+    body.intro-running .gate,
+    body.intro-running iframe { display: none; }
+    @keyframes skybreakIntroSweep {
+      0% { transform: translateX(-34%) rotate(-8deg); opacity: .25; }
+      58% { opacity: 1; }
+      100% { transform: translateX(24%) rotate(-8deg); opacity: .7; }
+    }
+    @keyframes skybreakIntroRise {
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    @keyframes skybreakTitlePulse {
+      0%, 100% { filter: brightness(1); transform: translateY(0); }
+      50% { filter: brightness(1.18); transform: translateY(-2px); }
+    }
+    @keyframes skybreakIntroLoad {
+      to { width: 100%; }
+    }
+    @keyframes skybreakIntroFlash {
+      0%, 82% { opacity: 0; }
+      92% { opacity: .26; }
+      100% { opacity: 0; }
+    }
   </style>
 </head>
 <body>
@@ -100,6 +221,15 @@
       <p id="status" class="small">Pruefe ehoser Anmeldung ...</p>
     </section>
   </main>
+  <section id="cinematicIntro" class="cinematic-intro" aria-label="SKYBREAK Intro" aria-live="polite">
+    <div class="intro-panel">
+      <div class="intro-kicker">EHOSER MULTIPLAYER ONLINE</div>
+      <div class="intro-title">SKYBREAK</div>
+      <p class="intro-subtitle">Battle Royale wird geladen · Squad Lobby bereit · Supabase verbunden</p>
+      <div class="intro-progress"><span></span></div>
+    </div>
+    <div class="intro-flash"></div>
+  </section>
   <iframe id="gameFrame" title="SKYBREAK" src="about:blank"></iframe>
   <div id="mpStatus" class="mp-status">Supabase Multiplayer verbindet ...</div>
 
@@ -110,9 +240,11 @@
     const loginBtn = document.getElementById('loginBtn');
     const frame = document.getElementById('gameFrame');
     const mpStatus = document.getElementById('mpStatus');
+    const cinematicIntro = document.getElementById('cinematicIntro');
     let currentUser = null;
     let skybreakMatch = null;
     let multiplayerInstalled = false;
+    let polishInstalled = false;
     let refreshTimer = null;
 
     function loginUrl() {
@@ -192,13 +324,138 @@
       const style = doc.createElement('style');
       style.id = 'skybreak-real-multiplayer-style';
       style.textContent = `
+        html,body{background:#020b12!important}
+        canvas{filter:saturate(1.22) contrast(1.1) brightness(1.04);transition:filter .45s ease}
+        #skybreak-polish-layer{position:fixed;inset:0;z-index:4;pointer-events:none;overflow:hidden;mix-blend-mode:screen}
+        #skybreak-polish-layer .skybreak-aurora{position:absolute;width:62vw;height:28vh;border-radius:999px;filter:blur(38px);opacity:.22;animation:skybreakAurora 9s ease-in-out infinite}
+        #skybreak-polish-layer .skybreak-aurora.a{left:-12vw;top:7vh;background:#53eaff;animation-delay:-2s}
+        #skybreak-polish-layer .skybreak-aurora.b{right:-16vw;bottom:16vh;background:#d9ff53;animation-delay:-5s}
+        #skybreak-polish-layer .skybreak-scan{position:absolute;inset:0;background:linear-gradient(180deg,transparent 0 48%,#ffffff12 50%,transparent 52%);background-size:100% 9px;opacity:.12}
+        #skybreak-polish-layer .skybreak-speedline{position:absolute;left:-18vw;top:18vh;width:42vw;height:2px;background:linear-gradient(90deg,transparent,#d9ff53,transparent);filter:blur(.4px);opacity:.58;animation:skybreakSpeed 3.4s linear infinite}
+        #skybreak-polish-layer .skybreak-speedline.two{top:62vh;animation-delay:-1.2s;background:linear-gradient(90deg,transparent,#53eaff,transparent)}
+        .skybreak-polish-badge{position:fixed;right:16px;top:70px;z-index:15;padding:8px 11px;border:1px solid #d9ff5368;border-radius:999px;background:#061522d9;color:#d9ff53;font:900 11px/1 Barlow,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;box-shadow:0 0 24px #d9ff5330;pointer-events:none;animation:skybreakBadge .9s cubic-bezier(.2,.8,.2,1) both}
+        .hud,.hud-top,.hud-card,.match-card,.party-panel,.skybreak-menu,.skybreak-menu-panel,.skybreak-party-row,#skybreak-menu-panel{backdrop-filter:blur(16px) saturate(1.22);box-shadow:0 14px 44px #0009,0 0 0 1px #ffffff1f!important}
+        .hud-logo,.phase-banner,.skybreak-menu-toggle,#skybreak-menu-toggle{filter:drop-shadow(0 0 12px #53eaff80);animation:skybreakGlow 2.8s ease-in-out infinite}
+        .skybreak-party-row{transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+        .skybreak-party-row:hover{transform:translateY(-2px);border-color:#d9ff5375!important;box-shadow:0 14px 38px #0009,0 0 20px #d9ff5329!important}
         .skybreak-party-live-dot{display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:6px;background:#6b7c85}
         .skybreak-party-live-dot.on{background:#36ff8a;box-shadow:0 0 12px #36ff8a}
         .skybreak-party-row button[disabled]{opacity:.55;cursor:not-allowed}
         .skybreak-party-note strong{color:#d9ff53}
         .skybreak-mp-pill{display:block;margin-top:8px;color:#d9ff53;font-weight:900}
+        @keyframes skybreakAurora{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(12vw,5vh,0) scale(1.2)}}
+        @keyframes skybreakSpeed{0%{transform:translateX(-20vw);opacity:0}12%,72%{opacity:.65}100%{transform:translateX(140vw);opacity:0}}
+        @keyframes skybreakGlow{0%,100%{filter:drop-shadow(0 0 8px #53eaff66)}50%{filter:drop-shadow(0 0 20px #d9ff5380)}}
+        @keyframes skybreakBadge{from{opacity:0;transform:translateY(-8px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
       `;
       doc.head.append(style);
+    }
+
+    function createVisualPolishScript() {
+      return `(${function skybreakVisualPolish() {
+        if (window.__skybreakVisualPolish) return;
+        window.__skybreakVisualPolish = true;
+
+        function installLayer() {
+          if (!document.body || document.getElementById('skybreak-polish-layer')) return;
+          const layer = document.createElement('div');
+          layer.id = 'skybreak-polish-layer';
+          layer.innerHTML = '<div class="skybreak-aurora a"></div><div class="skybreak-aurora b"></div><div class="skybreak-speedline"></div><div class="skybreak-speedline two"></div><div class="skybreak-scan"></div>';
+          document.body.append(layer);
+
+          const badge = document.createElement('div');
+          badge.className = 'skybreak-polish-badge';
+          badge.textContent = 'SKYBREAK HD';
+          document.body.append(badge);
+          setTimeout(function () { badge.remove(); }, 4200);
+        }
+
+        function setMaterialQuality(root) {
+          root.traverse?.(function (node) {
+            const material = node.material;
+            if (!material) return;
+            const materials = Array.isArray(material) ? material : [material];
+            materials.forEach(function (mat) {
+              if ('roughness' in mat) mat.roughness = Math.min(.82, mat.roughness ?? .58);
+              if ('metalness' in mat) mat.metalness = Math.max(mat.metalness ?? 0, .08);
+              mat.needsUpdate = true;
+            });
+          });
+        }
+
+        function installThreePolish() {
+          if (typeof THREE === 'undefined' || typeof scene === 'undefined' || window.__skybreakThreePolish) return;
+          window.__skybreakThreePolish = true;
+          try {
+            if (typeof renderer !== 'undefined' && renderer) {
+              renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.6));
+              renderer.shadowMap.enabled = true;
+              renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+              if ('toneMappingExposure' in renderer) renderer.toneMappingExposure = 1.18;
+            }
+            if (scene.fog && scene.fog.color?.set) scene.fog.color.set(0x8ed9ff);
+
+            const glow = new THREE.PointLight(0xd9ff53, 1.35, 18, 2);
+            glow.position.set(0, 5, 0);
+            scene.add(glow);
+
+            const rim = new THREE.DirectionalLight(0x53eaff, .9);
+            rim.position.set(-8, 12, 7);
+            scene.add(rim);
+
+            const particles = new THREE.Group();
+            const particleMaterial = new THREE.MeshBasicMaterial({ color: 0xd9ff53, transparent: true, opacity: .52 });
+            for (let i = 0; i < 34; i += 1) {
+              const dot = new THREE.Mesh(new THREE.SphereGeometry(.035 + Math.random() * .035, 8, 8), particleMaterial);
+              dot.userData.phase = Math.random() * Math.PI * 2;
+              dot.userData.radius = 3.4 + Math.random() * 5.2;
+              dot.userData.speed = .35 + Math.random() * .65;
+              particles.add(dot);
+            }
+            scene.add(particles);
+            setMaterialQuality(scene);
+
+            function basePoint() {
+              try {
+                if (typeof player !== 'undefined' && player) return player;
+                if (typeof world !== 'undefined' && world?.stage) return world.stage.position;
+              } catch {}
+              return { x: 0, y: 0, z: 0 };
+            }
+
+            function animatePolish(time) {
+              const t = time * .001;
+              const base = basePoint();
+              glow.position.set((Number(base.x) || 0) + Math.sin(t * 1.2) * 3, (Number(base.y) || 0) + 5.5, (Number(base.z) || 0) + Math.cos(t * 1.1) * 3);
+              glow.intensity = 1.15 + Math.sin(t * 2.4) * .35;
+              particles.position.set(Number(base.x) || 0, (Number(base.y) || 0) + 1.3, Number(base.z) || 0);
+              particles.children.forEach(function (dot, index) {
+                const phase = dot.userData.phase + t * dot.userData.speed;
+                const radius = dot.userData.radius;
+                dot.position.set(Math.cos(phase) * radius, 1.2 + Math.sin(t * 1.7 + index) * 1.4, Math.sin(phase) * radius);
+              });
+              requestAnimationFrame(animatePolish);
+            }
+            requestAnimationFrame(animatePolish);
+          } catch {}
+        }
+
+        installLayer();
+        installThreePolish();
+        const timer = setInterval(function () {
+          installLayer();
+          installThreePolish();
+        }, 1200);
+        addEventListener('pagehide', function () { clearInterval(timer); });
+      }.toString()})();`;
+    }
+
+    function installVisualPolish(doc) {
+      if (polishInstalled) return;
+      polishInstalled = true;
+      const script = doc.createElement('script');
+      script.textContent = createVisualPolishScript();
+      doc.body.append(script);
     }
 
     async function renderRealMembers(doc) {
@@ -462,12 +719,26 @@
       const tick = () => {
         renderRealMembers(doc);
         updateMatchmakingButton(doc);
+        installVisualPolish(doc);
         installSupabaseMultiplayer(doc);
       };
       tick();
       doc.getElementById('skybreak-menu-toggle')?.addEventListener('click', () => setTimeout(() => renderRealMembers(doc), 0));
       clearInterval(refreshTimer);
       refreshTimer = setInterval(() => renderRealMembers(doc), 10000);
+    }
+
+    function playIntro() {
+      document.body.classList.add('intro-running');
+      cinematicIntro?.setAttribute('aria-hidden', 'false');
+      return new Promise(resolve => {
+        setTimeout(() => {
+          document.body.classList.remove('intro-running');
+          document.body.classList.add('authed');
+          cinematicIntro?.setAttribute('aria-hidden', 'true');
+          resolve();
+        }, 2850);
+      });
     }
 
     async function verify() {
@@ -490,11 +761,12 @@
         currentUser = user;
         mpStatus.textContent = 'Supabase Lobby wird erstellt ...';
         await joinSupabaseMatch();
-        document.body.classList.add('authed');
         frame.src = '/skybreak/';
+        await playIntro();
         statusEl.textContent = 'Angemeldet als ' + (user.username || 'ehoser Spieler') + '.';
       } catch (error) {
         localStorage.removeItem(authKey);
+        document.body.classList.remove('intro-running');
         statusEl.textContent = error.message || 'Du bist noch nicht mit ehoser angemeldet.';
         mpStatus.textContent = 'Supabase Multiplayer nicht verbunden.';
       }
@@ -506,6 +778,7 @@
     });
 
     frame.addEventListener('load', () => {
+      polishInstalled = false;
       setTimeout(installGameBridge, 300);
       setTimeout(installGameBridge, 1600);
     });
