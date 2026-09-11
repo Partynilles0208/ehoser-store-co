@@ -279,6 +279,32 @@ async function invites(user) {
   };
 }
 
+async function acceptInvite(user, body) {
+  const inviteId = String(body.inviteId || '').trim();
+  if (!inviteId) throw new Error('Einladung fehlt');
+  const profile = await readProfile(user.username);
+  const sky = skySettings(profile.settings);
+  const invite = sky.invites.find(item => item.id === inviteId && item.status === 'pending' && fresh(item.created_at, 10 * 60 * 1000));
+  if (!invite) throw new Error('Diese Einladung ist abgelaufen oder wurde bereits bearbeitet');
+
+  const accepted = { ...invite, status: 'accepted', accepted_at: nowIso() };
+  await writeProfile(user.username, settings => ({
+    ...settings,
+    skybreak: {
+      ...settings.skybreak,
+      invites: (settings.skybreak.invites || []).map(item => item.id === inviteId ? accepted : item)
+    }
+  }));
+
+  const match = await joinMatch(user, {
+    matchId: invite.match_id,
+    leader: invite.from_username,
+    teamMode: 'squad',
+    state: 'lobby'
+  });
+  return { invite: accepted, match: match.match, players: match.players };
+}
+
 async function leave(user, body) {
   const matchId = String(body.matchId || '').trim();
   await writeProfile(user.username, settings => {
@@ -317,6 +343,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && path === '/heartbeat') return json(res, 200, await heartbeat(user, body));
     if (req.method === 'POST' && path === '/friends') return json(res, 200, await addFriend(user, body));
     if (req.method === 'POST' && path === '/invite') return json(res, 200, await invite(user, body));
+    if (req.method === 'POST' && path === '/invite/accept') return json(res, 200, await acceptInvite(user, body));
     if (req.method === 'POST' && path === '/leave') return json(res, 200, await leave(user, body));
 
     return json(res, 404, { error: 'SKYBREAK API nicht gefunden' });
