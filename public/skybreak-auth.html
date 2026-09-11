@@ -281,6 +281,7 @@
     let lobbyMusicPlaying = false;
     let refreshTimer = null;
     let musicTimer = null;
+    let skipIntro = null;
     const sentInvites = new Map();
 
     function loginUrl() {
@@ -694,7 +695,8 @@
     function createMultiplayerScript() {
       const config = {
         matchId: skybreakMatch?.id || '',
-        username: currentUser?.username || 'ehoser Spieler'
+        username: currentUser?.username || 'ehoser Spieler',
+        leader: skybreakMatch?.leader || ''
       };
       return `(${function skybreakSupabaseMultiplayer(config) {
         const token = localStorage.getItem('token');
@@ -825,6 +827,12 @@
             }
           }
           status('Supabase Multiplayer · ' + (others.length + 1) + ' Spieler · Lobby ' + config.matchId.slice(-6));
+          const leader = (players || []).find(player => String(player.username || '').toLowerCase() === String(config.leader || '').toLowerCase());
+          const leaderState = String(leader?.state || 'lobby');
+          if (config.username.toLowerCase() !== config.leader.toLowerCase() && leaderState !== 'lobby') {
+            const lobby = document.getElementById('lobby');
+            if (lobby && !lobby.hidden) document.getElementById('play-btn')?.click();
+          }
         }
 
         async function heartbeat() {
@@ -905,14 +913,24 @@
       document.body.classList.add('intro-running');
       cinematicIntro?.setAttribute('aria-hidden', 'false');
       return new Promise(resolve => {
-        setTimeout(() => {
+        const finish = () => {
+          skipIntro = null;
           document.body.classList.remove('intro-running');
           document.body.classList.add('authed');
           cinematicIntro?.setAttribute('aria-hidden', 'true');
           resolve();
-        }, 2850);
+        };
+        skipIntro = finish;
+        setTimeout(finish, 2850);
       });
     }
+
+    window.addEventListener('keydown', event => {
+      if (skipIntro && ['Enter', 'Space', 'Escape'].includes(event.code)) {
+        event.preventDefault();
+        skipIntro();
+      }
+    });
 
     async function verify() {
       const token = localStorage.getItem('token');
@@ -965,3 +983,5 @@
 
     start();
   </script>
+</body>
+</html>
