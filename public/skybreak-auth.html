@@ -619,6 +619,9 @@
               skybreakMatch = result.match || skybreakMatch;
               mpStatus.textContent = 'Einladung angenommen · gemeinsame Lobby aktiv';
               showGameToast(doc, 'Einladung angenommen. Du bist jetzt in der gemeinsamen Lobby.', 4);
+              clearInterval(refreshTimer);
+              multiplayerInstalled = false;
+              frame.src = '/skybreak/?match=' + encodeURIComponent(skybreakMatch.id) + '&invite=' + Date.now();
               await renderRealMembers(doc);
             } catch (error) {
               accept.disabled = false;
