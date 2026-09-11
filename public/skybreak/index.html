@@ -119,6 +119,14 @@
 
 .skybreak-auth-gate{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 18% 18%,#7de5ec33,transparent 34%),linear-gradient(145deg,#071927,#10344b 55%,#081c2b);color:#f8fcff;font-family:Barlow,Arial,sans-serif}.skybreak-auth-card{width:min(460px,100%);background:#081b2be8;border:1px solid #ffffff24;border-radius:12px;padding:26px;box-shadow:0 24px 80px #0008}.skybreak-auth-card h2{margin:6px 0 10px;font-size:42px}.skybreak-auth-card p{color:#b9d7e1;line-height:1.55}.skybreak-auth-card input{width:100%;margin:8px 0;padding:13px 14px;border-radius:8px;border:1px solid #ffffff2d;background:#ffffff10;color:#fff;font:inherit}.skybreak-auth-row{display:flex;gap:9px}.skybreak-auth-row input{flex:1}.skybreak-auth-card button{width:100%;margin-top:10px;padding:14px 16px;border-radius:8px;background:#d9ff53;color:#102c3f;font-weight:900}.skybreak-auth-small{font-size:12px;color:#89aebc}.skybreak-menu{position:fixed;right:18px;top:18px;z-index:22;color:#fff;font-family:Barlow,Arial,sans-serif}.skybreak-menu-toggle{width:44px;height:44px;border-radius:10px;background:#102c3fcc;color:#fff;border:1px solid #ffffff36;font-size:28px}.skybreak-menu-panel{position:absolute;right:0;top:52px;width:min(360px,calc(100vw - 36px));max-height:calc(100vh - 78px);overflow:auto;background:#0d2638f2;border:1px solid #ffffff2a;border-radius:12px;padding:14px;box-shadow:0 20px 70px #0008}.skybreak-menu-panel[hidden]{display:none}.skybreak-menu-panel h3{margin:4px 0 10px;font-size:24px}.skybreak-party-row{display:grid;grid-template-columns:1fr auto;gap:7px;align-items:center;padding:10px;border-radius:8px;background:#ffffff0d;margin:7px 0}.skybreak-party-row strong{display:block}.skybreak-party-row small{color:#a8c6d2}.skybreak-party-row button,.skybreak-party-actions button{padding:8px 10px;border-radius:7px;background:#d9ff53;color:#102c3f;font-weight:800}.skybreak-party-actions{display:grid;gap:8px;margin-top:12px}.skybreak-party-note{color:#a8c6d2;font-size:12px;line-height:1.45}.skybreak-waiting{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:21;background:#102c3fe6;color:#fff;border-top:3px solid #d9ff53;border-radius:8px;padding:12px 18px;text-align:center;font-family:Barlow,Arial,sans-serif;box-shadow:0 16px 40px #0005}.skybreak-waiting strong{display:block;color:#d9ff53}.skybreak-waiting[hidden]{display:none}#intro-skip{display:none!important}body.skybreak-authed .skybreak-auth-gate{display:none}
 </style>
+<style>
+.bus-quick-hint{position:absolute;right:30px;top:304px;display:flex;align-items:center;gap:8px;background:#102c3f78;border:1px solid #ffffff42;border-radius:7px;padding:7px 8px;backdrop-filter:blur(10px);font-size:10px;font-weight:800;letter-spacing:.6px;color:#eefcff}
+.bus-quick-hint button{background:transparent;color:inherit;padding:0;font-size:10px;font-weight:800}
+.bus-quick-hint kbd{margin-right:5px;font-size:8px!important}
+.bus-quick-hint span{opacity:.72}
+@media(max-width:800px){.bus-quick-hint{right:15px;top:224px;font-size:9px;padding:6px 7px}.bus-quick-hint span{display:none}}
+@media(max-width:520px){.bus-quick-hint{right:12px;top:188px}}
+</style>
 </head>
 <body>
   <section id="skybreak-auth-gate" class="skybreak-auth-gate" aria-label="ehoser auth">
@@ -176,6 +184,7 @@
     <div class="hud-top"><div class="hud-logo">SKYBREAK<span>↗</span></div><div class="compass" id="compass">N · 0°</div><div class="match-stats"><span title="Verbleibende Spieler">◉ <b id="alive">32</b></span><span title="Eliminierungen">⌖ <b id="elims">0</b></span><button id="pause-btn" class="icon-btn" aria-label="Spiel pausieren">Ⅱ</button></div></div>
     <div class="mini-wrap"><button id="minimap-btn" aria-label="Große Karte öffnen"><canvas id="minimap" width="230" height="230"></canvas><span class="map-key"><kbd>M</kbd> KARTE</span></button><div class="storm-timer"><span>◴ <span id="storm-label">STURM IN</span></span><b id="storm-time">1:00</b></div></div>
     <div id="phase-banner" class="phase-banner"><span id="phase-eyebrow">DER BUS IST UNTERWEGS</span><strong id="phase-title">Wähle deinen Absprung.</strong><button id="jump-btn"><kbd>LEERTASTE</kbd> ABSPRINGEN <span>↘</span></button><button id="bus-map-btn"><kbd>M</kbd> LANDEPLATZ MARKIEREN</button></div>
+    <div id="bus-quick-hint" class="bus-quick-hint" hidden><button id="quick-jump-btn"><kbd>LEERTASTE</kbd> Springen</button><span id="bus-drop-note">M Karte</span></div>
     <div id="storm-warning" class="storm-warning" hidden>DU BIST IM STURM — ZUR SICHEREN ZONE!</div>
     <div id="zone-guide" class="zone-guide" hidden><span id="zone-arrow">↑</span><span id="zone-distance"></span></div><div id="scope" hidden><div class="scope-glass"><div class="scope-v"></div><div class="scope-h"></div><div class="scope-dot"></div><div class="scope-ticks"></div><span id="scope-range">— m</span><span id="scope-zoom">4× · Z: 8×</span></div></div>
     <div id="crosshair" class="crosshair" hidden><i></i><i></i><i></i><i></i></div><div id="hitmarker" class="hitmarker" hidden>×</div>
@@ -55686,18 +55695,19 @@ function startMatch(){
   selectedSlot=0;inventory=emptyInventory();wood=30;stone=10;metal=0;buildMode=false;scopeZoom=0;recoil=0;glideAge=0;clearCombatOverlays();openedChests=0;eliminations=0;reloadTime=0;consumeTime=0;fireCooldown=0;hitTime=0;damageTime=0;toastTime=0;
   createRoundObjects();stormStages=createStorm(roundRandom);zone=circleAt(0,stormStages);
   world.stage.visible=false;bus.visible=true;bus.position.set(BUS_ROUTE.start,BUS_ROUTE.height,BUS_ROUTE.z);bus.rotation.y=Math.PI/2;
-  world.stormMesh.visible=false;world.stormRim.visible=false;$('lobby').hidden=true;$('hud').hidden=false;$('touch-controls').hidden=true;$('phase-banner').hidden=false;$('phase-eyebrow').textContent='DER FLUGBUS IST UNTERWEGS';$('phase-title').textContent='Wähle deinen Absprung.';$('jump-btn').hidden=false;$('bus-map-btn').hidden=false;$('crosshair').hidden=true;$('toast').hidden=true;$('storm-warning').hidden=true;$('interact').hidden=true;$('feed').replaceChildren();$('floaters').replaceChildren();
+  yaw=-.72;pitch=.16;
+  world.stormMesh.visible=false;world.stormRim.visible=false;$('lobby').hidden=true;$('hud').hidden=false;$('touch-controls').hidden=true;$('phase-banner').hidden=true;$('bus-quick-hint').hidden=false;$('bus-drop-note').textContent=waypoint?'Landeplatz markiert':'M Karte';$('jump-btn').hidden=false;$('bus-map-btn').hidden=false;$('crosshair').hidden=true;$('toast').hidden=true;$('storm-warning').hidden=true;$('interact').hidden=true;$('feed').replaceChildren();$('floaters').replaceChildren();
   camera.fov=68;camera.updateProjectionMatrix();updateInventory();updateHUD();tone(260,.25,'sine',.06,420);requestLock();
 }
 function jumpFromBus(){
   if(state!=='bus'||paused)return;
-  player.x=bus.position.x;player.z=bus.position.z+3.2;player.y=bus.position.y-1.8;player.vy=0;glideAge=0;player.character.root.visible=true;playerGlider.visible=false;state='glide';yaw=Math.PI;pitch=-.22;
-  $('phase-eyebrow').textContent='IM FREIEN FALL';$('phase-title').textContent=touchDevice?'Mit dem Stick zum Landeplatz':'WASD: Steuere deinen Landeplatz';$('jump-btn').hidden=true;$('bus-map-btn').hidden=true;$('touch-controls').hidden=!touchDevice;
+  player.x=bus.position.x;player.z=bus.position.z+3.2;player.y=bus.position.y-1.8;player.vy=0;glideAge=0;player.character.root.visible=true;playerGlider.visible=false;state='glide';pitch=clamp(pitch,-.35,.05);
+  $('phase-banner').hidden=true;$('bus-quick-hint').hidden=true;$('jump-btn').hidden=true;$('bus-map-btn').hidden=true;$('touch-controls').hidden=!touchDevice;
   toast('Goldene Truhen enthalten bessere Ausrüstung.',4);tone(330,.45,'sine',.04,720);
   updateCamera(.016,true);
 }
 function landed(){
-  state='playing';landedAt=roundTime;playerGlider.visible=false;player.vy=0;$('phase-banner').hidden=true;$('crosshair').hidden=false;
+  state='playing';landedAt=roundTime;playerGlider.visible=false;player.vy=0;$('phase-banner').hidden=true;$('bus-quick-hint').hidden=true;$('crosshair').hidden=false;
   const poi=nearestPoi(player.x,player.z);toast('GELANDET · '+(poi.distance<65?poi.name:'SKYBREAK ISLAND'),3);sound.land();landKick=1;
   // Every drop begins near reachable starter loot without flooding the island with chests.
   if(!loot.some(item=>!item.taken&&Math.hypot(item.x-player.x,item.z-player.z)<16)){
@@ -56097,13 +56107,14 @@ function updatePlayer(dt){
   const length=Math.hypot(dx,dz);if(length>1){dx/=length;dz/=length;}const moving=length>.08,ox=player.x,oz=player.z;
   const w=inventory[selectedSlot],armed=isWeapon(w);if(armed)setCharacterWeapon(player.character,w.index,RARITIES[w.rarity].color);
   if(state==='glide'){
-    glideAge+=dt;playerGlider.visible=glideAge>.9;const drift=.17,glideSpeed=playerGlider.visible?23:8;
-    player.x=clamp(player.x+(dx+Math.sin(yaw)*drift)*glideSpeed*dt,-WORLD_LIMIT,WORLD_LIMIT);player.z=clamp(player.z+(dz+Math.cos(yaw)*drift)*glideSpeed*dt,-WORLD_LIMIT,WORLD_LIMIT);
+    glideAge+=dt;playerGlider.visible=glideAge>.75;const deployed=playerGlider.visible,forwardLift=clamp(forward,0,1),dive=keys.has('ShiftLeft')||keys.has('ShiftRight'),glideSpeed=deployed?19+forwardLift*8+(dive?5:0):10+glideAge*5;
+    const airDrift=deployed ? .1 : .22,turnPull=deployed ? .24 : .16;
+    player.x=clamp(player.x+(dx*glideSpeed+Math.sin(yaw)*turnPull*glideSpeed)*dt,-WORLD_LIMIT,WORLD_LIMIT);player.z=clamp(player.z+(dz*glideSpeed+Math.cos(yaw)*turnPull*glideSpeed)*dt,-WORLD_LIMIT,WORLD_LIMIT);
     if(terrainHeight(player.x,player.z)<2){player.x=mix(player.x,0,dt*.11);player.z=mix(player.z,0,dt*.11);}
-    player.y-=dt*(glideAge<.9?6+glideAge*11:keys.has('ShiftLeft')?15:7.6);const floor=groundHeight(player.x,player.z,player.y+1);
+    player.y-=dt*(deployed?(dive?12.5:5.9-forwardLift*.9):7+glideAge*12);const floor=groundHeight(player.x,player.z,player.y+1);
     if(player.y<=Math.max(floor,1)){if(terrainHeight(player.x,player.z)<1){const p=safeSpot(player.x*.83,player.z*.83,22);player.x=p.x;player.z=p.z;}player.y=groundHeight(player.x,player.z,player.y+2);landed();}
     else $('phase-eyebrow').textContent=playerGlider.visible?'GLEITER AKTIV':'IM FREIEN FALL';
-    player.character.action={dt};animateCharacter(player.character,visualTime,false,playerGlider.visible);player.character.gun.visible=false;
+    player.character.action={dt,turn:(right+airDrift)*.35};animateCharacter(player.character,visualTime,false,playerGlider.visible);player.character.root.rotation.y=mixAngle(player.character.root.rotation.y,yaw,.12);player.character.gun.visible=false;
   }else if(state==='playing'){
     if(driving){
       updateCar(driving,dt,clamp(forward,-1,1),clamp(right,-1,1),keys.has('Space'),world.colliders);player.x=driving.x;player.z=driving.z;player.y=driving.y+.65;player.vy=0;
@@ -56139,7 +56150,8 @@ function updateLobbyCamera(dt,immediate=false){
 }
 function updateCamera(dt,snap=false){
   if(state==='bus'){
-    const target=bus.position.clone().add(new THREE.Vector3(0,3,0)),desired=bus.position.clone().add(new THREE.Vector3(-32,18,39));camera.position.lerp(desired,snap?1:1-Math.exp(-dt*3.5));camera.lookAt(target);camera.fov=68;camera.updateProjectionMatrix();return;
+    const target=bus.position.clone().add(new THREE.Vector3(0,2.8,0)),orbitPitch=clamp(pitch,-.45,.38),dist=44,desired=target.clone().add(new THREE.Vector3(Math.sin(yaw)*dist,16+Math.sin(orbitPitch)*24,Math.cos(yaw)*dist));
+    camera.position.lerp(desired,snap?1:1-Math.exp(-dt*6));camera.lookAt(target);camera.fov=mix(camera.fov,66,1-Math.exp(-dt*8));camera.updateProjectionMatrix();return;
   }
   if(!player)return;
   const target=new THREE.Vector3(player.x,player.y+(driving?2:1.65),player.z),view=new THREE.Vector3(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch));
@@ -56185,7 +56197,7 @@ function updateHUD(){
   if(buildMode){const b=aimStructure();$('structure-info').hidden=!b;if(b){$('structure-info').querySelector('b').textContent=BUILD_TYPES[b.type].name+' · '+Math.ceil(b.health)+' / '+b.maxHealth;$('structure-info').querySelector('span').textContent=b.owner==='player'?'F Reparieren · G Abbauen':'Von einem Bot gebaut';}}
   else $('structure-info').hidden=true;
   $('vehicle-hud').hidden=!driving;if(driving){$('vehicle-speed').textContent=Math.round(Math.abs(driving.speed)*3.6);$('vehicle-health').textContent=Math.ceil(driving.health)+' / 320';}
-  if(state==='bus')$('phase-title').textContent=waypoint?'Landeplatz markiert · '+Math.round(Math.hypot(bus.position.x-waypoint.x,bus.position.z-waypoint.z))+' m':'Wähle deinen Absprung.';
+  if(state==='bus')$('bus-drop-note').textContent=waypoint?'Marke · '+Math.round(Math.hypot(bus.position.x-waypoint.x,bus.position.z-waypoint.z))+' m':'M Karte';
   if(hudDirty){updateInventory();hudDirty=false;}
 }
 
@@ -56223,7 +56235,7 @@ function closeMap(){if(!$('map-dialog').open)return;$('map-dialog').close();if(s
 function finishMatch(won){
   if(resultPending||state==='lobby')return;resultPending=true;clearCombatOverlays();state='result';paused=true;clearInputs();releaseLock();
   const place=won?1:bots.filter(b=>b.alive).length+1;
-  $('phase-banner').hidden=true;$('crosshair').hidden=true;$('interact').hidden=true;$('touch-controls').hidden=true;$('storm-warning').hidden=true;
+  $('phase-banner').hidden=true;$('bus-quick-hint').hidden=true;$('crosshair').hidden=true;$('interact').hidden=true;$('touch-controls').hidden=true;$('storm-warning').hidden=true;
   $('result-eyebrow').textContent=won?'LETZTER SPIELER AUF DER INSEL':'RUNDE BEENDET';$('result-title').textContent=won?'SKYBREAK SIEG!':'GUTER DROP.';$('placement').textContent='#'+place;
   $('result-description').textContent=won?'Die Insel gehört dir. Bereit für die nächste Runde?':'Neue Runde, neuer Landeplatz, neue Chance.';
   $('result-elims').textContent=eliminations;$('result-time').textContent=timeString(roundTime);$('result-chests').textContent=openedChests;
@@ -56231,7 +56243,7 @@ function finishMatch(won){
 }
 function toLobby(){
   clearInputs();clearCombatOverlays();closeAllDialogs();releaseLock();state='lobby';paused=false;resultPending=false;bus.visible=false;world.stage.visible=true;world.stormMesh.visible=false;world.stormRim.visible=false;markerBeam.visible=false;waypoint=null;
-  $('lobby').hidden=false;refreshLobby();$('hud').hidden=true;$('damage-flash').style.opacity=0;$('floaters').replaceChildren();createRoundObjects(true);player=null;
+  $('lobby').hidden=false;refreshLobby();$('hud').hidden=true;$('bus-quick-hint').hidden=true;$('damage-flash').style.opacity=0;$('floaters').replaceChildren();createRoundObjects(true);player=null;
 }
 function closeAllDialogs(){for(const d of document.querySelectorAll('dialog[open]'))d.close();}
 function pauseGame(){if(!['playing','glide','bus'].includes(state)||paused)return;paused=true;clearInputs();releaseLock();$('pause-dialog').showModal();}
@@ -56259,7 +56271,7 @@ function wireControls(){
   select.addEventListener('change',()=>{if(select.value===''){waypoint=null;markerBeam.visible=false;}else{const p=POIS[Number(select.value)];setWaypoint(p.x,p.z);}refreshLobby();});
   $('lobby-map-btn').addEventListener('click',openMap);$('bot-count').addEventListener('change',refreshLobby);$('difficulty').addEventListener('change',refreshLobby);
   $('hero-left').addEventListener('click',()=>lobbyAngle-=.6);$('hero-right').addEventListener('click',()=>lobbyAngle+=.6);$('hero-pose').addEventListener('click',()=>{lobbyPose=(lobbyPose+1)%3;$('hero-pose').textContent=['ENTSPANNT','BLASTER','SNIPER'][lobbyPose];});
-  $('play-btn').addEventListener('click',startMatch);$('again-btn').addEventListener('click',startMatch);$('result-lobby').addEventListener('click',toLobby);$('leave-btn').addEventListener('click',toLobby);$('resume-btn').addEventListener('click',resumeGame);$('pause-btn').addEventListener('click',pauseGame);$('jump-btn').addEventListener('click',jumpFromBus);
+  $('play-btn').addEventListener('click',startMatch);$('again-btn').addEventListener('click',startMatch);$('result-lobby').addEventListener('click',toLobby);$('leave-btn').addEventListener('click',toLobby);$('resume-btn').addEventListener('click',resumeGame);$('pause-btn').addEventListener('click',pauseGame);$('jump-btn').addEventListener('click',jumpFromBus);$('quick-jump-btn').addEventListener('click',jumpFromBus);
   $('island-btn').addEventListener('click',openMap);$('bus-map-btn').addEventListener('click',openMap);$('minimap-btn').addEventListener('click',()=>{$('map-dialog').open?closeMap():openMap();});
   $('backpack-btn').addEventListener('click',openBackpack);$('backpack-close').addEventListener('click',closeBackpack);$('backpack-dialog').addEventListener('cancel',e=>{e.preventDefault();closeBackpack();});
   $('intro-skip').hidden=true;$('intro-sound').addEventListener('click',()=>{startAudio();sound.noise(.7,.09,800);tone(220,.9,'sine',.05,440);$('intro-sound').hidden=true;});
@@ -56292,7 +56304,7 @@ function wireControls(){
   document.addEventListener('pointerlockchange',()=>{if(document.pointerLockElement===canvas)softLook=false;else if(['bus','glide','playing'].includes(state)&&!paused)pauseGame();});
   document.addEventListener('pointerlockerror',()=>{softLook=true;});
   document.addEventListener('mousemove',e=>{
-    if(paused||!['playing','glide'].includes(state)||touchDevice)return;
+    if(paused||!['bus','playing','glide'].includes(state)||touchDevice)return;
     syncMouseButtons(e);
     if(document.pointerLockElement===canvas||softLook&&e.target===canvas){const sensitivity=isScoped()?(scopeZoom?.00038:.00065):mouse.aim?.0015:.0024;yaw-=clamp(e.movementX,-180,180)*sensitivity;pitch=clamp(pitch-e.movementY*sensitivity,-.82,.72);}
   });
@@ -56310,7 +56322,7 @@ function wireTouch(){
   joy.addEventListener('pointerdown',e=>{if(paused)return;e.preventDefault();joyId=e.pointerId;joy.setPointerCapture(e.pointerId);const r=joy.getBoundingClientRect();origin={x:r.left+r.width/2,y:r.top+r.height/2};updateStick(e);});
   function updateStick(e){if(e.pointerId!==joyId)return;const dx=e.clientX-origin.x,dy=e.clientY-origin.y,d=Math.hypot(dx,dy),scale=d>36?36/d:1;stick.x=dx*scale/36;stick.z=dy*scale/36;joy.firstElementChild.style.transform=`translate(${dx*scale}px,${dy*scale}px)`;}
   joy.addEventListener('pointermove',updateStick);const clearJoy=()=>{joyId=null;stick.x=0;stick.z=0;joy.firstElementChild.style.transform='';};joy.addEventListener('pointerup',clearJoy);joy.addEventListener('pointercancel',clearJoy);
-  const look=$('look-zone');let lookId=null,last={x:0,y:0};look.addEventListener('pointerdown',e=>{lookId=e.pointerId;look.setPointerCapture(e.pointerId);last={x:e.clientX,y:e.clientY};});look.addEventListener('pointermove',e=>{if(e.pointerId!==lookId||paused)return;yaw-=(e.clientX-last.x)*(isScoped()?.0012:.005);pitch=clamp(pitch-(e.clientY-last.y)*(isScoped()?.001:.004),-.82,.72);last={x:e.clientX,y:e.clientY};});look.addEventListener('pointerup',()=>lookId=null);look.addEventListener('pointercancel',()=>lookId=null);
+  const look=$('look-zone');let lookId=null,last={x:0,y:0};look.addEventListener('pointerdown',e=>{lookId=e.pointerId;look.setPointerCapture(e.pointerId);last={x:e.clientX,y:e.clientY};});look.addEventListener('pointermove',e=>{if(e.pointerId!==lookId||paused||!['bus','glide','playing'].includes(state))return;yaw-=(e.clientX-last.x)*(isScoped()?.0012:.005);pitch=clamp(pitch-(e.clientY-last.y)*(isScoped()?.001:.004),-.82,.72);last={x:e.clientX,y:e.clientY};});look.addEventListener('pointerup',()=>lookId=null);look.addEventListener('pointercancel',()=>lookId=null);
   const fireButton=$('touch-fire');fireButton.addEventListener('pointerdown',e=>{e.preventDefault();fireButton.setPointerCapture(e.pointerId);mouse.fire=true;startAudio();});for(const type of ['pointerup','pointercancel'])fireButton.addEventListener(type,()=>mouse.fire=false);
   $('touch-aim').addEventListener('click',()=>{mouse.aim=!mouse.aim;if(buildMode)buildWall();$('touch-aim').classList.toggle('active',mouse.aim);});$('touch-rotate').addEventListener('click',reload);$('touch-material').addEventListener('click',cycleBuildMaterial);$('touch-zoom').addEventListener('click',()=>{scopeZoom=1-scopeZoom;});
   $('touch-jump').addEventListener('pointerdown',e=>{e.preventDefault();jump();});$('touch-interact').addEventListener('pointerdown',e=>{e.preventDefault();interact();});$('touch-reload').addEventListener('pointerdown',e=>{e.preventDefault();reload();});$('touch-build').addEventListener('pointerdown',e=>{e.preventDefault();buildWall();});
