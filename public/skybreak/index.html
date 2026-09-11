@@ -55658,6 +55658,7 @@ function tone(freq,duration=.1,type='sine',volume=.04,end=null){sound.tone(freq,
 function shotSound(index,at){sound.shot(index,typeof at==='object'?at:undefined);}
 function pickupSound(){tone(650,.09,'sine',.035,900);setTimeout(()=>tone(980,.13,'sine',.03,1350),70);}
 function toast(message,duration=2.7){$('toast').textContent=message;$('toast').hidden=false;toastTime=duration;}
+window.skybreakToast=toast;
 function addFeed(text,highlight=false){const div=document.createElement('div');if(highlight){const em=document.createElement('em');em.textContent=text;div.append(em);}else div.textContent=text;$('feed').prepend(div);while($('feed').children.length>5)$('feed').lastElementChild.remove();setTimeout(()=>div.remove(),6500);}
 function clearInputs(){keys.clear();mouse.fire=false;mouse.aim=false;stick.x=0;stick.z=0;$('joystick').firstElementChild.style.transform='';}
 function groundHeight(x,z,y=Infinity){
@@ -56285,8 +56286,12 @@ function requestLock(){
 function syncMouseButtons(e){
   if(touchDevice||paused||!['bus','glide','playing'].includes(state))return;
   const buttons=Number.isFinite(e.buttons)?e.buttons:0;
-  mouse.fire=!!(buttons&1);
-  if(!buildMode)mouse.aim=!!(buttons&2);
+  // Pointer-lock mousemove events can report buttons=0 even while a button is
+  // still held. Do not clear the state in that case; pointerup does that.
+  if(buttons){
+    mouse.fire=!!(buttons&1);
+    if(!buildMode)mouse.aim=!!(buttons&2);
+  }
 }
 function setMouseButton(e,down){
   if(touchDevice||paused||!['bus','glide','playing'].includes(state))return;
