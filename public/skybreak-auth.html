@@ -281,6 +281,7 @@
     let lobbyMusicPlaying = false;
     let refreshTimer = null;
     let musicTimer = null;
+    const sentInvites = new Map();
 
     function loginUrl() {
       const sameSite = location.hostname === 'ehoser.de' || location.hostname.endsWith('.ehoser.de') || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -321,9 +322,24 @@
       })[char]);
     }
 
+    function showGameToast(doc, message, duration = 3) {
+      const view = doc?.defaultView;
+      if (typeof view?.skybreakToast === 'function') {
+        view.skybreakToast(message, duration);
+        return;
+      }
+      const note = doc?.querySelector('.skybreak-party-note');
+      if (note) note.textContent = message;
+    }
+
     async function getFriends() {
       const data = await skybreakApi('/friends');
       return new Set(data.friends || []);
+    }
+
+    async function getInvites() {
+      const data = await skybreakApi('/invites');
+      return Array.isArray(data.invites) ? data.invites : [];
     }
 
     async function addFriend(username) {
@@ -565,8 +581,9 @@
       if (note) note.innerHTML = '<strong>Supabase Multiplayer:</strong> echte ehoser Mitglieder, Freunde und Einladungen laufen ueber Supabase.<span class="skybreak-mp-pill">Lobby: ' + escapeHtml(skybreakMatch?.id || 'verbindet') + '</span>';
       let members = [];
       let friends = new Set();
+      let incomingInvites = [];
       try {
-        [members, friends] = await Promise.all([fetchSkybreakMembers(), getFriends()]);
+        [members, friends, incomingInvites] = await Promise.all([fetchSkybreakMembers(), getFriends(), getInvites()]);
       } catch {
         root.innerHTML = '<p class="skybreak-party-note">Konnte ehoser Mitglieder gerade nicht laden.</p>';
         return;
@@ -577,27 +594,49 @@
         return;
       }
 
-      root.replaceChildren(...members.map(member => {
+      const inviteBox = doc.createElement('div');
+      inviteBox.className = 'skybreak-invite-inbox';
+      if (incomingInvites.length) {
+        const title = doc.createElement('strong');
+        title.textContent = 'Eingegangene Einladungen';
+        inviteBox.append(title);
+        incomingInvites.forEach(invite => {
+          const row = doc.createElement('div');
+          row.className = 'skybreak-party-row';
+          const copy = doc.createElement('div');
+          copy.innerHTML = '<strong></strong><small></small>';
+          copy.querySelector('strong').textContent = invite.from_username + ' lädt dich ein';
+          copy.querySelector('small').textContent = 'Lobby: ' + invite.match_id;
+          row.append(copy);
+          inviteBox.append(row);
+        });
+      }
+
+      root.replaceChildren(inviteBox, ...members.map(member => {
+        const memberKey = String(member.username).toLowerCase();
+        const inviteSent = sentInvites.get(memberKey);
         const row = doc.createElement('div');
         row.className = 'skybreak-party-row';
         const copy = doc.createElement('div');
-        copy.innerHTML = `<strong><span class="skybreak-party-live-dot ${member.online ? 'on' : ''}"></span>${escapeHtml(member.username)}</strong><small>${member.online ? 'Online · einladbar' : 'ehoser Mitglied · offline'}</small>`;
+        const status = inviteSent ? 'Einladung gesendet · wartet auf Annahme' : friends.has(member.username) ? 'Freund · bereit zum Einladen' : 'Klick startet Adden + Einladung';
+        copy.innerHTML = `<strong><span class="skybreak-party-live-dot ${member.online ? 'on' : ''}"></span>${escapeHtml(member.username)}</strong><small>${escapeHtml(status)}</small>`;
         const btn = doc.createElement('button');
         btn.type = 'button';
-        btn.textContent = friends.has(member.username) ? 'Einladen' : 'Adden';
-        btn.disabled = !member.online && friends.has(member.username);
+        btn.textContent = inviteSent ? 'Eingeladen ✓' : 'Einladen';
+        btn.disabled = Boolean(inviteSent);
         btn.addEventListener('click', async () => {
+          btn.disabled = true;
           try {
             if (!friends.has(member.username)) {
-              await addFriend(member.username);
-              doc.defaultView.toast?.(member.username + ' zu SKYBREAK hinzugefuegt.', 2);
-              renderRealMembers(doc);
-              return;
+              friends = await addFriend(member.username);
             }
-            await sendInvite(member.username);
-            doc.defaultView.toast?.(member.username + ' wurde ueber Supabase eingeladen.', 3);
+            const result = await sendInvite(member.username);
+            sentInvites.set(memberKey, result.invite || { created_at: new Date().toISOString() });
+            showGameToast(doc, member.username + ' wurde eingeladen. Die Einladung ist jetzt sichtbar.', 4);
+            await renderRealMembers(doc);
           } catch (error) {
-            doc.defaultView.toast?.(error.message || 'Supabase Einladung fehlgeschlagen.', 3);
+            btn.disabled = false;
+            showGameToast(doc, error.message || 'Supabase Einladung fehlgeschlagen.', 4);
           }
         });
         row.append(copy, btn);
