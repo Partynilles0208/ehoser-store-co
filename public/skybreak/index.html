@@ -56138,7 +56138,7 @@ function updatePlayer(dt){
     player.y-=dt*(deployed?(dive?12.5:5.9-forwardLift*.9):7+glideAge*12);const floor=groundHeight(player.x,player.z,player.y+1);
     if(player.y<=Math.max(floor,1)){if(terrainHeight(player.x,player.z)<1){const p=safeSpot(player.x*.83,player.z*.83,22);player.x=p.x;player.z=p.z;}player.y=groundHeight(player.x,player.z,player.y+2);landed();}
     else $('phase-eyebrow').textContent=playerGlider.visible?'GLEITER AKTIV':'IM FREIEN FALL';
-    player.character.action={dt,turn:(right+airDrift)*.35};animateCharacter(player.character,visualTime,false,playerGlider.visible);player.character.root.rotation.y=mixAngle(player.character.root.rotation.y,yaw,.12);player.character.gun.visible=false;
+    player.character.action={dt,turn:(right+airDrift)*.35};animateCharacter(player.character,visualTime,false,playerGlider.visible);const angleDelta=Math.atan2(Math.sin(yaw-player.character.root.rotation.y),Math.cos(yaw-player.character.root.rotation.y));player.character.root.rotation.y+=angleDelta*.12;player.character.gun.visible=false;
   }else if(state==='playing'){
     if(driving){
       updateCar(driving,dt,clamp(forward,-1,1),clamp(right,-1,1),keys.has('Space'),world.colliders);player.x=driving.x;player.z=driving.z;player.y=driving.y+.65;player.vy=0;
