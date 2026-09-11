@@ -342,6 +342,13 @@
       return Array.isArray(data.invites) ? data.invites : [];
     }
 
+    async function acceptInvite(inviteId) {
+      return skybreakApi('/invite/accept', {
+        method: 'POST',
+        body: JSON.stringify({ inviteId })
+      });
+    }
+
     async function addFriend(username) {
       const data = await skybreakApi('/friends', {
         method: 'POST',
@@ -589,11 +596,6 @@
         return;
       }
 
-      if (!members.length) {
-        root.innerHTML = '<p class="skybreak-party-note">Noch keine anderen ehoser Mitglieder gefunden.</p>';
-        return;
-      }
-
       const inviteBox = doc.createElement('div');
       inviteBox.className = 'skybreak-invite-inbox';
       if (incomingInvites.length) {
@@ -607,9 +609,33 @@
           copy.innerHTML = '<strong></strong><small></small>';
           copy.querySelector('strong').textContent = invite.from_username + ' lädt dich ein';
           copy.querySelector('small').textContent = 'Lobby: ' + invite.match_id;
-          row.append(copy);
+          const accept = doc.createElement('button');
+          accept.type = 'button';
+          accept.textContent = 'Annehmen';
+          accept.addEventListener('click', async () => {
+            accept.disabled = true;
+            try {
+              const result = await acceptInvite(invite.id);
+              skybreakMatch = result.match || skybreakMatch;
+              mpStatus.textContent = 'Einladung angenommen · gemeinsame Lobby aktiv';
+              showGameToast(doc, 'Einladung angenommen. Du bist jetzt in der gemeinsamen Lobby.', 4);
+              await renderRealMembers(doc);
+            } catch (error) {
+              accept.disabled = false;
+              showGameToast(doc, error.message || 'Einladung konnte nicht angenommen werden.', 4);
+            }
+          });
+          row.append(copy, accept);
           inviteBox.append(row);
         });
+      }
+
+      if (!members.length) {
+        const empty = doc.createElement('p');
+        empty.className = 'skybreak-party-note';
+        empty.textContent = 'Noch keine anderen ehoser Mitglieder gefunden.';
+        root.replaceChildren(inviteBox, empty);
+        return;
       }
 
       root.replaceChildren(inviteBox, ...members.map(member => {
@@ -936,5 +962,3 @@
 
     start();
   </script>
-</body>
-</html>
