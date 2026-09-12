@@ -219,6 +219,10 @@ async function heartbeat(user, body) {
     maxPlayers: 8,
     updatedAt: nowIso()
   };
+  if (user.username.toLowerCase() === String(match.leader || '').toLowerCase() && ['bus', 'glide', 'playing'].includes(body.state)) {
+    match.status = 'playing';
+    match.startedAt = match.startedAt || nowIso();
+  }
 
   await writeProfile(user.username, settings => ({
     ...settings,

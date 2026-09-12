@@ -281,6 +281,7 @@
     let lobbyMusicPlaying = false;
     let refreshTimer = null;
     let musicTimer = null;
+    let skipIntro = null;
     const sentInvites = new Map();
 
     function loginUrl() {
@@ -694,13 +695,18 @@
     function createMultiplayerScript() {
       const config = {
         matchId: skybreakMatch?.id || '',
-        username: currentUser?.username || 'ehoser Spieler'
+        username: currentUser?.username || 'ehoser Spieler',
+        leader: skybreakMatch?.leader || ''
       };
       return `(${function skybreakSupabaseMultiplayer(config) {
         const token = localStorage.getItem('token');
         if (!token || !config.matchId) return;
         const peers = new Map();
         const colors = [0x74dadd, 0xd9ff53, 0xb7a1e4, 0xffa764, 0x86cfad, 0xff6f91];
+        let heartbeatInFlight = false;
+        let heartbeatTimer = null;
+        let stopped = false;
+        let lastFrame = performance.now();
 
         async function api(path, options = {}) {
           const response = await fetch('/api/skybreak' + path, {
@@ -777,7 +783,28 @@
             scene.add(root);
           }
           root.add(makeLabel(name));
-          return { root, avatar, lastSeen: Date.now() };
+          return {
+            root,
+            avatar,
+            lastSeen: Date.now(),
+            target: { x: 0, y: 0, z: 0, yaw: 0 }
+          };
+        }
+
+        function smoothPeers(time) {
+          const dt = Math.min(.08, Math.max(.001, (time - lastFrame) / 1000));
+          lastFrame = time;
+          const blend = 1 - Math.exp(-dt * 13);
+          for (const peer of peers.values()) {
+            const target = peer.target;
+            if (!target) continue;
+            peer.root.position.x += (target.x - peer.root.position.x) * blend;
+            peer.root.position.y += (target.y - peer.root.position.y) * blend;
+            peer.root.position.z += (target.z - peer.root.position.z) * blend;
+            const turn = Math.atan2(Math.sin(target.yaw - peer.root.rotation.y), Math.cos(target.yaw - peer.root.rotation.y));
+            peer.root.rotation.y += turn * blend;
+          }
+          if (!stopped) requestAnimationFrame(smoothPeers);
         }
 
         function lobbyPoint(name, index) {
@@ -805,8 +832,12 @@
             const remoteState = String(remote.state || 'lobby');
             const position = remoteState === 'lobby' ? lobbyPoint(remote.username, index) : remote;
             peer.root.visible = true;
-            peer.root.position.set(Number(position.x) || 0, Number(position.y) || 0, Number(position.z) || 0);
-            peer.root.rotation.y = Number(remote.yaw) || 0;
+            peer.target = {
+              x: Number(position.x) || 0,
+              y: Number(position.y) || 0,
+              z: Number(position.z) || 0,
+              yaw: Number(remote.yaw) || 0
+            };
             peer.lastSeen = Date.now();
             try {
               if (peer.avatar && typeof animateCharacter === 'function') {
@@ -825,9 +856,17 @@
             }
           }
           status('Supabase Multiplayer · ' + (others.length + 1) + ' Spieler · Lobby ' + config.matchId.slice(-6));
+          const leader = (players || []).find(player => String(player.username || '').toLowerCase() === String(config.leader || '').toLowerCase());
+          const leaderState = String(leader?.state || 'lobby');
+          if (config.username.toLowerCase() !== config.leader.toLowerCase() && leaderState !== 'lobby') {
+            const lobby = document.getElementById('lobby');
+            if (lobby && !lobby.hidden) document.getElementById('play-btn')?.click();
+          }
         }
 
         async function heartbeat() {
+          if (heartbeatInFlight || stopped) return;
+          heartbeatInFlight = true;
           try {
             const own = localState();
             const data = await api('/heartbeat', {
@@ -842,6 +881,8 @@
             render(data.players || []);
           } catch (error) {
             status(error.message || 'Supabase Multiplayer offline');
+          } finally {
+            heartbeatInFlight = false;
           }
         }
 
@@ -855,13 +896,19 @@
         }
 
         markUi();
+        requestAnimationFrame(smoothPeers);
         heartbeat();
-        const timer = setInterval(() => {
-          markUi();
-          heartbeat();
-        }, 700);
+        const scheduleHeartbeat = () => {
+          if (stopped) return;
+          heartbeatTimer = setTimeout(async () => {
+            await heartbeat();
+            scheduleHeartbeat();
+          }, 1000);
+        };
+        scheduleHeartbeat();
         addEventListener('pagehide', () => {
-          clearInterval(timer);
+          stopped = true;
+          clearTimeout(heartbeatTimer);
           fetch('/api/skybreak/leave', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -905,14 +952,24 @@
       document.body.classList.add('intro-running');
       cinematicIntro?.setAttribute('aria-hidden', 'false');
       return new Promise(resolve => {
-        setTimeout(() => {
+        const finish = () => {
+          skipIntro = null;
           document.body.classList.remove('intro-running');
           document.body.classList.add('authed');
           cinematicIntro?.setAttribute('aria-hidden', 'true');
           resolve();
-        }, 2850);
+        };
+        skipIntro = finish;
+        setTimeout(finish, 2850);
       });
     }
+
+    window.addEventListener('keydown', event => {
+      if (skipIntro && ['Enter', 'Space', 'Escape'].includes(event.code)) {
+        event.preventDefault();
+        skipIntro();
+      }
+    });
 
     async function verify() {
       const token = localStorage.getItem('token');
@@ -965,3 +1022,5 @@
 
     start();
   </script>
+</body>
+</html>
