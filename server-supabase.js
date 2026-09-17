@@ -12,9 +12,10 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-const UNLOCK_CODE = '020818';
-const ADMIN_UPLOAD_KEY = '135797531lol';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || !JWT_SECRET.trim()) throw new Error('JWT_SECRET must be configured');
+const UNLOCK_CODE = process.env.UNLOCK_CODE || '';
+const ADMIN_UPLOAD_KEY = process.env.ADMIN_UPLOAD_KEY || '';
 const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre – Token läuft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -1253,6 +1254,8 @@ app.use('/api', (req, res, next) => {
     return res.status(401).json({ error: 'Ungueltiger Token' });
   }
 });
+require('./lib/earthdrive').mountEarthDrive(app, { readAuthUser, getProfile });
+
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.js'))   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
@@ -1346,7 +1349,7 @@ app.post('/api/auth/google', async (req, res) => {
   const idToken = String(req.body?.idToken || '').trim();
   const unlockCode = normalizeUnlockCodeInput(req.body?.unlockCode);
   if (!idToken) return res.status(400).json({ error: 'idToken fehlt' });
-  if (unlockCode !== UNLOCK_CODE) return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
+  if (!UNLOCK_CODE || unlockCode !== UNLOCK_CODE) return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
 
   try {
     const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, {
@@ -1417,7 +1420,7 @@ app.post('/api/register', async (req, res) => {
     return res.status(429).json({ error: 'Zu viele Versuche. Bitte spaeter erneut probieren.' });
   }
 
-  if (normalizeUnlockCodeInput(unlockCode) !== UNLOCK_CODE) {
+  if (!UNLOCK_CODE || normalizeUnlockCodeInput(unlockCode) !== UNLOCK_CODE) {
     registerFailedAttempt(clientKey);
     return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
   }
@@ -1503,7 +1506,7 @@ app.post('/api/login', async (req, res) => {
     return res.status(429).json({ error: 'Zu viele Versuche. Bitte spaeter erneut probieren.' });
   }
 
-  if (normalizeUnlockCodeInput(unlockCode) !== UNLOCK_CODE) {
+  if (!UNLOCK_CODE || normalizeUnlockCodeInput(unlockCode) !== UNLOCK_CODE) {
     registerFailedAttempt(clientKey);
     return res.status(403).json({ error: 'Entsperrcode ist falsch.' });
   }
@@ -2253,7 +2256,8 @@ app.get('/api/pixabay', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
 
-  const PIXABAY_KEY = process.env.PIXABAY_KEY || '50190970-65ec83f509b70f19f8665f4a1';
+  const PIXABAY_KEY = process.env.PIXABAY_KEY || '';
+  if (!PIXABAY_KEY) return res.status(503).json({ error: 'Bildersuche ist nicht eingerichtet.' });
   const query = String(req.query.q || '').trim().slice(0, 200);
   if (!query) return res.status(400).json({ error: 'Kein Suchbegriff' });
 
@@ -3211,7 +3215,7 @@ app.use((err, req, res, next) => {
 // POST /api/admin/screenshare/request  { username, offer }
 app.post('/api/admin/screenshare/request', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
 
   const { username, offer } = req.body;
   if (!username || !offer) return res.status(400).json({ error: 'username und offer erforderlich' });
@@ -3292,7 +3296,7 @@ app.post('/api/screenshare/respond', async (req, res) => {
 // GET /api/admin/screenshare/session/:sessionId  — Admin fragt Status ab
 app.get('/api/admin/screenshare/session/:sessionId', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
 
   await ensureScreenSessionsTableExists();
 
@@ -3305,7 +3309,7 @@ app.get('/api/admin/screenshare/session/:sessionId', async (req, res) => {
 // POST /api/admin/screenshare/end/:sessionId  — Admin beendet Session
 app.post('/api/admin/screenshare/end/:sessionId', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) return res.status(403).json({ error: 'Nicht autorisiert' });
   await ensureScreenSessionsTableExists();
   await supabaseAdmin.from('screen_sessions').update({ status: 'ended' }).eq('id', req.params.sessionId);
   res.json({ ok: true });
@@ -3943,7 +3947,7 @@ const VT_BASE = 'https://www.virustotal.com/api/v3';
 // POST /api/admin/vt-scan  { url: <string> }
 app.post('/api/admin/vt-scan', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== ADMIN_UPLOAD_KEY) {
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
     return res.status(403).json({ error: 'Nicht autorisiert' });
   }
 
@@ -3990,7 +3994,7 @@ app.post('/api/admin/vt-scan', async (req, res) => {
 // GET /api/admin/vt-result/:analysisId
 app.get('/api/admin/vt-result/:analysisId', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== ADMIN_UPLOAD_KEY) {
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
     return res.status(403).json({ error: 'Nicht autorisiert' });
   }
 
