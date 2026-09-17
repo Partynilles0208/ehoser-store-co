@@ -1,4 +1,4 @@
-import { localPoint, distance, carHits, roadAllowed, closestOnSegment } from './physics.mjs';
+import { localPoint, geoPoint, distance, carHits, roadAllowed, closestOnSegment } from './physics.mjs';
 
 const same = (a, b) => a && b && a.lat === b.lat && a.lon === b.lon;
 function joinRings(members) {
@@ -68,6 +68,24 @@ export class DrivingWorld {
     if (this.cells.length > 4) this.cells.shift();
     this.rebuild();
     if (!this.photorealistic) this.refreshVisuals();
+    return cell;
+  }
+  loadFallback(point) {
+    // Keep the map and car usable when a public Overpass instance is down.
+    // This is deliberately labelled as a local fallback; it does not pretend
+    // that synthetic roads are OSM survey data.
+    const span = .006;
+    const elements = [
+      { type: 'way', id: 'fallback-east-west', tags: { highway: 'residential', name: 'Lokale Ausweichstraße' }, geometry: [
+        { lat: point.lat, lon: point.lon - span }, { lat: point.lat, lon: point.lon + span }
+      ] },
+      { type: 'way', id: 'fallback-north-south', tags: { highway: 'residential', name: 'Lokale Ausweichstraße' }, geometry: [
+        { lat: point.lat - span, lon: point.lon }, { lat: point.lat + span, lon: point.lon }
+      ] }
+    ];
+    const cell = parseWorld({ center: { lat: point.lat, lon: point.lon }, radius: 1000, elements }, this.origin);
+    this.cells = [cell]; this.rebuild(); this.refreshVisuals();
+    this.degraded = true;
     return cell;
   }
   rebuild() {

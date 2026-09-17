@@ -47,7 +47,14 @@ export class Drive {
     this.viewer.camera.setView({ destination: C.Cartesian3.fromDegrees(this.origin.lon, this.origin.lat, 1800), orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 } });
     this.progress(35, 'Straßen und feste Gebäude werden geladen …');
     this.world = new DrivingWorld(this.viewer, this.origin, this.api, this.config, true);
-    const cell = await this.world.load(this.origin, this.signal);
+    let cell;
+    try {
+      cell = await this.world.load(this.origin, this.signal);
+    } catch (error) {
+      this.check();
+      cell = this.world.loadFallback(this.origin);
+      this.toast('OpenStreetMap-Daten sind gerade nicht erreichbar. Eine vereinfachte lokale Straße ist aktiv.', 7000);
+    }
     this.check();
     const spawn = findSpawn(cell.roads, cell.obstacles);
     if (!spawn) throw new Error('Hier wurde keine freie, befahrbare Straße gefunden. Wähle auf der Karte einen Ort näher an einer Straße.');
@@ -117,7 +124,7 @@ export class Drive {
     $('renderer-label').textContent = this.photorealistic
       ? 'Google Photorealistic 3D · Höhen folgen der Landschaft. Feste OSM-Gebäude und zusätzliche Höhenprüfungen begrenzen deine Fahrt.'
       : 'OSM-3D · Echte Straßen und feste Gebäude aus OpenStreetMap. Vereinfachte Gebäudehöhen und ebener Boden.';
-    $('world-status').textContent = this.photorealistic ? 'Fotorealistische 3D-Welt' : 'OSM-3D · vereinfachte Landschaft';
+      $('world-status').textContent = this.photorealistic ? 'Fotorealistische 3D-Welt' : (this.world.degraded ? 'OSM-Karte · lokale Ausweichstraße' : 'OSM-3D · vereinfachte Landschaft');
     this.bind(); this.ready = true; this.updateCar(0); this.updateCamera(true); this.sampleGround();
     this.progress(100, 'Bereit. Gute Fahrt!');
     this.frame = requestAnimationFrame(time => this.tick(time));

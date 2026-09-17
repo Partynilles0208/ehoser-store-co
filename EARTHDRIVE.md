@@ -64,6 +64,16 @@ photorealistic terrain. Where OSM heights are absent, building heights are
 estimated. Unavailable/incomplete OSM geometry stops loading with a retryable
 error rather than creating an empty driveable world.
 
+The default 2D raster layer uses CARTO's browser-friendly tiles, which are
+rendered from OpenStreetMap data. The public `tile.openstreetmap.org` endpoint
+can reject browser traffic from shared/serverless networks; set
+`EARTHDRIVE_OSM_TILES` only when you have a permitted tile provider and review
+its usage policy.
+
+If Overpass is temporarily unavailable, EarthDrive starts with a clearly marked
+local fallback road so the map and controls remain usable. Fixed buildings and
+surveyed roads return automatically when the next world request succeeds.
+
 Optional provider overrides:
 
 | Variable | Default |

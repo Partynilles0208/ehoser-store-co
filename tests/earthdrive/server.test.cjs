@@ -45,7 +45,8 @@ test('all paid endpoints reject missing, forged, and non-Pro credentials before 
 test('config gives only a short lease and returns the direct Tiles URL', async t => {
   const h = await harness(t), response = await h.request('/config'), text = await response.text();
   assert.equal(response.status, 200); assert.match(response.headers.get('cache-control'), /no-store/);
-  assert.equal(JSON.parse(text).google3d, true); assert.match(JSON.parse(text).tileUrl, /^https:\/\/tile\.googleapis\.com\/v1\/3dtiles\/root\.json\?key=/); assert.ok(JSON.parse(text).expiresAt <= Date.now() + 121000);
+  const data = JSON.parse(text);
+  assert.equal(data.google3d, true); assert.match(data.tileUrl, /^https:\/\/tile\.googleapis\.com\/v1\/3dtiles\/root\.json\?key=/); assert.match(data.osmTileUrl, /cartocdn\.com/); assert.ok(JSON.parse(text).expiresAt <= Date.now() + 121000);
   assert.match(text, /test-key-never-send-to-browser/);
 });
 test('expired subscriptions deny tiles even within the cached lookup window', async t => {
