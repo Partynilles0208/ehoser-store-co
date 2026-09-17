@@ -65,9 +65,11 @@ async function boot() {
     $('gate').hidden = true; $('picker').hidden = false;
     if (!map) {
       map = window.L.map('map', { zoomControl: true, minZoom: 2, maxZoom: 19, worldCopyJump: true }).setView([48.8, 11.5], 5);
-      const tiles = window.L.tileLayer(config.osmTileUrl, { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>', crossOrigin: true }).addTo(map);
+      let tiles = window.L.tileLayer(config.osmTileUrl, { maxZoom: 19, attribution: config.osmAttribution || '© OpenStreetMap contributors', crossOrigin: true }).addTo(map);
       let tileErrors = 0;
-      tiles.on('tileerror', () => { if (++tileErrors === 3) toast('Die Kartenbilder laden gerade nicht. Du kannst weiterhin einen Ort suchen.'); });
+      tiles.on('tileerror', () => {
+        if (++tileErrors === 3) toast('Die Kartenbilder laden gerade nicht. Du kannst weiterhin einen Ort suchen.');
+      });
       map.on('click', e => selectPlace({ lat: Math.max(-85, Math.min(85, e.latlng.lat)), lon: ((e.latlng.lng + 180) % 360 + 360) % 360 - 180, name: 'Dein Startpunkt' }, false));
     }
     map.invalidateSize();

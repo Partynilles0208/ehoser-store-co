@@ -44,12 +44,17 @@ Use fresh values for credentials previously committed to the repository. Removin
 the literals does not remove earlier Git history. Rotating `JWT_SECRET` signs
 users out, so coordinate that value with any other service verifying these tokens.
 
-The existing `GOOGLE_MAPS_API_KEY` environment variable is used server-side for
-Google Photorealistic 3D Tiles. No new account table or production dependency is
-needed. The key must have **Map Tiles API** access and its application
+The existing `GOOGLE_MAPS_API_KEY` environment variable is used for Google
+Photorealistic 3D Tiles. By default the browser loads Google's root tileset
+directly, which avoids Vercel's short serverless timeout on a cold proxy request.
+Set `EARTHDRIVE_DIRECT_TILES=false` to force the authenticated proxy instead.
+No new account table or production dependency is needed. The key must have **Map Tiles API** access and its application
 restrictions must permit server requests from the Vercel application. A key
-enabled only for Maps JavaScript or restricted exclusively to browser referrers
-does not automatically authorize these requests. The current key's permissions
+enabled only for Maps JavaScript does not automatically authorize these requests.
+For the default direct mode, its application restriction must allow the ehoser
+production and preview origins (for example `https://www.ehoser.de/*` and the
+Vercel preview domain). If you set `EARTHDRIVE_DIRECT_TILES=false`, the key must
+instead allow server requests from Vercel. The current key's permissions
 and the live Vercel configuration were not accessible during implementation.
 
 If the key, region, depth-texture support, or 3D data is unavailable, the game
@@ -58,6 +63,16 @@ extruded building footprints on flat ground. It does not label that view as
 photorealistic terrain. Where OSM heights are absent, building heights are
 estimated. Unavailable/incomplete OSM geometry stops loading with a retryable
 error rather than creating an empty driveable world.
+
+The default 2D raster layer uses CARTO's browser-friendly tiles, which are
+rendered from OpenStreetMap data. The public `tile.openstreetmap.org` endpoint
+can reject browser traffic from shared/serverless networks; set
+`EARTHDRIVE_OSM_TILES` only when you have a permitted tile provider and review
+its usage policy.
+
+If Overpass is temporarily unavailable, EarthDrive starts with a clearly marked
+local fallback road so the map and controls remain usable. Fixed buildings and
+surveyed roads return automatically when the next world request succeeds.
 
 Optional provider overrides:
 
