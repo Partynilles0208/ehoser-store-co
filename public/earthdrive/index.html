@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#102923">
+  <meta name="description" content="Wähle einen Ort auf der Welt und erkunde ihn mit deinem Auto in 3D. EarthDrive für ehoser Pro.">
+  <title>EarthDrive · ehoser Pro</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/earthdrive/styles.css">
+</head>
+<body>
+  <main id="picker" hidden>
+    <div id="map" aria-label="Weltkarte zur Ortsauswahl"></div>
+    <div class="map-shade"></div>
+    <header class="topbar">
+      <a class="wordmark" href="/" aria-label="Zurück zu ehoser"><span class="brand-icon">e</span><span>ehoser<span class="brand-separator"> / </span><b>EarthDrive</b></span></a>
+      <span class="pro-tag">PRO EXCLUSIVE</span>
+    </header>
+    <aside class="search-panel">
+      <form id="search-form" role="search">
+        <label class="sr-only" for="search">Ort oder Adresse suchen</label>
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input id="search" placeholder="Wohin soll’s gehen?" autocomplete="off" maxlength="160" required minlength="2">
+        <button id="search-button" type="submit" aria-label="Ort suchen">↗</button>
+      </form>
+      <div id="search-results" hidden aria-live="polite"></div>
+    </aside>
+    <section class="intro-panel">
+      <p class="eyebrow"><span class="live-dot"></span> DEIN NÄCHSTER ROADTRIP</p>
+      <h1>Die Welt.<br>Deine <em>Straße.</em></h1>
+      <p class="intro-copy">Ein Ort. Ein Auto. Und jede Menge zu entdecken.<br>Such dir deinen Startpunkt auf der Karte aus.</p>
+      <div class="place-chips" aria-label="Orte entdecken">
+        <button data-place="berlin">Berlin <span>↗</span></button>
+        <button data-place="tokyo">Tokio <span>↗</span></button>
+        <button data-place="sanfrancisco">San Francisco <span>↗</span></button>
+      </div>
+    </section>
+    <section class="destination-card" aria-label="Dein Startpunkt">
+      <div class="destination-heading"><span class="eyebrow">01 / STARTPUNKT</span><span class="small-dot">●</span></div>
+      <h2 id="place-name">Wo möchtest du losfahren?</h2>
+      <p id="place-coordinates">Klicke auf die Karte oder suche oben rechts.</p>
+      <div class="destination-bottom">
+        <div class="car-label"><span aria-hidden="true">▰</span><div><b>E1 Touring</b><small>Bereit für deine Entdeckungstour</small></div></div>
+        <button id="start-drive" class="primary" disabled>Fahrt starten <span>→</span></button>
+      </div>
+    </section>
+    <div class="map-caption">FREIES FAHREN <span>·</span> ECHTE ORTE <span>·</span> 3D-WELT</div>
+  </main>
+
+  <main id="driving" hidden>
+    <div id="earth" aria-label="3D-Fahrwelt"></div>
+    <header class="drive-top">
+      <button id="back-map" class="glass-button">← Karte</button>
+      <div class="trip-place"><span class="eyebrow">EARTHDRIVE / FREIE FAHRT</span><h2 id="trip-name">Unterwegs</h2></div>
+      <div class="drive-actions">
+        <button id="camera-button" class="glass-button" title="Kamera wechseln (C)">Kamera</button>
+        <button id="pause-button" class="glass-button" title="Pause (Esc)">Ⅱ</button>
+        <button id="settings-button" class="glass-button" aria-label="Einstellungen">⚙</button>
+      </div>
+    </header>
+    <div id="world-status" class="world-status" role="status">Umgebung bereit</div>
+    <div class="minimap"><canvas id="mini-map" width="320" height="240" aria-label="Umgebung und Fahrzeugposition"></canvas><span id="heading">N</span><small id="trip-distance">0,00 km</small></div>
+    <div class="speed-panel"><span id="gear">D</span><div><strong id="speed">0</strong><small>KM/H</small></div><div class="speed-track"><i id="speed-bar"></i></div></div>
+    <div class="keyboard-help"><kbd>W A S D</kbd> Fahren <span>·</span> <kbd>Leertaste</kbd> Bremse <span>·</span> <kbd>C</kbd> Kamera <span>·</span> <kbd>R</kbd> Zurücksetzen</div>
+    <div class="touch-controls" aria-label="Touch-Steuerung">
+      <div><button data-control="left" aria-label="Links lenken">←</button><button data-control="right" aria-label="Rechts lenken">→</button></div>
+      <div><button data-control="reverse" aria-label="Bremsen und rückwärtsfahren">↓</button><button data-control="brake" aria-label="Bremse">Ⅱ</button><button data-control="throttle" class="accelerate" aria-label="Gas geben">↑</button></div>
+    </div>
+    <div id="credits"></div>
+    <dialog id="settings">
+      <form method="dialog"><button class="close" aria-label="Schließen">×</button></form>
+      <p class="eyebrow">DEINE FAHRT</p><h2>Mach’s dir passend.</h2>
+      <label for="quality">Grafikqualität</label><select id="quality"><option value="low">Flüssig</option><option value="balanced" selected>Ausgewogen</option><option value="high">Hoch</option></select>
+      <label for="sound"><input id="sound" type="checkbox"> Motorgeräusch</label>
+      <button id="reset-car" class="secondary">Auto zur Straße zurücksetzen</button>
+      <button id="fullscreen" class="secondary">Vollbild umschalten</button>
+      <p class="settings-note" id="renderer-label"></p>
+    </dialog>
+    <div id="paused" class="pause-overlay" hidden><p class="eyebrow">ZEIT FÜR EINE PAUSE</p><h2>Die Welt wartet.</h2><button id="resume" class="primary">Weiterfahren →</button></div>
+  </main>
+
+  <section id="gate" class="full-overlay" aria-live="polite">
+    <div class="gate-card"><div class="brand-icon">e</div><p class="eyebrow">EHOSER PRO / EARTHDRIVE</p><h1 id="gate-title">Dein Roadtrip wartet.</h1><p id="gate-text">Dein Zugang wird geprüft …</p><div id="gate-actions"></div><a class="back-link" href="/">← Zurück zu ehoser</a></div>
+  </section>
+  <section id="loading" class="full-overlay loading" hidden aria-live="polite">
+    <div class="loading-orbit"><span></span><i></i></div><p class="eyebrow">EARTHDRIVE</p><h2 id="loading-title">Deine Welt entsteht.</h2><p id="loading-detail">Karte wird geladen …</p><progress id="loading-progress" max="100" value="10"></progress><button id="cancel-load" class="back-link">Abbrechen</button>
+  </section>
+  <div id="toast" role="status" hidden></div>
+  <script type="module" src="/earthdrive/app.mjs"></script>
+</body>
+</html>

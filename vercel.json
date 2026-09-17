@@ -3,7 +3,8 @@
   "builds": [
     {
       "src": "server-supabase.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": { "maxDuration": 60, "includeFiles": ["public/**", "lib/**"] }
     },
     {
       "src": "api/skybreak.js",
