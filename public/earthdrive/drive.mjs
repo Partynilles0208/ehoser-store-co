@@ -56,9 +56,12 @@ export class Drive {
     this.progress(55, '3D-Landschaft wird aufgebaut …');
     if (this.config.google3d) {
       try {
-        // Resource-derived requests inherit Authorization. Every manifest and mesh
-        // stays on the authenticated server proxy; no Google key is sent by this app.
-        const resource = new C.Resource({ url: this.config.tileUrl, headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
+        // The default URL goes straight to Google's renderer to avoid a Vercel
+        // serverless timeout on the first root tileset request. Keep the bearer
+        // header only for the optional local proxy.
+        const headers = this.config.tileUrl.startsWith('/api/earthdrive/')
+          ? { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } : undefined;
+        const resource = new C.Resource({ url: this.config.tileUrl, headers });
         let acceptTiles = true;
         const pendingTiles = C.Cesium3DTileset.fromUrl(resource, { showCreditsOnScreen: true, maximumScreenSpaceError: this.qualityError, cacheBytes: 192 * 1024 * 1024 });
         pendingTiles.then(tiles => { if ((!acceptTiles || this.disposed) && !tiles.isDestroyed()) tiles.destroy(); }).catch(() => {});

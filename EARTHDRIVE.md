@@ -44,9 +44,11 @@ Use fresh values for credentials previously committed to the repository. Removin
 the literals does not remove earlier Git history. Rotating `JWT_SECRET` signs
 users out, so coordinate that value with any other service verifying these tokens.
 
-The existing `GOOGLE_MAPS_API_KEY` environment variable is used server-side for
-Google Photorealistic 3D Tiles. No new account table or production dependency is
-needed. The key must have **Map Tiles API** access and its application
+The existing `GOOGLE_MAPS_API_KEY` environment variable is used for Google
+Photorealistic 3D Tiles. By default the browser loads Google's root tileset
+directly, which avoids Vercel's short serverless timeout on a cold proxy request.
+Set `EARTHDRIVE_DIRECT_TILES=false` to force the authenticated proxy instead.
+No new account table or production dependency is needed. The key must have **Map Tiles API** access and its application
 restrictions must permit server requests from the Vercel application. A key
 enabled only for Maps JavaScript or restricted exclusively to browser referrers
 does not automatically authorize these requests. The current key's permissions
