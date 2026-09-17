@@ -50,8 +50,11 @@ directly, which avoids Vercel's short serverless timeout on a cold proxy request
 Set `EARTHDRIVE_DIRECT_TILES=false` to force the authenticated proxy instead.
 No new account table or production dependency is needed. The key must have **Map Tiles API** access and its application
 restrictions must permit server requests from the Vercel application. A key
-enabled only for Maps JavaScript or restricted exclusively to browser referrers
-does not automatically authorize these requests. The current key's permissions
+enabled only for Maps JavaScript does not automatically authorize these requests.
+For the default direct mode, its application restriction must allow the ehoser
+production and preview origins (for example `https://www.ehoser.de/*` and the
+Vercel preview domain). If you set `EARTHDRIVE_DIRECT_TILES=false`, the key must
+instead allow server requests from Vercel. The current key's permissions
 and the live Vercel configuration were not accessible during implementation.
 
 If the key, region, depth-texture support, or 3D data is unavailable, the game
