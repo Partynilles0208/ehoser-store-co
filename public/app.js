@@ -2528,8 +2528,9 @@ function getExpectedAuthUnlockCode() {
 }
 
 function isActiveAuthUnlockCodeValid() {
+    const active = getActiveAuthUnlockCode();
     const expected = getExpectedAuthUnlockCode();
-    return Boolean(expected) && getActiveAuthUnlockCode() === expected;
+    return expected ? active === expected : active.length >= 6;
 }
 
 function moderationSleep(ms) {
@@ -2750,9 +2751,7 @@ function updateGoogleAuthVisibility() {
     }
     gate.classList.remove('desktop-auth-gate');
     if (!_unlockCode) {
-        gate.style.display = 'none';
         loadUnlockCode();
-        return;
     }
     const codeOk = isActiveAuthUnlockCodeValid();
     gate.style.display = codeOk ? 'block' : 'none';
