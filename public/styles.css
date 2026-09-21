@@ -2449,6 +2449,23 @@ textarea:focus {
 }
 .mode-card-games::before { background: linear-gradient(135deg, rgba(244,124,42,0.07), transparent 60%); }
 
+.mode-card-dreamcoring {
+    background:
+        radial-gradient(circle at 18% 10%, rgba(110, 231, 255, 0.20), transparent 28%),
+        radial-gradient(circle at 85% 18%, rgba(255, 143, 216, 0.18), transparent 26%),
+        linear-gradient(180deg, rgba(15, 28, 46, 0.95), rgba(9, 15, 27, 0.96));
+    border-color: rgba(110, 231, 255, 0.26);
+}
+
+.mode-card-dreamcoring:hover {
+    border-color: rgba(255, 143, 216, 0.42);
+    box-shadow: 0 24px 48px rgba(110, 231, 255, 0.16), 0 0 0 1px rgba(255, 143, 216, 0.18);
+}
+
+.mode-card-dreamcoring::before {
+    background: linear-gradient(135deg, rgba(110, 231, 255, 0.08), rgba(255, 143, 216, 0.08), transparent 64%);
+}
+
 .mode-card-facewarp:hover {
     border-color: rgba(168,85,247,0.6);
     box-shadow: 0 24px 48px rgba(168,85,247,0.2), 0 0 0 1px rgba(168,85,247,0.18);
@@ -2504,6 +2521,12 @@ textarea:focus {
     background: rgba(255, 107, 53, 0.12);
     color: #ff8c5a;
     border-color: rgba(255, 107, 53, 0.3);
+}
+
+.mode-badge-dream {
+    background: rgba(110, 231, 255, 0.12);
+    color: #d8fbff;
+    border-color: rgba(255, 143, 216, 0.28);
 }
 
 .mode-badge-warp {

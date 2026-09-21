@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dreamcoring Trailer | ehoser</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #05080f;
+            --panel: rgba(10, 18, 30, 0.82);
+            --line: rgba(125, 221, 255, 0.22);
+            --text: #edf8ff;
+            --muted: #9fb7c8;
+            --cyan: #6ee7ff;
+            --pink: #ff8fd8;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Inter, "Segoe UI", system-ui, sans-serif;
+            background:
+                radial-gradient(circle at 12% 15%, rgba(110, 231, 255, 0.20), transparent 28%),
+                radial-gradient(circle at 86% 10%, rgba(255, 143, 216, 0.18), transparent 26%),
+                linear-gradient(180deg, #07111e 0%, var(--bg) 58%, #02040a 100%);
+            color: var(--text);
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+            background-size: 42px 42px;
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent 80%);
+        }
+
+        .page {
+            width: min(1180px, calc(100% - 28px));
+            margin: 0 auto;
+            padding: 24px 0 42px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+
+        .back-link {
+            color: var(--text);
+            text-decoration: none;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 10px 14px;
+            font-weight: 700;
+        }
+
+        .brand-pill {
+            color: #001018;
+            background: linear-gradient(135deg, var(--cyan), var(--pink));
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-size: 0.72rem;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 0.86fr) minmax(280px, 1.14fr);
+            gap: 26px;
+            align-items: center;
+        }
+
+        .copy h1 {
+            margin: 0 0 10px;
+            font-size: clamp(2.4rem, 7vw, 6.2rem);
+            line-height: 0.9;
+            letter-spacing: 0;
+            text-transform: uppercase;
+        }
+
+        .copy p {
+            color: var(--muted);
+            font-size: 1.05rem;
+            line-height: 1.6;
+            max-width: 620px;
+            margin: 0 0 18px;
+        }
+
+        .status {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .chip {
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.06);
+            border-radius: 999px;
+            padding: 8px 12px;
+            color: #dff7ff;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .video-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+            box-shadow: 0 28px 80px rgba(0,0,0,0.44);
+        }
+
+        video {
+            display: block;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #000;
+        }
+
+        .play-overlay {
+            position: absolute;
+            inset: 0;
+            display: none;
+            place-items: center;
+            background: linear-gradient(180deg, rgba(0,0,0,0.22), rgba(0,0,0,0.68));
+        }
+
+        .play-overlay.is-visible { display: grid; }
+
+        .play-button {
+            border: 0;
+            border-radius: 999px;
+            padding: 15px 22px;
+            color: #061019;
+            background: linear-gradient(135deg, var(--cyan), var(--pink));
+            font-size: 1rem;
+            font-weight: 900;
+            cursor: pointer;
+            box-shadow: 0 18px 38px rgba(0,0,0,0.38);
+        }
+
+        .notice {
+            margin-top: 20px;
+            padding: 16px 18px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.055);
+            border-radius: 14px;
+            color: #cfe9f5;
+            line-height: 1.55;
+        }
+
+        @media (max-width: 860px) {
+            .hero { grid-template-columns: 1fr; }
+            .copy h1 { font-size: clamp(2.7rem, 17vw, 5rem); }
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        <div class="topbar">
+            <a class="back-link" href="/">Zurueck zum Hauptmenu</a>
+            <span class="brand-pill">ehoser trailer</span>
+        </div>
+
+        <section class="hero">
+            <div class="copy">
+                <h1>Dreamcoring</h1>
+                <p>Der Trailer ist schon online. Das Spiel gibt es noch nicht, aber die App hat jetzt ihren Platz im Hauptmenu.</p>
+                <div class="status">
+                    <span class="chip">Trailer abspielen</span>
+                    <span class="chip">Spiel noch nicht verfuegbar</span>
+                    <span class="chip">Dreamcore-Projekt</span>
+                </div>
+                <div class="notice">
+                    Aktuell startet hier nur der Trailer. Wenn das Spiel spaeter fertig ist, kann diese Seite direkt zum Spielstart erweitert werden.
+                </div>
+            </div>
+
+            <div class="video-card">
+                <video id="dreamcoringTrailer" controls autoplay playsinline preload="auto" poster="/dreamcoring/poster.jpg">
+                    <source src="/dreamcoring/trailer.mp4" type="video/mp4">
+                    Dein Browser kann das Video nicht abspielen.
+                </video>
+                <div class="play-overlay" id="playOverlay">
+                    <button class="play-button" type="button" id="playButton">Trailer starten</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const video = document.getElementById('dreamcoringTrailer');
+        const overlay = document.getElementById('playOverlay');
+        const button = document.getElementById('playButton');
+
+        async function playTrailer() {
+            try {
+                overlay.classList.remove('is-visible');
+                await video.play();
+            } catch (err) {
+                overlay.classList.add('is-visible');
+            }
+        }
+
+        button.addEventListener('click', playTrailer);
+        window.addEventListener('DOMContentLoaded', playTrailer);
+    </script>
+</body>
+</html>
