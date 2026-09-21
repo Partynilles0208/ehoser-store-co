@@ -2523,6 +2523,15 @@ function getActiveAuthUnlockCode() {
     return normalizeUnlockCodeValue(input?.value || '');
 }
 
+function getExpectedAuthUnlockCode() {
+    return normalizeUnlockCodeValue(_unlockCode || '');
+}
+
+function isActiveAuthUnlockCodeValid() {
+    const expected = getExpectedAuthUnlockCode();
+    return Boolean(expected) && getActiveAuthUnlockCode() === expected;
+}
+
 function moderationSleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -2655,7 +2664,7 @@ function startRepoUpdatePolling() {
 
 async function handleGoogleCredentialResponse(response) {
     const unlockCode = getActiveAuthUnlockCode();
-    if (unlockCode !== '020818') {
+    if (!isActiveAuthUnlockCodeValid()) {
         showAlert('Google-Anmeldung wird erst mit dem richtigen Zugangscode freigeschaltet.', 'error');
         return;
     }
@@ -2726,7 +2735,7 @@ function updateGoogleAuthVisibility() {
     const gate = document.getElementById('googleAuthGate');
     if (!gate) return;
     if (isDesktopMode()) {
-        const codeOk = getActiveAuthUnlockCode() === '020818';
+        const codeOk = isActiveAuthUnlockCodeValid();
         gate.style.display = codeOk ? 'block' : 'none';
         gate.classList.add('desktop-auth-gate');
         const title = gate.querySelector('.google-auth-gate-title');
@@ -2740,7 +2749,12 @@ function updateGoogleAuthVisibility() {
         return;
     }
     gate.classList.remove('desktop-auth-gate');
-    const codeOk = getActiveAuthUnlockCode() === '020818';
+    if (!_unlockCode) {
+        gate.style.display = 'none';
+        loadUnlockCode();
+        return;
+    }
+    const codeOk = isActiveAuthUnlockCodeValid();
     gate.style.display = codeOk ? 'block' : 'none';
     if (!codeOk) return;
 
