@@ -125,33 +125,12 @@
             box-shadow: 0 28px 80px rgba(0,0,0,0.44);
         }
 
-        video {
+        .youtube-frame {
             display: block;
             width: 100%;
             aspect-ratio: 16 / 9;
             background: #000;
-        }
-
-        .play-overlay {
-            position: absolute;
-            inset: 0;
-            display: none;
-            place-items: center;
-            background: linear-gradient(180deg, rgba(0,0,0,0.22), rgba(0,0,0,0.68));
-        }
-
-        .play-overlay.is-visible { display: grid; }
-
-        .play-button {
             border: 0;
-            border-radius: 999px;
-            padding: 15px 22px;
-            color: #061019;
-            background: linear-gradient(135deg, var(--cyan), var(--pink));
-            font-size: 1rem;
-            font-weight: 900;
-            cursor: pointer;
-            box-shadow: 0 18px 38px rgba(0,0,0,0.38);
         }
 
         .notice {
@@ -192,33 +171,15 @@
             </div>
 
             <div class="video-card">
-                <video id="dreamcoringTrailer" controls autoplay playsinline preload="auto" poster="/dreamcoring/poster.jpg">
-                    <source src="/dreamcoring/trailer.mp4" type="video/mp4">
-                    Dein Browser kann das Video nicht abspielen.
-                </video>
-                <div class="play-overlay" id="playOverlay">
-                    <button class="play-button" type="button" id="playButton">Trailer starten</button>
-                </div>
+                <iframe
+                    class="youtube-frame"
+                    src="https://www.youtube.com/embed/zU2S_isnXAI?si=8AZ4w3V2isc9qjbg"
+                    title="Dreamcoring Trailer auf YouTube"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allowfullscreen></iframe>
             </div>
         </section>
     </main>
-
-    <script>
-        const video = document.getElementById('dreamcoringTrailer');
-        const overlay = document.getElementById('playOverlay');
-        const button = document.getElementById('playButton');
-
-        async function playTrailer() {
-            try {
-                overlay.classList.remove('is-visible');
-                await video.play();
-            } catch (err) {
-                overlay.classList.add('is-visible');
-            }
-        }
-
-        button.addEventListener('click', playTrailer);
-        window.addEventListener('DOMContentLoaded', playTrailer);
-    </script>
 </body>
 </html>
