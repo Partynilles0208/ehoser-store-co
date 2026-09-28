@@ -11,6 +11,17 @@
 </head>
 <body>
 
+<!-- ── Notification permission wall ─────────────────────────────────────── -->
+<div id="notificationWall" class="notification-wall" style="display:none">
+  <div class="notification-wall-box">
+    <div class="notification-bell" aria-hidden="true">🔔</div>
+    <h2>Benachrichtigungen aktivieren</h2>
+    <p>Für ehoser Chat sind Benachrichtigungen Pflicht. Sie werden nur für neue Chat-Nachrichten und eingehende Anrufe verwendet.</p>
+    <button id="notificationEnableBtn" class="btn-primary" onclick="enableChatNotifications()">Benachrichtigungen erlauben</button>
+    <p id="notificationHelp" class="notification-help"></p>
+  </div>
+</div>
+
 <!-- ── Login Wall ─────────────────────────────────────────────────────────── -->
 <div id="loginWall" class="login-wall" style="display:none">
   <div class="login-wall-box">
@@ -75,6 +86,12 @@
           </div>
         </div>
         <div class="chat-topbar-right">
+          <button id="audioCallBtn" class="call-icon-btn" onclick="startCall('audio')" title="Audioanruf starten" aria-label="Audioanruf starten" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24c1.08.36 2.25.55 3.45.55A1.15 1.15 0 0 1 21 16.66v3.18A1.16 1.16 0 0 1 19.84 21C10.54 21 3 13.46 3 4.16A1.16 1.16 0 0 1 4.16 3h3.19A1.15 1.15 0 0 1 8.5 4.15c0 1.2.2 2.37.55 3.45a1 1 0 0 1-.24 1Z"/></svg>
+          </button>
+          <button id="videoCallBtn" class="call-icon-btn" onclick="startCall('video')" title="Videoanruf starten" aria-label="Videoanruf starten" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6.8A1.8 1.8 0 0 0 13.2 5H4.8A1.8 1.8 0 0 0 3 6.8v10.4A1.8 1.8 0 0 0 4.8 19h8.4a1.8 1.8 0 0 0 1.8-1.8v-1.7l4.1 2.55a1.25 1.25 0 0 0 1.9-1.06V7.01a1.25 1.25 0 0 0-1.9-1.06Z"/></svg>
+          </button>
           <button id="chatAiSummaryToggle" class="topbar-btn topbar-btn-ghost ai-summary-toggle" onclick="toggleEhoserAiSummary()">🤖 ehoser AI</button>
           <button class="topbar-btn" onclick="openAddMemberModal()">+ Mitglied</button>
           <button class="topbar-btn topbar-btn-ghost" onclick="openMembersModal()">👥 Mitglieder</button>
@@ -152,6 +169,48 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- ── Incoming call ─────────────────────────────────────────────────────── -->
+<div id="incomingCallOverlay" class="incoming-call-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="incomingCallName">
+  <div class="incoming-call-card">
+    <div class="incoming-pulse"><div id="incomingCallAvatar" class="incoming-avatar">?</div></div>
+    <div id="incomingCallKind" class="incoming-kind">Eingehender Audioanruf</div>
+    <h2 id="incomingCallName">Unbekannt</h2>
+    <p>möchte mit dir sprechen</p>
+    <div class="incoming-actions">
+      <button class="incoming-action decline" onclick="rejectIncomingCall()" aria-label="Anruf ablehnen">
+        <span>✕</span><small>Ablehnen</small>
+      </button>
+      <button class="incoming-action accept" onclick="acceptIncomingCall()" aria-label="Anruf annehmen">
+        <span>✓</span><small>Annehmen</small>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Active/outgoing call ──────────────────────────────────────────────── -->
+<div id="callOverlay" class="call-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="Laufender Anruf">
+  <video id="remoteVideo" class="remote-video" autoplay playsinline></video>
+  <audio id="remoteAudio" autoplay></audio>
+  <video id="localVideo" class="local-video" autoplay muted playsinline></video>
+  <div id="callBackdrop" class="call-backdrop">
+    <div id="callAvatar" class="call-avatar">?</div>
+    <h2 id="callPeerName">Anruf</h2>
+    <p id="callStatus">Verbindung wird aufgebaut…</p>
+    <span id="callTimer" class="call-timer"></span>
+  </div>
+  <div class="call-controls">
+    <button id="muteCallBtn" class="call-control" onclick="toggleCallMute()" aria-label="Mikrofon stummschalten">
+      <span class="control-icon">🎙️</span><small>Stumm</small>
+    </button>
+    <button id="cameraCallBtn" class="call-control" onclick="toggleCallVideo()" aria-label="Kamera umschalten">
+      <span class="control-icon">📹</span><small>Kamera</small>
+    </button>
+    <button class="call-control hangup" onclick="hangUpCall()" aria-label="Anruf beenden">
+      <span class="control-icon">✕</span><small>Auflegen</small>
+    </button>
+  </div>
 </div>
 
 <!-- ── Upload Overlay ────────────────────────────────────────────────────── -->
