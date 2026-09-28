@@ -3519,6 +3519,23 @@ function optionalAuth(req) {
   catch { return null; }
 }
 
+async function insertChatGroupMembers(rows) {
+  const plainRows = (rows || []).map(({ group_id, username }) => ({ group_id, username }));
+  let result = await supabaseAdmin.from('chat_group_members').insert(
+    plainRows.map((row) => ({ ...row, encrypted_group_key: '' }))
+  );
+
+  // Fresh schemas no longer need the legacy encryption column. PostgREST
+  // rejects unknown fields before inserting anything, so retrying is safe.
+  const message = String(result.error?.message || '').toLowerCase();
+  const legacyColumnMissing = message.includes('encrypted_group_key')
+    && (message.includes('schema cache') || message.includes('does not exist') || message.includes('could not find'));
+  if (legacyColumnMissing) {
+    result = await supabaseAdmin.from('chat_group_members').insert(plainRows);
+  }
+  return result;
+}
+
 function pruneGuestPresence() {
   const now = Date.now();
   for (const [guestId, ts] of guestPresence.entries()) {
@@ -3709,7 +3726,7 @@ app.post('/api/chat/groups', async (req, res) => {
 
   const allMembers = [user.username, ...normalizedMembers];
   const rows = allMembers.map((username) => ({ group_id: id, username }));
-  const { error: mErr } = await supabaseAdmin.from('chat_group_members').insert(rows);
+  const { error: mErr } = await insertChatGroupMembers(rows);
   if (mErr) {
     await supabaseAdmin.from('chat_groups').delete().eq('id', id);
     return res.status(500).json({ error: 'Fehler beim Hinzufügen der Mitglieder: ' + mErr.message });
@@ -3970,8 +3987,8 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
   // Bereits Mitglied?
   const { data: existing } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', username).single();
   if (existing) return res.status(409).json({ error: 'Nutzer ist bereits Mitglied' });
-  const { error } = await supabaseAdmin.from('chat_group_members').insert({ group_id: id, username });
-  if (error) return res.status(500).json({ error: 'Fehler beim Hinzufügen' });
+  const { error } = await insertChatGroupMembers([{ group_id: id, username }]);
+  if (error) return res.status(500).json({ error: 'Fehler beim Hinzufügen: ' + error.message });
 
   const { data: afterMembers } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id);
   const nextType = (afterMembers || []).length <= 2 ? 'private' : 'group';
