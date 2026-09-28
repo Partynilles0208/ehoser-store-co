@@ -11,6 +11,13 @@
 </head>
 <body>
 
+<div id="ownershipNotice" class="chat-ownership-notice" role="dialog" aria-modal="true" aria-labelledby="ownershipNoticeTitle">
+  <div class="chat-ownership-card">
+    <h2 id="ownershipNoticeTitle">Ehoser wird Besitzer wechseln</h2>
+    <button type="button" class="btn-primary" onclick="document.getElementById('ownershipNotice').remove()">Schließen</button>
+  </div>
+</div>
+
 <!-- ── Notification permission wall ─────────────────────────────────────── -->
 <div id="notificationWall" class="notification-wall" style="display:none">
   <div class="notification-wall-box">
@@ -30,7 +37,7 @@
       <span class="lw-name">ehoser</span>
     </div>
     <div class="lw-icon">💬</div>
-    <h2>E2E-verschlüsselter Chat</h2>
+    <h2>ehoser Chat</h2>
     <p>Bitte melde dich zuerst im ehoser Hauptbereich an.</p>
     <a href="../index.html" class="btn-primary">Zur Anmeldung</a>
   </div>
@@ -70,7 +77,7 @@
         <span class="empty-wordmark">ehoser</span>
       </div>
       <p class="empty-hint-big">Wähle eine Gruppe aus<br>oder erstelle eine neue.</p>
-      <span class="empty-e2e">🔒 Ende-zu-Ende-verschlüsselt</span>
+      <span class="empty-chat-note">Nachrichten, Bilder und Anrufe</span>
     </div>
 
     <!-- Active Chat -->
@@ -95,7 +102,6 @@
           <button id="chatAiSummaryToggle" class="topbar-btn topbar-btn-ghost ai-summary-toggle" onclick="toggleEhoserAiSummary()">🤖 ehoser AI</button>
           <button class="topbar-btn" onclick="openAddMemberModal()">+ Mitglied</button>
           <button class="topbar-btn topbar-btn-ghost" onclick="openMembersModal()">👥 Mitglieder</button>
-          <span class="e2e-pill">🔒 E2E</span>
         </div>
       </div>
 
