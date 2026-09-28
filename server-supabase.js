@@ -107,11 +107,6 @@ CREATE TABLE IF NOT EXISTS desktop_login_requests (
   expires_at TIMESTAMP NOT NULL,
   used_at TIMESTAMP NULL
 );
-CREATE TABLE IF NOT EXISTS chat_user_keys (
-  username TEXT PRIMARY KEY,
-  public_key TEXT NOT NULL,
-  updated_at TIMESTAMP DEFAULT NOW()
-);
 CREATE TABLE IF NOT EXISTS chat_groups (
   id UUID PRIMARY KEY,
   name TEXT NOT NULL,
@@ -121,7 +116,6 @@ CREATE TABLE IF NOT EXISTS chat_groups (
 CREATE TABLE IF NOT EXISTS chat_group_members (
   group_id UUID NOT NULL,
   username TEXT NOT NULL,
-  encrypted_group_key TEXT,
   joined_at TIMESTAMP DEFAULT NOW(),
   PRIMARY KEY (group_id, username)
 );
@@ -132,29 +126,6 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   encrypted_content TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
-CREATE TABLE IF NOT EXISTS chat_calls (
-  id UUID PRIMARY KEY,
-  group_id UUID NOT NULL,
-  caller TEXT NOT NULL,
-  callee TEXT NOT NULL,
-  media_type TEXT NOT NULL DEFAULT 'audio',
-  status TEXT NOT NULL DEFAULT 'ringing',
-  offer JSONB NOT NULL,
-  answer JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  accepted_at TIMESTAMPTZ,
-  ended_at TIMESTAMPTZ
-);
-CREATE TABLE IF NOT EXISTS chat_call_signals (
-  id BIGSERIAL PRIMARY KEY,
-  call_id UUID NOT NULL,
-  sender TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  payload JSONB NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS chat_calls_callee_status_idx ON chat_calls(callee, status, created_at DESC);
-CREATE INDEX IF NOT EXISTS chat_call_signals_call_idx ON chat_call_signals(call_id, id);
 CREATE TABLE IF NOT EXISTS chat_group_meta (
   group_id UUID PRIMARY KEY,
   type TEXT NOT NULL DEFAULT 'group',
@@ -299,33 +270,6 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
         PRIMARY KEY (group_id, username)
       );
     `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS chat_calls (
-        id UUID PRIMARY KEY,
-        group_id UUID NOT NULL,
-        caller TEXT NOT NULL,
-        callee TEXT NOT NULL,
-        media_type TEXT NOT NULL DEFAULT 'audio',
-        status TEXT NOT NULL DEFAULT 'ringing',
-        offer JSONB NOT NULL,
-        answer JSONB,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        accepted_at TIMESTAMPTZ,
-        ended_at TIMESTAMPTZ
-      );
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS chat_call_signals (
-        id BIGSERIAL PRIMARY KEY,
-        call_id UUID NOT NULL,
-        sender TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        payload JSONB NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS chat_calls_callee_status_idx ON chat_calls(callee, status, created_at DESC);`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS chat_call_signals_call_idx ON chat_call_signals(call_id, id);`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS chat_reports (
         id BIGSERIAL PRIMARY KEY,
@@ -615,8 +559,8 @@ function normalizeSettings(raw) {
   };
 }
 
-function parseChatMessagePreview(encryptedContent) {
-  const raw = String(encryptedContent || '');
+function parseChatMessagePreview(storedContent) {
+  const raw = String(storedContent || '');
   if (!raw) return '';
   try {
     const parsed = JSON.parse(raw);
@@ -2797,47 +2741,6 @@ app.post('/api/admin/users/:id/ps-account', async (req, res) => {
   }
 });
 
-// Admin: Chat-Key für einen Nutzer neu initialisieren
-app.post('/api/admin/users/:id/refresh-chat-key', async (req, res) => {
-  const adminKey = req.headers['x-admin-key'];
-  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
-    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
-  }
-
-  const userId = Number(req.params.id);
-  if (!Number.isInteger(userId) || userId <= 0) {
-    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
-  }
-
-  try {
-    const { data, error } = await supabase.from('users').select('username').eq('id', userId).single();
-    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
-
-    const username = data.username;
-    const cleanupTasks = [
-      supabaseAdmin.from('chat_user_keys').delete().eq('username', username),
-      supabaseAdmin.from('chat_group_members').update({ encrypted_group_key: '' }).eq('username', username)
-    ];
-
-    const results = await Promise.allSettled(cleanupTasks);
-    const failed = results.find((result) => result.status === 'rejected');
-    if (failed) {
-      console.error('Admin refresh chat key failed:', failed.reason);
-      return res.status(500).json({ error: 'Chat-Key konnte nicht aktualisiert werden.' });
-    }
-
-    const dbError = results.find((result) => result.status === 'fulfilled' && result.value?.error)?.value?.error;
-    if (dbError) {
-      return res.status(500).json({ error: 'Chat-Key konnte nicht aktualisiert werden: ' + (dbError.message || 'Datenbankfehler') });
-    }
-
-    return res.json({ ok: true, username });
-  } catch (err) {
-    console.error('Admin Refresh Chat Key Error:', err);
-    return res.status(500).json({ error: err.message || 'Chat-Key konnte nicht aktualisiert werden' });
-  }
-});
-
 // Admin: offene Code-Reset-Anfragen
 app.get('/api/admin/reset-requests', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
@@ -2930,8 +2833,7 @@ app.post('/api/admin/chats/reset-all', async (req, res) => {
       supabaseAdmin.from('chat_group_admins').delete().neq('group_id', ''),
       supabaseAdmin.from('chat_group_meta').delete().neq('group_id', ''),
       supabaseAdmin.from('chat_reports').delete().neq('id', 0),
-      supabaseAdmin.from('chat_groups').delete().neq('id', ''),
-      supabaseAdmin.from('chat_user_keys').delete().neq('username', '')
+      supabaseAdmin.from('chat_groups').delete().neq('id', '')
     ];
 
     const results = await Promise.allSettled(deleteTasks);
@@ -3384,7 +3286,7 @@ app.post('/api/screenshare/end', async (req, res) => {
   }
 });
 
-// ─── Chat API (E2E verschlüsselt) ────────────────────────────────────────────
+// ─── Chat API ────────────────────────────────────────────────────────────────
 
 // Multer – memory storage für Supabase-Upload
 const CHAT_ALLOWED_MIME = new Set([
@@ -3416,59 +3318,6 @@ function chatAuth(req, res) {
   catch { res.status(401).json({ error: 'Ungültiger Token' }); return null; }
 }
 
-let chatCallTablesReady = false;
-let chatCallTablesPromise = null;
-
-async function ensureChatCallTablesExist() {
-  if (chatCallTablesReady) return true;
-  if (chatCallTablesPromise) return chatCallTablesPromise;
-  const dbUrl = process.env.DATABASE_URL
-    || process.env.SUPABASE_DB_URL
-    || process.env.POSTGRES_URL
-    || process.env.POSTGRES_PRISMA_URL;
-  if (!dbUrl) return true; // Existing Supabase installations may already have the tables.
-
-  chatCallTablesPromise = (async () => {
-    const pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
-    try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS chat_calls (
-          id UUID PRIMARY KEY,
-          group_id UUID NOT NULL,
-          caller TEXT NOT NULL,
-          callee TEXT NOT NULL,
-          media_type TEXT NOT NULL DEFAULT 'audio',
-          status TEXT NOT NULL DEFAULT 'ringing',
-          offer JSONB NOT NULL,
-          answer JSONB,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          accepted_at TIMESTAMPTZ,
-          ended_at TIMESTAMPTZ
-        );
-        CREATE TABLE IF NOT EXISTS chat_call_signals (
-          id BIGSERIAL PRIMARY KEY,
-          call_id UUID NOT NULL,
-          sender TEXT NOT NULL,
-          kind TEXT NOT NULL,
-          payload JSONB NOT NULL,
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS chat_calls_callee_status_idx ON chat_calls(callee, status, created_at DESC);
-        CREATE INDEX IF NOT EXISTS chat_call_signals_call_idx ON chat_call_signals(call_id, id);
-      `);
-      chatCallTablesReady = true;
-      return true;
-    } catch (error) {
-      console.error('chat call tables auto-create failed:', error?.message || error);
-      return false;
-    } finally {
-      await pool.end();
-      chatCallTablesPromise = null;
-    }
-  })();
-  return chatCallTablesPromise;
-}
-
 function validRtcDescription(value, type) {
   return Boolean(value && typeof value === 'object'
     && value.type === type
@@ -3482,14 +3331,92 @@ function payloadWithinLimit(value, max = 16000) {
   catch { return false; }
 }
 
-async function getChatCallForUser(callId, username) {
+// Call signalling uses the already existing chat_messages table. This keeps
+// calls working on deployments where no direct Postgres URL is available for
+// creating extra signalling tables.
+const CHAT_CALL_EVENT_SENDER = '__ehoser_call_event__';
+const CHAT_CALL_EVENT_PREFIX = 'ehoser-call-v1:';
+
+function parseChatCallEvent(row) {
+  const raw = String(row?.encrypted_content || '');
+  if (!raw.startsWith(CHAT_CALL_EVENT_PREFIX)) return null;
+  try {
+    const event = JSON.parse(raw.slice(CHAT_CALL_EVENT_PREFIX.length));
+    if (!event || typeof event !== 'object' || !/^[0-9a-f-]{36}$/i.test(String(event.callId || ''))) return null;
+    return {
+      ...event,
+      event_id: Number(row.id) || 0,
+      stored_at: row.created_at
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function appendChatCallEvent(groupId, event) {
   const { data, error } = await supabaseAdmin
-    .from('chat_calls')
-    .select('id,group_id,caller,callee,media_type,status,offer,answer,created_at,accepted_at,ended_at')
-    .eq('id', callId)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data.caller === username || data.callee === username ? data : null;
+    .from('chat_messages')
+    .insert({
+      group_id: groupId,
+      sender: CHAT_CALL_EVENT_SENDER,
+      encrypted_content: CHAT_CALL_EVENT_PREFIX + JSON.stringify(event)
+    })
+    .select('id,created_at')
+    .single();
+  if (error) throw new Error('Anrufsignal konnte nicht gespeichert werden: ' + error.message);
+  return { ...event, event_id: Number(data.id) || 0, stored_at: data.created_at };
+}
+
+async function listChatCallEvents({ groupId = null, callId = null, limit = 800 } = {}) {
+  let query = supabaseAdmin
+    .from('chat_messages')
+    .select('id,group_id,encrypted_content,created_at')
+    .eq('sender', CHAT_CALL_EVENT_SENDER);
+  if (groupId) query = query.eq('group_id', groupId);
+  if (callId && /^[0-9a-f-]{36}$/i.test(String(callId))) {
+    query = query.like('encrypted_content', `%${callId}%`);
+  }
+  const { data, error } = await query
+    .order('id', { ascending: false })
+    .limit(Math.max(1, Math.min(1000, Number(limit) || 800)));
+  if (error) throw new Error('Anrufdaten konnten nicht geladen werden: ' + error.message);
+  return (data || []).slice().reverse().map(parseChatCallEvent).filter(Boolean);
+}
+
+function rebuildChatCalls(events) {
+  const calls = new Map();
+  for (const event of events || []) {
+    if (event.kind === 'start') {
+      calls.set(event.callId, {
+        id: event.callId,
+        group_id: event.groupId,
+        caller: event.caller,
+        callee: event.callee,
+        media_type: event.mediaType,
+        status: 'ringing',
+        offer: event.offer,
+        answer: null,
+        created_at: event.createdAt || event.stored_at,
+        accepted_at: null,
+        ended_at: null
+      });
+      continue;
+    }
+    const call = calls.get(event.callId);
+    if (!call || event.kind !== 'state') continue;
+    if (event.status) call.status = event.status;
+    if (event.answer) call.answer = event.answer;
+    if (event.status === 'accepted') call.accepted_at = event.at || event.stored_at;
+    if (['rejected', 'missed', 'ended'].includes(event.status)) call.ended_at = event.at || event.stored_at;
+  }
+  return calls;
+}
+
+async function getMessageBackedCall(callId, username) {
+  const events = await listChatCallEvents({ callId });
+  const call = rebuildChatCalls(events).get(callId) || null;
+  if (!call || (call.caller !== username && call.callee !== username)) return { call: null, events: [] };
+  return { call, events };
 }
 
 function optionalAuth(req) {
@@ -3650,29 +3577,6 @@ app.post('/api/chat/upload', chatUpload.single('file'), async (req, res) => {
   res.json({ url: publicUrl, mime: req.file.mimetype, size: req.file.size, name: req.file.originalname });
 });
 
-// POST /api/chat/key — eigenen ECDH Public Key hochladen/aktualisieren
-app.post('/api/chat/key', async (req, res) => {
-  const user = chatAuth(req, res); if (!user) return;
-  const { publicKey } = req.body;
-  if (!publicKey || typeof publicKey !== 'string' || publicKey.length > 4096) {
-    return res.status(400).json({ error: 'Ungültiger Public Key' });
-  }
-  try { JSON.parse(publicKey); } catch { return res.status(400).json({ error: 'Public Key muss valides JSON sein' }); }
-  const { error } = await supabaseAdmin.from('chat_user_keys').upsert({ username: user.username, public_key: publicKey });
-  if (error) return res.status(500).json({ error: 'Fehler beim Speichern' });
-  res.json({ ok: true });
-});
-
-// GET /api/chat/key/:username — Public Key eines Nutzers abrufen
-app.get('/api/chat/key/:username', async (req, res) => {
-  const user = chatAuth(req, res); if (!user) return;
-  const { username } = req.params;
-  if (!/^[a-zA-Z0-9_\-]{1,32}$/.test(username)) return res.status(400).json({ error: 'Ungültiger Nutzername' });
-  const { data } = await supabaseAdmin.from('chat_user_keys').select('public_key').eq('username', username).single();
-  if (!data) return res.status(404).json({ error: 'Kein Public Key gefunden – Nutzer muss Chat einmal geöffnet haben' });
-  res.json({ publicKey: data.public_key });
-});
-
 // GET /api/chat/users/search?q= — Nutzer suchen (min. 2 Zeichen)
 app.get('/api/chat/users/search', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
@@ -3686,14 +3590,11 @@ app.get('/api/chat/users/search', async (req, res) => {
 });
 
 // POST /api/chat/groups — neue Gruppe erstellen
-// Body: { name, members?: string[], memberKeys?: { username: encryptedGroupKeyJson }, description?, photoUrl? }
+// Body: { name, members: string[], description?, photoUrl? }
 app.post('/api/chat/groups', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const rawName = String(req.body?.name || '').trim();
   const incomingMembers = Array.isArray(req.body?.members) ? req.body.members : [];
-  const memberKeys = (req.body?.memberKeys && typeof req.body.memberKeys === 'object' && !Array.isArray(req.body.memberKeys))
-    ? req.body.memberKeys
-    : {};
 
   const normalizedMembers = [...new Set(
     incomingMembers
@@ -3701,15 +3602,6 @@ app.post('/api/chat/groups', async (req, res) => {
       .filter(v => /^[a-zA-Z0-9_\-]{1,32}$/.test(v))
       .filter(v => v !== user.username)
   )];
-
-  if (Object.keys(memberKeys).length) {
-    for (const username of Object.keys(memberKeys)) {
-      const clean = String(username || '').trim();
-      if (/^[a-zA-Z0-9_\-]{1,32}$/.test(clean) && clean !== user.username && !normalizedMembers.includes(clean)) {
-        normalizedMembers.push(clean);
-      }
-    }
-  }
 
   if (!normalizedMembers.length) {
     return res.status(400).json({ error: 'Mindestens ein weiterer Nutzer ist erforderlich' });
@@ -3723,15 +3615,7 @@ app.post('/api/chat/groups', async (req, res) => {
   if (gErr) return res.status(500).json({ error: 'Fehler beim Erstellen der Gruppe: ' + gErr.message });
 
   const allMembers = [user.username, ...normalizedMembers];
-  const rows = allMembers.map((username) => ({
-    group_id: id,
-    username,
-    encrypted_group_key: (() => {
-      const raw = memberKeys[username];
-      const value = typeof raw === 'string' ? raw.trim() : '';
-      return (value && value !== 'plain' && value.startsWith('{')) ? value.substring(0, 8192) : '';
-    })()
-  }));
+  const rows = allMembers.map((username) => ({ group_id: id, username }));
   const { error: mErr } = await supabaseAdmin.from('chat_group_members').insert(rows);
   if (mErr) {
     await supabaseAdmin.from('chat_groups').delete().eq('id', id);
@@ -3783,15 +3667,6 @@ app.get('/api/chat/groups', async (req, res) => {
   }
 
   res.json({ groups: enriched });
-});
-
-// GET /api/chat/groups/:id/key — eigenen verschlüsselten Gruppenschlüssel abrufen
-app.get('/api/chat/groups/:id/key', async (req, res) => {
-  const user = chatAuth(req, res); if (!user) return;
-  const { id } = req.params;
-  const { data } = await supabaseAdmin.from('chat_group_members').select('encrypted_group_key').eq('group_id', id).eq('username', user.username).single();
-  if (!data) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
-  res.json({ encryptedGroupKey: data.encrypted_group_key });
 });
 
 // GET /api/chat/groups/:id/members — Mitgliederliste abrufen
@@ -3948,6 +3823,7 @@ app.post('/api/chat/groups/:id/report', async (req, res) => {
     .from('chat_messages')
     .select('id,sender,encrypted_content,created_at')
     .eq('group_id', id)
+    .neq('sender', CHAT_CALL_EVENT_SENDER)
     .order('id', { ascending: false })
     .limit(10);
 
@@ -3981,12 +3857,12 @@ app.post('/api/chat/groups/:id/report', async (req, res) => {
 });
 
 // POST /api/chat/groups/:id/members — neues Mitglied hinzufügen
-// Body: { username, encryptedGroupKey }
+// Body: { username }
 app.post('/api/chat/groups/:id/members', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { id } = req.params;
-  const { username, encryptedGroupKey } = req.body;
-  if (!username || !encryptedGroupKey) return res.status(400).json({ error: 'username und encryptedGroupKey erforderlich' });
+  const { username } = req.body;
+  if (!username) return res.status(400).json({ error: 'username erforderlich' });
 
   const { data: groupRow } = await supabaseAdmin.from('chat_groups').select('created_by').eq('id', id).maybeSingle();
   if (!groupRow) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
@@ -4000,7 +3876,7 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
   // Bereits Mitglied?
   const { data: existing } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', username).single();
   if (existing) return res.status(409).json({ error: 'Nutzer ist bereits Mitglied' });
-  const { error } = await supabaseAdmin.from('chat_group_members').insert({ group_id: id, username, encrypted_group_key: String(encryptedGroupKey).substring(0, 8192) });
+  const { error } = await supabaseAdmin.from('chat_group_members').insert({ group_id: id, username });
   if (error) return res.status(500).json({ error: 'Fehler beim Hinzufügen' });
 
   const { data: afterMembers } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id);
@@ -4011,17 +3887,18 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/chat/messages — Nachricht senden (verschlüsselt)
+// POST /api/chat/messages — Nachricht als JSON-Text senden
 app.post('/api/chat/messages', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  const { groupId, encryptedContent } = req.body;
-  if (!groupId || !encryptedContent || typeof encryptedContent !== 'string' || encryptedContent.length > 65536) {
+  const { groupId, content } = req.body;
+  if (!groupId || !content || typeof content !== 'string' || content.length > 65536) {
     return res.status(400).json({ error: 'Ungültige Nachricht' });
   }
   // Muss Mitglied sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
-  const { data, error } = await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender: user.username, encrypted_content: encryptedContent }).select('id,created_at').single();
+  // The database column keeps its legacy name so existing deployments need no destructive migration.
+  const { data, error } = await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender: user.username, encrypted_content: content }).select('id,created_at').single();
   if (error) return res.status(500).json({ error: 'Fehler beim Senden' });
   res.json({ id: data.id, created_at: data.created_at });
 });
@@ -4034,13 +3911,14 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   // Muss Mitglied sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
-  let query = supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).order('id', { ascending: true }).limit(50);
+  let query = supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).order('id', { ascending: true }).limit(50);
   if (after) query = query.gt('id', after);
   const { data } = await query;
-  res.json({ messages: data || [] });
+  const messages = (data || []).map(({ encrypted_content: content, ...message }) => ({ ...message, content }));
+  res.json({ messages });
 });
 
-// Lightweight metadata feed for browser notifications. Message contents stay encrypted.
+// Lightweight metadata feed for browser notifications.
 app.get('/api/chat/notifications', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const after = Math.max(0, Number.parseInt(req.query.after, 10) || 0);
@@ -4057,6 +3935,7 @@ app.get('/api/chat/notifications', async (req, res) => {
       .from('chat_messages')
       .select('id')
       .in('group_id', groupIds)
+      .neq('sender', CHAT_CALL_EVENT_SENDER)
       .order('id', { ascending: false })
       .limit(1);
     if (error) return res.status(500).json({ error: 'Benachrichtigungen konnten nicht gestartet werden' });
@@ -4067,6 +3946,7 @@ app.get('/api/chat/notifications', async (req, res) => {
     .from('chat_messages')
     .select('id,group_id,sender,created_at')
     .in('group_id', groupIds)
+    .neq('sender', CHAT_CALL_EVENT_SENDER)
     .gt('id', after)
     .order('id', { ascending: true })
     .limit(50);
@@ -4077,10 +3957,10 @@ app.get('/api/chat/notifications', async (req, res) => {
 });
 
 // ─── WebRTC call signalling ─────────────────────────────────────────────────
-// Audio/video flows peer-to-peer. The server only relays offer/answer/ICE data.
+// Audio/video flows peer-to-peer. Signalling events are stored as hidden rows
+// in chat_messages so calls do not depend on extra database tables.
 app.post('/api/chat/calls', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  await ensureChatCallTablesExist();
   const { groupId, callee, mediaType = 'audio', offer } = req.body || {};
   if (!groupId || !callee || callee === user.username) {
     return res.status(400).json({ error: 'Ungültiger Anruf' });
@@ -4099,143 +3979,159 @@ app.post('/api/chat/calls', async (req, res) => {
     return res.status(403).json({ error: 'Anrufe sind nur in Chats mit genau 2 Mitgliedern möglich' });
   }
 
-  const now = new Date().toISOString();
-  await supabaseAdmin
-    .from('chat_calls')
-    .update({ status: 'missed', ended_at: now })
-    .eq('caller', user.username)
-    .eq('callee', callee)
-    .eq('status', 'ringing');
+  try {
+    const now = new Date().toISOString();
+    const existingEvents = await listChatCallEvents({ groupId });
+    const existingCalls = rebuildChatCalls(existingEvents);
+    for (const existing of existingCalls.values()) {
+      if (existing.caller === user.username && existing.callee === callee && existing.status === 'ringing') {
+        await appendChatCallEvent(groupId, {
+          kind: 'state', callId: existing.id, status: 'missed', at: now
+        });
+      }
+    }
 
-  const call = {
-    id: crypto.randomUUID(),
-    group_id: groupId,
-    caller: user.username,
-    callee,
-    media_type: mediaType,
-    status: 'ringing',
-    offer
-  };
-  const { data, error } = await supabaseAdmin
-    .from('chat_calls')
-    .insert(call)
-    .select('id,group_id,caller,callee,media_type,status,created_at')
-    .single();
-  if (error) {
+    const callId = crypto.randomUUID();
+    await appendChatCallEvent(groupId, {
+      kind: 'start',
+      callId,
+      groupId,
+      caller: user.username,
+      callee,
+      mediaType,
+      offer,
+      createdAt: now
+    });
+    return res.status(201).json({
+      call: {
+        id: callId,
+        group_id: groupId,
+        caller: user.username,
+        callee,
+        media_type: mediaType,
+        status: 'ringing',
+        created_at: now
+      }
+    });
+  } catch (error) {
     console.error('Create chat call failed:', error.message);
-    return res.status(503).json({ error: 'Anruffunktion ist noch nicht verfügbar' });
+    return res.status(503).json({ error: 'Anruf konnte nicht gespeichert werden' });
   }
-  res.status(201).json({ call: data });
 });
 
 app.get('/api/chat/calls/pending', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  await ensureChatCallTablesExist();
-  const { data, error } = await supabaseAdmin
-    .from('chat_calls')
-    .select('id,group_id,caller,callee,media_type,status,offer,created_at')
-    .eq('callee', user.username)
-    .eq('status', 'ringing')
-    .order('created_at', { ascending: false })
-    .limit(5);
-  if (error) return res.status(503).json({ error: 'Anrufe konnten nicht geladen werden' });
-
-  const cutoff = Date.now() - 45000;
-  let pending = null;
-  for (const call of data || []) {
-    if (new Date(call.created_at).getTime() >= cutoff && !pending) {
-      pending = call;
-    } else {
-      await supabaseAdmin.from('chat_calls')
-        .update({ status: 'missed', ended_at: new Date().toISOString() })
-        .eq('id', call.id)
-        .eq('status', 'ringing');
+  try {
+    const events = await listChatCallEvents();
+    const calls = [...rebuildChatCalls(events).values()]
+      .filter((call) => call.callee === user.username && call.status === 'ringing')
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const cutoff = Date.now() - 45000;
+    let pending = null;
+    for (const call of calls) {
+      if (new Date(call.created_at).getTime() >= cutoff && !pending) {
+        pending = call;
+      } else {
+        await appendChatCallEvent(call.group_id, {
+          kind: 'state', callId: call.id, status: 'missed', at: new Date().toISOString()
+        });
+      }
     }
+    return res.json({ call: pending });
+  } catch (error) {
+    console.error('Load pending chat call failed:', error.message);
+    return res.status(503).json({ error: 'Anrufe konnten nicht geladen werden' });
   }
-  res.json({ call: pending });
 });
 
 app.get('/api/chat/calls/:id', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  await ensureChatCallTablesExist();
-  let call = await getChatCallForUser(req.params.id, user.username);
-  if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
+  try {
+    const result = await getMessageBackedCall(req.params.id, user.username);
+    let call = result.call;
+    if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
 
-  if (call.status === 'ringing' && Date.now() - new Date(call.created_at).getTime() > 45000) {
-    const endedAt = new Date().toISOString();
-    await supabaseAdmin.from('chat_calls')
-      .update({ status: 'missed', ended_at: endedAt })
-      .eq('id', call.id)
-      .eq('status', 'ringing');
-    call = { ...call, status: 'missed', ended_at: endedAt };
+    if (call.status === 'ringing' && Date.now() - new Date(call.created_at).getTime() > 45000) {
+      const endedAt = new Date().toISOString();
+      await appendChatCallEvent(call.group_id, {
+        kind: 'state', callId: call.id, status: 'missed', at: endedAt
+      });
+      call = { ...call, status: 'missed', ended_at: endedAt };
+    }
+
+    const after = Math.max(0, Number.parseInt(req.query.after, 10) || 0);
+    const signals = result.events
+      .filter((event) => event.kind === 'signal' && event.event_id > after)
+      .slice(-100)
+      .map((event) => ({
+        id: event.event_id,
+        sender: event.from,
+        kind: event.signalKind,
+        payload: event.payload,
+        created_at: event.stored_at
+      }));
+    return res.json({ call, signals });
+  } catch (error) {
+    console.error('Load chat call failed:', error.message);
+    return res.status(503).json({ error: 'Anruf konnte nicht geladen werden' });
   }
-
-  const after = Math.max(0, Number.parseInt(req.query.after, 10) || 0);
-  let signalQuery = supabaseAdmin
-    .from('chat_call_signals')
-    .select('id,sender,kind,payload,created_at')
-    .eq('call_id', call.id)
-    .order('id', { ascending: true })
-    .limit(100);
-  if (after) signalQuery = signalQuery.gt('id', after);
-  const { data: signals, error: signalError } = await signalQuery;
-  if (signalError) return res.status(503).json({ error: 'Anrufsignale konnten nicht geladen werden' });
-  res.json({ call, signals: signals || [] });
 });
 
 app.post('/api/chat/calls/:id/answer', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  await ensureChatCallTablesExist();
   const { answer } = req.body || {};
   if (!validRtcDescription(answer, 'answer')) return res.status(400).json({ error: 'Ungültige Antwort' });
-  const call = await getChatCallForUser(req.params.id, user.username);
-  if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
-  if (call.callee !== user.username) return res.status(403).json({ error: 'Nur der Angerufene kann annehmen' });
-  if (call.status !== 'ringing') return res.status(409).json({ error: 'Anruf ist nicht mehr verfügbar' });
-  const { data, error } = await supabaseAdmin
-    .from('chat_calls')
-    .update({ status: 'accepted', answer, accepted_at: new Date().toISOString() })
-    .eq('id', call.id)
-    .eq('status', 'ringing')
-    .select('id,status,accepted_at')
-    .maybeSingle();
-  if (error || !data) return res.status(409).json({ error: 'Anruf konnte nicht angenommen werden' });
-  res.json({ call: data });
+  try {
+    const { call } = await getMessageBackedCall(req.params.id, user.username);
+    if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
+    if (call.callee !== user.username) return res.status(403).json({ error: 'Nur der Angerufene kann annehmen' });
+    if (call.status !== 'ringing') return res.status(409).json({ error: 'Anruf ist nicht mehr verfügbar' });
+    const acceptedAt = new Date().toISOString();
+    await appendChatCallEvent(call.group_id, {
+      kind: 'state', callId: call.id, status: 'accepted', answer, at: acceptedAt
+    });
+    return res.json({ call: { id: call.id, status: 'accepted', accepted_at: acceptedAt } });
+  } catch (error) {
+    console.error('Answer chat call failed:', error.message);
+    return res.status(503).json({ error: 'Anruf konnte nicht angenommen werden' });
+  }
 });
 
 app.post('/api/chat/calls/:id/reject', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  await ensureChatCallTablesExist();
-  const call = await getChatCallForUser(req.params.id, user.username);
-  if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
-  if (call.callee !== user.username) return res.status(403).json({ error: 'Nicht erlaubt' });
-  await supabaseAdmin.from('chat_calls')
-    .update({ status: 'rejected', ended_at: new Date().toISOString() })
-    .eq('id', call.id)
-    .eq('status', 'ringing');
-  res.json({ ok: true });
+  try {
+    const { call } = await getMessageBackedCall(req.params.id, user.username);
+    if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
+    if (call.callee !== user.username) return res.status(403).json({ error: 'Nicht erlaubt' });
+    if (call.status === 'ringing') {
+      await appendChatCallEvent(call.group_id, {
+        kind: 'state', callId: call.id, status: 'rejected', at: new Date().toISOString()
+      });
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(503).json({ error: 'Anruf konnte nicht abgelehnt werden' });
+  }
 });
 
 app.post('/api/chat/calls/:id/end', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  await ensureChatCallTablesExist();
-  const call = await getChatCallForUser(req.params.id, user.username);
-  if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
-  if (!['ended', 'rejected', 'missed'].includes(call.status)) {
-    await supabaseAdmin.from('chat_calls')
-      .update({ status: 'ended', ended_at: new Date().toISOString() })
-      .eq('id', call.id);
+  try {
+    const { call } = await getMessageBackedCall(req.params.id, user.username);
+    if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
+    if (!['ended', 'rejected', 'missed'].includes(call.status)) {
+      await appendChatCallEvent(call.group_id, {
+        kind: 'state', callId: call.id, status: 'ended', at: new Date().toISOString()
+      });
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(503).json({ error: 'Anruf konnte nicht beendet werden' });
   }
-  res.json({ ok: true });
 });
 
 app.post('/api/chat/calls/:id/signals', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
-  await ensureChatCallTablesExist();
-  const call = await getChatCallForUser(req.params.id, user.username);
-  if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
-  if (!['ringing', 'accepted'].includes(call.status)) return res.status(409).json({ error: 'Anruf ist beendet' });
-
   const { kind, payload } = req.body || {};
   if (!['ice', 'offer', 'answer', 'media'].includes(kind) || !payloadWithinLimit(payload)) {
     return res.status(400).json({ error: 'Ungültiges Anrufsignal' });
@@ -4248,22 +4144,31 @@ app.post('/api/chat/calls/:id/signals', async (req, res) => {
   if (kind === 'media' && (!payload || typeof payload.video !== 'boolean')) {
     return res.status(400).json({ error: 'Ungültiger Medienstatus' });
   }
-
-  const { data, error } = await supabaseAdmin
-    .from('chat_call_signals')
-    .insert({ call_id: call.id, sender: user.username, kind, payload })
-    .select('id')
-    .single();
-  if (error) return res.status(503).json({ error: 'Anrufsignal konnte nicht gesendet werden' });
-  res.status(201).json({ id: data.id });
+  try {
+    const { call } = await getMessageBackedCall(req.params.id, user.username);
+    if (!call) return res.status(404).json({ error: 'Anruf nicht gefunden' });
+    if (!['ringing', 'accepted'].includes(call.status)) return res.status(409).json({ error: 'Anruf ist beendet' });
+    const event = await appendChatCallEvent(call.group_id, {
+      kind: 'signal',
+      callId: call.id,
+      from: user.username,
+      signalKind: kind,
+      payload,
+      at: new Date().toISOString()
+    });
+    return res.status(201).json({ id: event.event_id });
+  } catch (error) {
+    console.error('Store chat call signal failed:', error.message);
+    return res.status(503).json({ error: 'Anrufsignal konnte nicht gesendet werden' });
+  }
 });
 
-// PATCH /api/chat/messages/:id — Nachricht bearbeiten (ersetzt nur encrypted_content, kein Hinweis)
+// PATCH /api/chat/messages/:id — Nachricht bearbeiten
 app.patch('/api/chat/messages/:id', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { id } = req.params;
-  const { encryptedContent } = req.body;
-  if (!id || !encryptedContent || typeof encryptedContent !== 'string') return res.status(400).json({ error: 'Ungültige Anfrage' });
+  const { content } = req.body;
+  if (!id || !content || typeof content !== 'string') return res.status(400).json({ error: 'Ungültige Anfrage' });
 
   // Existierende Nachricht holen
   const { data: msgRow, error: selErr } = await supabaseAdmin.from('chat_messages').select('id,sender,group_id').eq('id', id).maybeSingle();
@@ -4279,7 +4184,7 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
     return res.status(403).json({ error: 'Nicht berechtigt zu bearbeiten' });
   }
 
-  const { error } = await supabaseAdmin.from('chat_messages').update({ encrypted_content: encryptedContent }).eq('id', id);
+  const { error } = await supabaseAdmin.from('chat_messages').update({ encrypted_content: content }).eq('id', id);
   if (error) return res.status(500).json({ error: 'Fehler beim Aktualisieren' });
   res.json({ ok: true });
 });
