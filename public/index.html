@@ -182,6 +182,41 @@
             font-size: 0.93rem;
             line-height: 1.6;
         }
+        .ownership-notice {
+            position: fixed;
+            inset: 0;
+            z-index: 13000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(2, 8, 14, 0.82);
+            backdrop-filter: blur(16px);
+        }
+        .ownership-notice-card {
+            width: min(100%, 470px);
+            padding: 32px;
+            border-radius: 26px;
+            text-align: center;
+            color: #f5fbff;
+            border: 1px solid rgba(77, 159, 255, 0.3);
+            background: linear-gradient(155deg, #10273a, #07121d);
+            box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+        }
+        .ownership-notice-card h2 {
+            margin: 0 0 22px;
+            font: 800 clamp(1.35rem, 5vw, 1.8rem)/1.25 'Space Grotesk', sans-serif;
+        }
+        .ownership-notice-close {
+            min-width: 140px;
+            min-height: 48px;
+            border: 0;
+            border-radius: 14px;
+            color: #fff;
+            cursor: pointer;
+            font: 700 .95rem 'Space Grotesk', sans-serif;
+            background: linear-gradient(135deg, #0e8a9b, #4d9fff);
+        }
         .entry-choice-note {
             color: #7696aa;
             font-size: 0.82rem;
@@ -193,6 +228,13 @@
     </style>
 </head>
 <body class="entry-locked">
+
+    <div id="ownershipNotice" class="ownership-notice" role="dialog" aria-modal="true" aria-labelledby="ownershipNoticeTitle">
+        <div class="ownership-notice-card">
+            <h2 id="ownershipNoticeTitle">Ehoser wird Besitzer wechseln</h2>
+            <button type="button" class="ownership-notice-close" onclick="document.getElementById('ownershipNotice').remove()">Schließen</button>
+        </div>
+    </div>
 
     <div id="entryGate" class="entry-gate">
         <div class="entry-gate-panel">
