@@ -66,8 +66,24 @@ let _chatServiceWorkerReady = null;
 const RTC_CONFIG = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-    ]
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        },
+        {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        },
+        {
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+        }
+    ],
+    iceCandidatePoolSize: 4
 };
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
@@ -1052,9 +1068,11 @@ async function startCall(mediaType = 'audio') {
         await flushLocalIce();
         updateCallButtons();
     } catch (error) {
-        await endCallLocally(error?.name === 'NotAllowedError'
+        const message = error?.name === 'NotAllowedError'
             ? 'Mikrofon oder Kamera wurde nicht erlaubt.'
-            : 'Anruf konnte nicht gestartet werden.');
+            : (error?.message || 'Anruf konnte nicht gestartet werden.');
+        toast(message, 'err');
+        await endCallLocally(message);
     }
 }
 
@@ -1139,9 +1157,11 @@ async function acceptIncomingCall() {
         updateCallButtons();
     } catch (error) {
         try { await api('/chat/calls/' + call.id + '/reject', 'POST'); } catch {}
-        await endCallLocally(error?.name === 'NotAllowedError'
+        const message = error?.name === 'NotAllowedError'
             ? 'Mikrofon oder Kamera wurde nicht erlaubt.'
-            : 'Anruf konnte nicht angenommen werden.');
+            : (error?.message || 'Anruf konnte nicht angenommen werden.');
+        toast(message, 'err');
+        await endCallLocally(message);
     }
 }
 
