@@ -22,6 +22,8 @@ let roomPoll = null;
 let invitePoll = null;
 let lastCursor = 0;
 let userSearchTimer = null;
+let cameraFacingMode = 'user';
+let cameraSwitchBusy = false;
 const peers = new Map();
 
 function esc(value) {
@@ -243,6 +245,8 @@ function renderParticipantTile(username, stream, own = false) {
   video.srcObject = stream;
   video.muted = own;
   video.play().catch(() => {});
+  tile.classList.toggle('own-camera', own);
+  if (own) tile.classList.toggle('rear-camera', cameraFacingMode === 'environment');
   tile.querySelector('.participant-info small').textContent = own ? 'Du' : 'verbunden';
   const hasVideo = Boolean(stream?.getVideoTracks().some((track) => track.enabled && track.readyState === 'live'));
   tile.classList.toggle('no-video', !hasVideo);
@@ -327,6 +331,53 @@ function updateLocalMediaTile() {
   document.getElementById('muteBtn').querySelector('small').textContent = muted ? 'Mikro an' : 'Stumm';
   document.getElementById('cameraBtn').classList.toggle('active', camera);
   document.getElementById('cameraBtn').querySelector('small').textContent = camera ? 'Kamera aus' : 'Kamera an';
+  const switchButton = document.getElementById('switchCameraBtn');
+  switchButton.style.display = camera ? 'flex' : 'none';
+  switchButton.disabled = cameraSwitchBusy || !camera;
+  switchButton.classList.toggle('switching', cameraSwitchBusy);
+  switchButton.querySelector('small').textContent = cameraSwitchBusy ? 'Wechsel…' : 'Drehen';
+}
+
+function cameraVideoConstraints(facingMode, deviceId = '') {
+  const constraints = {
+    facingMode: { ideal: facingMode },
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+  };
+  if (deviceId) {
+    delete constraints.facingMode;
+    constraints.deviceId = { exact: deviceId };
+  }
+  return constraints;
+}
+
+async function acquireOtherCamera(oldTrack, facingMode) {
+  const oldDeviceId = oldTrack?.getSettings?.().deviceId || '';
+  const devices = navigator.mediaDevices.enumerateDevices
+    ? (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'videoinput')
+    : [];
+  const alternatives = devices.filter((device) => !oldDeviceId || device.deviceId !== oldDeviceId);
+  const labelPattern = facingMode === 'environment'
+    ? /(back|rear|environment|rück|hinten)/i
+    : /(front|user|face|vorder|selfie)/i;
+  const target = alternatives.find((device) => labelPattern.test(device.label || '')) || alternatives[0] || null;
+  const constraints = cameraVideoConstraints(facingMode, target?.deviceId || '');
+
+  if (oldTrack?.applyConstraints) {
+    try {
+      await oldTrack.applyConstraints(constraints);
+      const settings = oldTrack.getSettings?.() || {};
+      if ((target?.deviceId && settings.deviceId === target.deviceId) || settings.facingMode === facingMode) {
+        return { track: oldTrack, stream: null };
+      }
+    } catch {}
+  }
+
+  if (devices.length === 1 && !alternatives.length) throw new Error('Keine zweite Kamera gefunden.');
+  const stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+  const track = stream.getVideoTracks()[0];
+  if (!track) throw new Error('Andere Kamera konnte nicht geöffnet werden.');
+  return { track, stream };
 }
 
 async function broadcastMediaState() {
@@ -349,7 +400,7 @@ async function toggleCamera() {
   let track = localStream?.getVideoTracks()[0];
   try {
     if (!track) {
-      const cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      const cameraStream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints(cameraFacingMode), audio: false });
       track = cameraStream.getVideoTracks()[0];
       localStream.addTrack(track);
       for (const [username, peer] of peers) {
@@ -366,6 +417,39 @@ async function toggleCamera() {
   }
 }
 
+async function switchCamera() {
+  const oldTrack = localStream?.getVideoTracks?.()[0];
+  if (!oldTrack?.enabled || cameraSwitchBusy) return;
+  cameraSwitchBusy = true;
+  updateLocalMediaTile();
+  const nextFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+  let replacement = null;
+  let installed = false;
+  try {
+    replacement = await acquireOtherCamera(oldTrack, nextFacingMode);
+    if (replacement.track !== oldTrack) {
+      const videoSenders = [...peers.values()]
+        .map((peer) => peer.pc.getSenders().find((sender) => sender.track?.kind === 'video'))
+        .filter(Boolean);
+      await Promise.all(videoSenders.map((sender) => sender.replaceTrack(replacement.track).catch(() => null)));
+      localStream.removeTrack(oldTrack);
+      localStream.addTrack(replacement.track);
+      oldTrack.stop();
+      installed = true;
+    }
+    cameraFacingMode = nextFacingMode;
+    renderParticipantTile(me.username, localStream, true);
+    await broadcastMediaState();
+    setRoomStatus(nextFacingMode === 'environment' ? 'Rückkamera aktiv' : 'Vorderkamera aktiv');
+  } catch (error) {
+    if (!installed && replacement?.track && replacement.track !== oldTrack) replacement.track.stop();
+    setRoomStatus(error?.message || 'Kamera konnte nicht gewechselt werden.');
+  } finally {
+    cameraSwitchBusy = false;
+    updateLocalMediaTile();
+  }
+}
+
 async function leaveRoom() {
   if (currentRoom) try { await api('/chat/group-calls/' + currentRoom.id + '/leave', 'POST'); } catch {}
   await endLocally('Anruf beendet.');
@@ -379,6 +463,8 @@ async function endLocally(message) {
   localStream = null;
   currentRoom = null;
   lastCursor = 0;
+  cameraFacingMode = 'user';
+  cameraSwitchBusy = false;
   document.getElementById('videoGrid').innerHTML = '';
   document.getElementById('callRoom').style.display = 'none';
   document.getElementById('lobby').style.display = 'block';
