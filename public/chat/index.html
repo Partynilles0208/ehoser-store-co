@@ -11,7 +11,13 @@
 </head>
 <body>
 
-<div id="ownershipNotice" class="chat-ownership-notice" role="dialog" aria-modal="true" aria-labelledby="ownershipNoticeTitle">
+<div id="chatUpdateSplash" class="chat-update-splash" aria-live="polite">
+  <div class="chat-update-logo">E</div>
+  <h1>Chat update</h1>
+  <div class="chat-update-spinner" aria-label="Chat-Update wird geladen"></div>
+</div>
+
+<div id="ownershipNotice" class="chat-ownership-notice" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ownershipNoticeTitle">
   <div class="chat-ownership-card">
     <h2 id="ownershipNoticeTitle">Ehoser wird Besitzer wechseln</h2>
     <button type="button" class="btn-primary" onclick="document.getElementById('ownershipNotice').remove()">Schließen</button>
@@ -60,6 +66,10 @@
       <p class="empty-hint">Keine Gruppen.<br>Erstelle eine neue!</p>
     </div>
     <div class="sidebar-footer">
+      <a class="btn-group-call-app" href="../group-call/">
+        <span>📹</span>
+        <span><strong>Gruppenanruf</strong><small>Mit mehreren sprechen</small></span>
+      </a>
       <button class="btn-new-group" onclick="openNewGroupModal()">
         <span class="new-group-icon">＋</span> Neue Gruppe
       </button>
@@ -175,6 +185,11 @@
       </div>
     </div>
   </main>
+</div>
+
+<div id="groupCallInviteBanner" class="group-call-invite-banner" style="display:none">
+  <div><strong>📞 Gruppenanruf</strong><span id="groupCallInviteText">Du wurdest zu einem Gruppenanruf eingeladen.</span></div>
+  <a href="../group-call/">Öffnen</a>
 </div>
 
 <!-- ── Incoming call ─────────────────────────────────────────────────────── -->

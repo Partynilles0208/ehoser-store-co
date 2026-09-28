@@ -3336,6 +3336,8 @@ function payloadWithinLimit(value, max = 16000) {
 // creating extra signalling tables.
 const CHAT_CALL_EVENT_SENDER = '__ehoser_call_event__';
 const CHAT_CALL_EVENT_PREFIX = 'ehoser-call-v1:';
+const GROUP_CALL_EVENT_SENDER = '__ehoser_group_call_event__';
+const GROUP_CALL_EVENT_PREFIX = 'ehoser-group-call-v1:';
 
 function parseChatCallEvent(row) {
   const raw = String(row?.encrypted_content || '');
@@ -3417,6 +3419,97 @@ async function getMessageBackedCall(callId, username) {
   const call = rebuildChatCalls(events).get(callId) || null;
   if (!call || (call.caller !== username && call.callee !== username)) return { call: null, events: [] };
   return { call, events };
+}
+
+function parseGroupCallEvent(row) {
+  const raw = String(row?.encrypted_content || '');
+  if (!raw.startsWith(GROUP_CALL_EVENT_PREFIX)) return null;
+  try {
+    const event = JSON.parse(raw.slice(GROUP_CALL_EVENT_PREFIX.length));
+    if (!event || typeof event !== 'object' || !/^[0-9a-f-]{36}$/i.test(String(event.roomId || ''))) return null;
+    return { ...event, event_id: Number(row.id) || 0, stored_at: row.created_at };
+  } catch {
+    return null;
+  }
+}
+
+async function appendGroupCallEvent(groupId, event) {
+  const { data, error } = await supabaseAdmin
+    .from('chat_messages')
+    .insert({
+      group_id: groupId,
+      sender: GROUP_CALL_EVENT_SENDER,
+      encrypted_content: GROUP_CALL_EVENT_PREFIX + JSON.stringify(event)
+    })
+    .select('id,created_at')
+    .single();
+  if (error) throw new Error('Gruppenanruf konnte nicht gespeichert werden: ' + error.message);
+  return { ...event, event_id: Number(data.id) || 0, stored_at: data.created_at };
+}
+
+async function listGroupCallEvents({ groupId = null, roomId = null, limit = 1000 } = {}) {
+  let query = supabaseAdmin
+    .from('chat_messages')
+    .select('id,group_id,encrypted_content,created_at')
+    .eq('sender', GROUP_CALL_EVENT_SENDER);
+  if (groupId) query = query.eq('group_id', groupId);
+  if (roomId && /^[0-9a-f-]{36}$/i.test(String(roomId))) query = query.like('encrypted_content', `%${roomId}%`);
+  const { data, error } = await query.order('id', { ascending: false }).limit(Math.max(1, Math.min(1000, Number(limit) || 1000)));
+  if (error) throw new Error('Gruppenanruf konnte nicht geladen werden: ' + error.message);
+  return (data || []).slice().reverse().map(parseGroupCallEvent).filter(Boolean);
+}
+
+function rebuildGroupCallRooms(events) {
+  const rooms = new Map();
+  for (const event of events || []) {
+    if (event.kind === 'start') {
+      rooms.set(event.roomId, {
+        id: event.roomId,
+        group_id: event.groupId,
+        host: event.host,
+        participants: Array.isArray(event.participants) ? event.participants : [],
+        status: 'active',
+        created_at: event.createdAt || event.stored_at,
+        joined: new Set([event.host]),
+        left: new Set()
+      });
+      continue;
+    }
+    const room = rooms.get(event.roomId);
+    if (!room) continue;
+    if (event.kind === 'join') {
+      room.joined.add(event.username);
+      room.left.delete(event.username);
+    } else if (event.kind === 'leave') {
+      room.joined.delete(event.username);
+      room.left.add(event.username);
+    } else if (event.kind === 'end') {
+      room.status = 'ended';
+      room.ended_at = event.at || event.stored_at;
+    }
+  }
+  return rooms;
+}
+
+function publicGroupCallRoom(room) {
+  if (!room) return null;
+  return {
+    id: room.id,
+    group_id: room.group_id,
+    host: room.host,
+    participants: room.participants,
+    joined: [...room.joined],
+    status: room.status,
+    created_at: room.created_at,
+    ended_at: room.ended_at || null
+  };
+}
+
+async function getGroupCallRoom(roomId, username) {
+  const events = await listGroupCallEvents({ roomId });
+  const room = rebuildGroupCallRooms(events).get(roomId) || null;
+  if (!room || !room.participants.includes(username)) return { room: null, events: [] };
+  return { room, events };
 }
 
 function optionalAuth(req) {
@@ -3824,6 +3917,7 @@ app.post('/api/chat/groups/:id/report', async (req, res) => {
     .select('id,sender,encrypted_content,created_at')
     .eq('group_id', id)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
+    .neq('sender', GROUP_CALL_EVENT_SENDER)
     .order('id', { ascending: false })
     .limit(10);
 
@@ -3911,7 +4005,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   // Muss Mitglied sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
-  let query = supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).order('id', { ascending: true }).limit(50);
+  let query = supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER).order('id', { ascending: true }).limit(50);
   if (after) query = query.gt('id', after);
   const { data } = await query;
   const messages = (data || []).map(({ encrypted_content: content, ...message }) => ({ ...message, content }));
@@ -3936,6 +4030,7 @@ app.get('/api/chat/notifications', async (req, res) => {
       .select('id')
       .in('group_id', groupIds)
       .neq('sender', CHAT_CALL_EVENT_SENDER)
+      .neq('sender', GROUP_CALL_EVENT_SENDER)
       .order('id', { ascending: false })
       .limit(1);
     if (error) return res.status(500).json({ error: 'Benachrichtigungen konnten nicht gestartet werden' });
@@ -3947,6 +4042,7 @@ app.get('/api/chat/notifications', async (req, res) => {
     .select('id,group_id,sender,created_at')
     .in('group_id', groupIds)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
+    .neq('sender', GROUP_CALL_EVENT_SENDER)
     .gt('id', after)
     .order('id', { ascending: true })
     .limit(50);
@@ -3956,7 +4052,147 @@ app.get('/api/chat/notifications', async (req, res) => {
   res.json({ messages, cursor });
 });
 
-// ─── WebRTC call signalling ─────────────────────────────────────────────────
+// ─── Multi-user WebRTC call signalling ──────────────────────────────────────
+app.post('/api/chat/group-calls', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const groupId = String(req.body?.groupId || '');
+  if (!/^[0-9a-f-]{36}$/i.test(groupId)) return res.status(400).json({ error: 'Ungültige Anrufgruppe' });
+  try {
+    const { data: members, error } = await supabaseAdmin
+      .from('chat_group_members')
+      .select('username')
+      .eq('group_id', groupId);
+    if (error) throw error;
+    const participants = [...new Set((members || []).map((item) => item.username).filter(Boolean))];
+    if (!participants.includes(user.username)) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+    if (participants.length < 2 || participants.length > 8) {
+      return res.status(400).json({ error: 'Gruppenanrufe brauchen 2 bis 8 Teilnehmer' });
+    }
+    const roomId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    await appendGroupCallEvent(groupId, {
+      kind: 'start', roomId, groupId, host: user.username, participants, createdAt
+    });
+    const room = {
+      id: roomId,
+      group_id: groupId,
+      host: user.username,
+      participants,
+      joined: [user.username],
+      status: 'active',
+      created_at: createdAt
+    };
+    return res.status(201).json({ room });
+  } catch (error) {
+    console.error('Create group call failed:', error.message);
+    return res.status(503).json({ error: 'Gruppenanruf konnte nicht gestartet werden' });
+  }
+});
+
+app.get('/api/chat/group-calls/pending', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  try {
+    const rooms = [...rebuildGroupCallRooms(await listGroupCallEvents()).values()]
+      .filter((room) => room.status === 'active'
+        && room.participants.includes(user.username)
+        && !room.joined.has(user.username)
+        && !room.left.has(user.username)
+        && Date.now() - new Date(room.created_at).getTime() < 120000)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return res.json({ room: publicGroupCallRoom(rooms[0] || null) });
+  } catch (error) {
+    return res.status(503).json({ error: 'Gruppenanrufe konnten nicht geladen werden' });
+  }
+});
+
+app.get('/api/chat/group-calls/:id', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  try {
+    const { room, events } = await getGroupCallRoom(req.params.id, user.username);
+    if (!room) return res.status(404).json({ error: 'Gruppenanruf nicht gefunden' });
+    const after = Math.max(0, Number.parseInt(req.query.after, 10) || 0);
+    const signals = events
+      .filter((event) => event.kind === 'signal'
+        && event.to === user.username
+        && event.event_id > after)
+      .slice(-150)
+      .map((event) => ({
+        id: event.event_id,
+        sender: event.from,
+        kind: event.signalKind,
+        payload: event.payload,
+        created_at: event.stored_at
+      }));
+    const cursor = events.reduce((max, event) => Math.max(max, event.event_id || 0), after);
+    return res.json({ room: publicGroupCallRoom(room), signals, cursor });
+  } catch (error) {
+    return res.status(503).json({ error: 'Gruppenanruf konnte nicht geladen werden' });
+  }
+});
+
+app.post('/api/chat/group-calls/:id/join', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  try {
+    const { room } = await getGroupCallRoom(req.params.id, user.username);
+    if (!room) return res.status(404).json({ error: 'Gruppenanruf nicht gefunden' });
+    if (room.status !== 'active') return res.status(409).json({ error: 'Gruppenanruf ist beendet' });
+    if (!room.joined.has(user.username)) {
+      await appendGroupCallEvent(room.group_id, {
+        kind: 'join', roomId: room.id, username: user.username, at: new Date().toISOString()
+      });
+      room.joined.add(user.username);
+    }
+    return res.json({ room: publicGroupCallRoom(room) });
+  } catch (error) {
+    return res.status(503).json({ error: 'Beitreten fehlgeschlagen' });
+  }
+});
+
+app.post('/api/chat/group-calls/:id/leave', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  try {
+    const { room } = await getGroupCallRoom(req.params.id, user.username);
+    if (!room) return res.status(404).json({ error: 'Gruppenanruf nicht gefunden' });
+    if (room.status === 'active') {
+      const event = room.host === user.username
+        ? { kind: 'end', roomId: room.id, username: user.username, at: new Date().toISOString() }
+        : { kind: 'leave', roomId: room.id, username: user.username, at: new Date().toISOString() };
+      await appendGroupCallEvent(room.group_id, event);
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(503).json({ error: 'Verlassen fehlgeschlagen' });
+  }
+});
+
+app.post('/api/chat/group-calls/:id/signals', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { to, kind, payload } = req.body || {};
+  if (!['ice', 'offer', 'answer', 'media'].includes(kind) || !payloadWithinLimit(payload, 100000)) {
+    return res.status(400).json({ error: 'Ungültiges Anrufsignal' });
+  }
+  try {
+    const { room } = await getGroupCallRoom(req.params.id, user.username);
+    if (!room) return res.status(404).json({ error: 'Gruppenanruf nicht gefunden' });
+    if (room.status !== 'active') return res.status(409).json({ error: 'Gruppenanruf ist beendet' });
+    if (!room.participants.includes(to) || to === user.username) return res.status(400).json({ error: 'Ungültiger Empfänger' });
+    if (kind === 'offer' && !validRtcDescription(payload, 'offer')) return res.status(400).json({ error: 'Ungültiges Angebot' });
+    if (kind === 'answer' && !validRtcDescription(payload, 'answer')) return res.status(400).json({ error: 'Ungültige Antwort' });
+    if (kind === 'ice' && (!payload || typeof payload.candidate !== 'string')) return res.status(400).json({ error: 'Ungültiger ICE-Kandidat' });
+    if (kind === 'media' && (!payload || typeof payload.video !== 'boolean' || typeof payload.audio !== 'boolean')) {
+      return res.status(400).json({ error: 'Ungültiger Medienstatus' });
+    }
+    const event = await appendGroupCallEvent(room.group_id, {
+      kind: 'signal', roomId: room.id, from: user.username, to,
+      signalKind: kind, payload, at: new Date().toISOString()
+    });
+    return res.status(201).json({ id: event.event_id });
+  } catch (error) {
+    return res.status(503).json({ error: 'Anrufsignal konnte nicht gesendet werden' });
+  }
+});
+
+// ─── One-to-one WebRTC call signalling ──────────────────────────────────────
 // Audio/video flows peer-to-peer. Signalling events are stored as hidden rows
 // in chat_messages so calls do not depend on extra database tables.
 app.post('/api/chat/calls', async (req, res) => {

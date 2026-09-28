@@ -1,6 +1,9 @@
 ﻿'use strict';
 const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : window.location.origin;
 const API = API_ORIGIN + '/api';
+const CHAT_CACHE_VERSION = 'v3';
+const CHAT_UPDATE_VERSION = '2026-09-chat-refresh';
+const CHAT_PAGE_OPENED_AT = Date.now();
 
 // Robust date parser: server may return UTC timestamps without timezone
 function parseServerDate(s) {
@@ -62,6 +65,8 @@ let _notifiedIncomingCallId = null;
 let _finishingCall = false;
 let _callPollBusy = false;
 let _chatServiceWorkerReady = null;
+let _groupCallInvitePoll = null;
+let _lastGroupCallInviteId = null;
 
 const RTC_CONFIG = {
     iceServers: [
@@ -86,8 +91,82 @@ const RTC_CONFIG = {
     iceCandidatePoolSize: 4
 };
 
+function chatCacheKey(kind) {
+    return `ehoserChat:${CHAT_CACHE_VERSION}:${_me?.username || localStorage.getItem('ehoserChatLastUser') || 'unknown'}:${kind}`;
+}
+
+function readChatCache(kind, fallback) {
+    try {
+        const value = JSON.parse(localStorage.getItem(chatCacheKey(kind)) || 'null');
+        return value ?? fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function writeChatCache(kind, value) {
+    try { localStorage.setItem(chatCacheKey(kind), JSON.stringify(value)); } catch {}
+}
+
+function getCachedMessages(groupId) {
+    const cache = readChatCache('messages', {});
+    return Array.isArray(cache[groupId]) ? cache[groupId] : [];
+}
+
+function persistMessages(groupId, messages) {
+    if (!groupId) return;
+    const cache = readChatCache('messages', {});
+    const byId = new Map();
+    for (const message of [...(cache[groupId] || []), ...(messages || [])]) {
+        if (!message) continue;
+        const key = String(message.id || `${message.sender}:${message.created_at}:${message.content || ''}`);
+        byId.set(key, message);
+    }
+    cache[groupId] = [...byId.values()]
+        .sort((a, b) => {
+            const ai = Number(a.id) || 0, bi = Number(b.id) || 0;
+            if (ai && bi) return ai - bi;
+            return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+        })
+        .slice(-180);
+    writeChatCache('messages', cache);
+}
+
+function replaceCachedMessage(groupId, oldId, message) {
+    const cache = readChatCache('messages', {});
+    const list = Array.isArray(cache[groupId]) ? cache[groupId] : [];
+    cache[groupId] = list.map((item) => String(item.id) === String(oldId) ? message : item).slice(-180);
+    writeChatCache('messages', cache);
+}
+
+function prepareChatUpdateSplash() {
+    const lastUser = localStorage.getItem('ehoserChatLastUser');
+    if (!lastUser) return;
+    if (localStorage.getItem(`ehoserChatUpdateSeen:${CHAT_UPDATE_VERSION}:${lastUser}`) === '1') {
+        const splash = document.getElementById('chatUpdateSplash');
+        if (splash) splash.style.display = 'none';
+    }
+}
+
+async function runChatEntrySequence() {
+    const splash = document.getElementById('chatUpdateSplash');
+    const ownership = document.getElementById('ownershipNotice');
+    const username = _me?.username || 'unknown';
+    localStorage.setItem('ehoserChatLastUser', username);
+    const seenKey = `ehoserChatUpdateSeen:${CHAT_UPDATE_VERSION}:${username}`;
+    if (localStorage.getItem(seenKey) !== '1') {
+        if (splash) splash.style.display = 'flex';
+        const remaining = Math.max(0, 3000 - (Date.now() - CHAT_PAGE_OPENED_AT));
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+        localStorage.setItem(seenKey, '1');
+    }
+    if (splash) splash.style.display = 'none';
+    if (ownership) ownership.style.display = 'flex';
+}
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 (async () => {
+    prepareChatUpdateSplash();
     _token = localStorage.getItem('token');
     if (!_token) { show('loginWall'); return; }
     try {
@@ -157,6 +236,7 @@ const RTC_CONFIG = {
 async function finishChatBoot() {
     if (_chatStarted) return;
     _chatStarted = true;
+    await runChatEntrySequence();
     show('chatApp');
     document.getElementById('sidebarMe').textContent = '👤 ' + _me.username;
     if (_meProfile?.isPro) {
@@ -169,11 +249,18 @@ async function finishChatBoot() {
             .then(() => navigator.serviceWorker.ready)
             .catch(() => null);
     }
-    await loadGroups();
+    const cachedGroups = readChatCache('groups', []);
+    if (Array.isArray(cachedGroups) && cachedGroups.length) {
+        _groups = cachedGroups;
+        renderGroupList();
+    }
+    loadGroups();
     await pollMessageNotifications(true);
     _poll = setInterval(pollMessages, 3000);
     _callPoll = setInterval(pollCalls, 1500);
+    _groupCallInvitePoll = setInterval(pollGroupCallInvites, 2500);
     pollCalls();
+    pollGroupCallInvites();
     document.addEventListener('click', globalClickClose);
     updateAiSummaryToggle();
 }
@@ -224,9 +311,9 @@ document.addEventListener('visibilitychange', () => {
     if (!document.hidden && _chatStarted) enforceNotificationPermission();
 });
 
-function notifyChat(title, body, tag) {
+function notifyChat(title, body, tag, url = '/chat/') {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    const options = { body, tag, icon: '/favicon.svg', badge: '/favicon.svg' };
+    const options = { body, tag, icon: '/favicon.svg', badge: '/favicon.svg', data: { url } };
     if (_chatServiceWorkerReady) {
         _chatServiceWorkerReady.then((registration) => {
             if (registration) return registration.showNotification(title, options);
@@ -240,11 +327,36 @@ function notifyChat(title, body, tag) {
     } catch {}
 }
 
+async function pollGroupCallInvites() {
+    if (!_chatStarted) return;
+    try {
+        const { room } = await api('/chat/group-calls/pending');
+        const banner = document.getElementById('groupCallInviteBanner');
+        if (!room) {
+            if (banner) banner.style.display = 'none';
+            return;
+        }
+        if (banner) {
+            const text = document.getElementById('groupCallInviteText');
+            if (text) text.textContent = `${room.host || 'Jemand'} lädt dich mit ${Math.max(1, (room.participants || []).length - 1)} weiteren Personen ein.`;
+            banner.style.display = 'flex';
+        }
+        if (_lastGroupCallInviteId !== room.id) {
+            _lastGroupCallInviteId = room.id;
+            notifyChat('Eingehender Gruppenanruf', `${room.host || 'Jemand'} lädt dich ein`, 'group-call-' + room.id, '/group-call/');
+        }
+    } catch {}
+}
+
 function show(id) {
     ['loginWall','notificationWall','chatApp'].forEach(i => {
         const el = document.getElementById(i);
         if (el) el.style.display = i === id ? 'flex' : 'none';
     });
+    if (id !== 'chatApp') {
+        const splash = document.getElementById('chatUpdateSplash');
+        if (splash) splash.style.display = 'none';
+    }
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -286,6 +398,7 @@ async function loadGroups() {
     try {
         const { groups } = await api('/chat/groups');
         _groups = groups || [];
+        writeChatCache('groups', _groups);
         renderGroupList();
     } catch (e) { toast('Fehler: ' + e.message, 'err'); }
 }
@@ -295,10 +408,10 @@ function renderGroupList() {
     if (!_groups.length) { el.innerHTML = '<p class="empty-hint">Keine Gruppen.<br>Erstelle eine neue!</p>'; return; }
     el.innerHTML = _groups.map(g => `
         <div class="group-item${_activeGroupId === g.id ? ' active' : ''}" onclick="selectGroup('${g.id}')">
-            <div class="gi-avatar">👥</div>
+            <div class="gi-avatar">${g.type === 'private' ? '👤' : '👥'}</div>
             <div class="gi-info">
                 <div class="gi-name">${esc(g.name)}</div>
-                <div class="gi-sub">von ${esc(g.created_by)}</div>
+                <div class="gi-sub">${g.type === 'private' ? 'Privater Chat' : `${Number(g.member_count) || 0} Mitglieder`}</div>
             </div>
         </div>`).join('');
 }
@@ -355,7 +468,9 @@ async function selectGroup(gid) {
     ac.style.display = 'flex';
     document.getElementById('topbarName').textContent = g.name;
     document.getElementById('topbarMeta').textContent = 'Mitglieder werden geladen…';
-    document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden geladen…</div>';
+    const cachedMessages = getCachedMessages(gid);
+    if (cachedMessages.length) renderCachedMessages(gid, cachedMessages);
+    else document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden geladen…</div>';
     _activeMembers = [];
     updateCallButtons();
     try {
@@ -364,7 +479,7 @@ async function selectGroup(gid) {
         document.getElementById('topbarMeta').textContent = _activeMembers.length + ' Mitglied' + (_activeMembers.length !== 1 ? 'er' : '');
     } catch {}
     updateCallButtons();
-    _lastMsgId[gid] = 0;
+    if (!cachedMessages.length) _lastMsgId[gid] = 0;
     await loadMessages(gid, true);
     document.getElementById('msgInput').focus();
     updateAiSummaryToggle();
@@ -414,9 +529,10 @@ async function loadMessages(gid, initial) {
         const after = _lastMsgId[gid] || 0;
         const { messages } = await api('/chat/messages/' + gid + '?after=' + after);
         if (!messages.length) {
-            if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#2a5060">Noch keine Nachrichten.</div>';
+            if (initial && !document.querySelector('#messagesArea .msg-row')) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#8696a0">Noch keine Nachrichten.</div>';
             return;
         }
+        persistMessages(gid, messages);
         await fetchProBadges(messages.map((m) => m.sender));
         if (initial) document.getElementById('messagesArea').innerHTML = '';
         for (const m of messages) {
@@ -451,6 +567,22 @@ async function loadMessages(gid, initial) {
     } catch (e) {
         if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#c05050">Fehler: ' + esc(e.message) + '</div>';
     }
+}
+
+function renderCachedMessages(gid, messages) {
+    const area = document.getElementById('messagesArea');
+    if (!area) return;
+    area.innerHTML = '';
+    _seenMessageIds[gid] = new Set();
+    _lastMsgId[gid] = 0;
+    for (const message of messages || []) {
+        if (String(message.id || '').startsWith('tmp-')) continue;
+        const plain = readStoredMessage(message.content);
+        appendMessage(message, plain);
+        markMessageSeen(gid, message.id);
+        _lastMsgId[gid] = Math.max(_lastMsgId[gid], Number(message.id) || 0);
+    }
+    area.scrollTop = area.scrollHeight;
 }
 
 function appendMessage(m, plainJson) {
@@ -688,6 +820,10 @@ async function editMessage(msgId, newText, row) {
         row.dataset.stored = storedContent;
         row.dataset.plain = encodeURIComponent(JSON.stringify(plainObj));
         const bubble = row.querySelector('.msg-bubble'); if (bubble) bubble.innerHTML = esc(plainObj.v).replace(/\n/g, '<br>');
+        const cached = getCachedMessages(gid).map((message) => String(message.id) === String(msgId) ? { ...message, content: storedContent } : message);
+        const allCache = readChatCache('messages', {});
+        allCache[gid] = cached;
+        writeChatCache('messages', allCache);
     } catch (e) { toast('Bearbeiten fehlgeschlagen: ' + e.message, 'err'); }
 }
 
@@ -734,10 +870,14 @@ async function sendMessage() {
     if (!text || !_activeGroupId) return;
     inp.value = ''; inp.style.height = ''; inp.disabled = true;
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-    appendMessage({ id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: '' }, JSON.stringify({ t:'txt', v:text }));
+    const storedContent = JSON.stringify({ t:'txt', v:text });
+    const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
+    appendMessage(tempMessage, storedContent);
+    persistMessages(_activeGroupId, [tempMessage]);
     try {
-        const storedContent = JSON.stringify({ t:'txt', v:text });
         const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, content: storedContent });
+        const finalMessage = { id, sender: _me.username, created_at, content: storedContent };
+        replaceCachedMessage(_activeGroupId, tempId, finalMessage);
         // finalize optimistic message (upgrade pending element or append if missing)
         finalizePendingMessage(tempId, id, created_at, storedContent, storedContent);
         _lastMsgId[_activeGroupId] = id;
@@ -753,10 +893,13 @@ async function sendMediaMessage(payload) {
     if (!enforceNotificationPermission()) return;
     if (!_activeGroupId) return;
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-    appendMessage({ id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: '' }, JSON.stringify(payload));
+    const storedContent = JSON.stringify(payload);
+    const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
+    appendMessage(tempMessage, storedContent);
+    persistMessages(_activeGroupId, [tempMessage]);
     try {
-        const storedContent = JSON.stringify(payload);
         const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, content: storedContent });
+        replaceCachedMessage(_activeGroupId, tempId, { id, sender: _me.username, created_at, content: storedContent });
         finalizePendingMessage(tempId, id, created_at, storedContent, storedContent);
         _lastMsgId[_activeGroupId] = id;
         const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
@@ -1010,7 +1153,7 @@ function createPeerConnection() {
             setCallStatus('Verbunden');
             startCallTimer();
         } else if (_peerConnection.connectionState === 'failed') {
-            hangUpCall('Verbindung fehlgeschlagen');
+            hangUpCall('Anruf fehlgeschlagen.');
         } else if (_peerConnection.connectionState === 'disconnected') {
             setCallStatus('Verbindung wird wiederhergestellt…');
         }
@@ -1196,7 +1339,7 @@ async function pollCurrentCall() {
     const call = data.call;
     if (!call) return;
     if (['rejected', 'missed', 'ended'].includes(call.status)) {
-        const labels = { rejected: 'Anruf wurde abgelehnt.', missed: 'Keine Antwort.', ended: 'Anruf beendet.' };
+        const labels = { rejected: 'Anruf wurde abgelehnt.', missed: 'Nicht erreichbar.', ended: 'Anruf beendet.' };
         await endCallLocally(labels[call.status]);
         return;
     }

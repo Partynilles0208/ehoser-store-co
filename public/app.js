@@ -22,6 +22,7 @@ const ENTRY_UNLOCK_KEY = 'ehoserEntryUnlocked';
 const ENTRY_CHOICE_KEY = 'ehoserEntryChoice';
 const DESKTOP_AUTH_KEY = 'ehoserDesktopActivated';
 const DESKTOP_USER_CACHE_KEY = 'ehoserDesktopUserCache';
+const USER_CACHE_KEY = 'ehoserUserCache';
 const DESKTOP_ONLINE_MODES = new Set(['games', 'ki', 'chat', 'map', 'youtube', 'news', 'images', 'weather', 'gameCreator', 'ps']);
 const miniToolHelpers = {
     words: (text) => String(text || '').trim().split(/\s+/).filter(Boolean),
@@ -2104,7 +2105,7 @@ async function triggerInstallPrompt() {
 setupInstallPrompt();
 
 function isEntryUnlocked() {
-    return sessionStorage.getItem(ENTRY_UNLOCK_KEY) === '1';
+    return localStorage.getItem(ENTRY_UNLOCK_KEY) === '1';
 }
 
 function showEntryGate(choiceVisible = false, message = '') {
@@ -2138,20 +2139,20 @@ function submitEntryCode() {
         return;
     }
 
-    sessionStorage.setItem(ENTRY_UNLOCK_KEY, '1');
+    localStorage.setItem(ENTRY_UNLOCK_KEY, '1');
     if (help) help.textContent = 'Code akzeptiert. Bitte wähle jetzt deinen Bereich.';
     showEntryGate(true);
 }
 
 function enterControlCenter() {
-    sessionStorage.setItem(ENTRY_CHOICE_KEY, 'control-center');
+    localStorage.setItem(ENTRY_CHOICE_KEY, 'control-center');
     hideEntryGate();
     showSection('auth');
     window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 function enterLearningSpace() {
-    sessionStorage.setItem(ENTRY_CHOICE_KEY, 'learning');
+    localStorage.setItem(ENTRY_CHOICE_KEY, 'learning');
     hideEntryGate();
     window.location.href = '/learning/';
 }
@@ -2247,16 +2248,20 @@ function clearDesktopActivated() {
 }
 
 function saveDesktopUserCache(user, profile) {
-    if (!isDesktopMode() || !user) return;
+    if (!user) return;
     try {
-        localStorage.setItem(DESKTOP_USER_CACHE_KEY, JSON.stringify({ user, profile: profile || null }));
+        const value = JSON.stringify({ user, profile: profile || null });
+        localStorage.setItem(USER_CACHE_KEY, value);
+        if (isDesktopMode()) localStorage.setItem(DESKTOP_USER_CACHE_KEY, value);
     } catch {}
 }
 
 function readDesktopUserCache() {
-    if (!isDesktopMode()) return null;
     try {
-        return JSON.parse(localStorage.getItem(DESKTOP_USER_CACHE_KEY) || 'null');
+        const key = isDesktopMode() && localStorage.getItem(DESKTOP_USER_CACHE_KEY)
+            ? DESKTOP_USER_CACHE_KEY
+            : USER_CACHE_KEY;
+        return JSON.parse(localStorage.getItem(key) || 'null');
     } catch {
         return null;
     }
@@ -2309,19 +2314,16 @@ function showDesktopAuthGate() {
 
 function startDesktopCachedSession() {
     const cached = readDesktopUserCache();
-    currentUser = cached?.user || { id: 'desktop-cache', username: 'Desktop', isGuest: false, isAdmin: false };
-    currentProfile = cached?.profile || { isPro: true, isPremium: false, ps_account: false, settings: { displayName: currentUser.username || 'Desktop' } };
+    if (!cached?.user) return false;
+    currentUser = cached.user;
+    currentProfile = cached.profile || { isPro: localStorage.getItem('proStatus') === '1', isPremium: false, ps_account: false, settings: { displayName: currentUser.username || 'Nutzer' } };
     allApps = [];
-    localStorage.setItem('proStatus', '1');
-    if (cached?.user) {
-        syncPlanStatus();
-        applyProfileSettings();
-        showLoggedInUI();
-    } else {
-        showDesktopUI();
-    }
+    syncPlanStatus();
+    applyProfileSettings();
+    showLoggedInUI();
     showSection('mode-select');
-    decorateDesktopModeCards();
+    if (isDesktopMode()) decorateDesktopModeCards();
+    return true;
 }
 
 function desktopRequiresInternet(featureName = 'Diese Funktion') {
@@ -3426,6 +3428,7 @@ async function startApp() {
     }
 
     if (token) {
+        startDesktopCachedSession();
         verifyToken(token);
         return;
     }
@@ -3478,50 +3481,50 @@ document.addEventListener('DOMContentLoaded', () => {
     const splash = document.getElementById('introSplash');
     if (splash) {
         const forceIntro = new URLSearchParams(window.location.search).get('intro') === '1';
-        const alreadyShown = !forceIntro && (
-            sessionStorage.getItem('intro_shown') === '1'
-        );
-        if (alreadyShown) {
+        const alreadyShown = !forceIntro && sessionStorage.getItem('intro_shown') === '1';
+        let introFinished = false;
+        const introTimers = [];
+        const finishIntro = () => {
+            if (introFinished) return;
+            introFinished = true;
+            introTimers.forEach(clearTimeout);
+            window.removeEventListener('keydown', skipIntroWithEnter);
             splash.remove();
             document.body.classList.remove('splash-active');
             document.body.style.overflow = '';
+            sessionStorage.setItem('intro_shown', '1');
+            const bodyFlash = document.createElement('div');
+            bodyFlash.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99998;pointer-events:none;opacity:1;transition:opacity 0.3s ease;';
+            document.body.appendChild(bodyFlash);
+            setTimeout(() => { bodyFlash.style.opacity = '0'; }, 30);
+            setTimeout(() => bodyFlash.remove(), 500);
             showCaptcha();
+        };
+        const skipIntroWithEnter = (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            finishIntro();
+        };
+        if (alreadyShown) {
+            finishIntro();
         } else {
-            // Neues Intro: kompaktes Reveal statt langer Splash-Sequenz
+            window.addEventListener('keydown', skipIntroWithEnter);
             const compactIntro = window.matchMedia?.('(max-width: 640px)').matches;
             const bigLogoDelay = compactIntro ? 1200 : 3000;
             const splashEndDelay = compactIntro ? 2800 : 5200;
             const bigLogo = document.getElementById('introBigLogo');
             if (bigLogo) {
-                setTimeout(() => {
+                introTimers.push(setTimeout(() => {
                     bigLogo.style.opacity = '1';
                     bigLogo.style.transition = 'opacity 0.18s ease, transform 0.65s cubic-bezier(.2,1.3,.3,1)';
                     bigLogo.style.transform = 'translateY(0) scale(1)';
-                    setTimeout(() => {
+                    introTimers.push(setTimeout(() => {
                         bigLogo.style.transition = 'transform 0.28s ease-out';
                         bigLogo.style.transform = 'translateY(0) scale(0.98)';
-                    }, 650);
-                }, bigLogoDelay);
+                    }, 650));
+                }, bigLogoDelay));
             }
-
-            // Finaler Übergang auf die neue Oberfläche, auf Mobile schneller
-            setTimeout(() => {
-                splash.remove();
-                document.body.classList.remove('splash-active');
-                document.body.style.overflow = '';
-                sessionStorage.setItem('intro_shown', '1');
-                // Weißes Body-Overlay für den Blitz-Übergang (mit Fallback, damit es nie hängen bleibt)
-                const bodyFlash = document.createElement('div');
-                bodyFlash.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:99998;pointer-events:none;opacity:1;transition:opacity 0.3s ease;';
-                document.body.appendChild(bodyFlash);
-                setTimeout(() => {
-                    bodyFlash.style.opacity = '0';
-                }, 30);
-                setTimeout(() => {
-                    if (bodyFlash.parentNode) bodyFlash.remove();
-                }, 500);
-                showCaptcha();
-            }, splashEndDelay);
+            introTimers.push(setTimeout(finishIntro, splashEndDelay));
         }
     } else {
         document.body.classList.remove('splash-active');
@@ -3544,6 +3547,7 @@ async function verifyToken(token) {
         if (response.status === 401) {
             localStorage.removeItem('token');
             localStorage.removeItem('proStatus');
+            localStorage.removeItem(USER_CACHE_KEY);
             clearDesktopActivated();
             await clearDesktopAuthToken();
             showSection('auth');
@@ -5714,6 +5718,7 @@ async function runImageSearch() {
 async function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('proStatus');
+    localStorage.removeItem(USER_CACHE_KEY);
     clearDesktopActivated();
     await clearDesktopAuthToken();
     sessionStorage.removeItem('adminGuestPreview');
@@ -6212,7 +6217,7 @@ function chatRenderCachedMessages(groupId) {
         div.className = `chat-msg ${isMe ? 'chat-msg-me' : 'chat-msg-other'}`;
         const time = parseServerDate(m.created_at || Date.now()).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
         const initial = (m.sender || '?')[0].toUpperCase();
-        const payload = chatParsePayload(m.encrypted_content);
+        const payload = chatParsePayload(m.content ?? m.encrypted_content);
         const bodyHtml = chatRenderPayload(payload);
         div.innerHTML = `
             <div class="chat-msg-avatar">${escapeHtml(initial)}</div>
@@ -6366,7 +6371,7 @@ async function chatUploadAndSendFile(inputEl) {
         const sendRes = await fetch(`${API_BASE}/chat/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ groupId: _chatCurrentGroupId, encryptedContent: JSON.stringify(payload) })
+            body: JSON.stringify({ groupId: _chatCurrentGroupId, content: JSON.stringify(payload) })
         });
         const sendData = await sendRes.json().catch(() => ({}));
         if (!sendRes.ok) {
@@ -6575,7 +6580,7 @@ function openChatGroup(groupId, groupName) {
             div.className = `chat-msg ${isMe ? 'chat-msg-me' : 'chat-msg-other'}`;
             const time = parseServerDate(m.created_at || Date.now()).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             const initial = (m.sender || '?')[0].toUpperCase();
-            const payload = chatParsePayload(m.encrypted_content);
+            const payload = chatParsePayload(m.content ?? m.encrypted_content);
             const bodyHtml = chatRenderPayload(payload);
             div.innerHTML = `
                 <div class="chat-msg-avatar">${escapeHtml(initial)}</div>
@@ -6651,7 +6656,7 @@ async function chatFetchMessages() {
             div.className = `chat-msg ${isMe ? 'chat-msg-me' : 'chat-msg-other'}`;
             const time = parseServerDate(m.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             const initial = (m.sender || '?')[0].toUpperCase();
-            const payload = chatParsePayload(m.encrypted_content);
+            const payload = chatParsePayload(m.content ?? m.encrypted_content);
             const bodyHtml = chatRenderPayload(payload);
             div.innerHTML = `
                 <div class="chat-msg-avatar">${initial}</div>
@@ -6692,7 +6697,7 @@ async function sendChatMsg() {
     const tempMessage = {
         id: tempId,
         sender: currentUser?.username || 'Du',
-        encrypted_content: payload,
+        content: payload,
         created_at: new Date().toISOString()
     };
     const cache = chatGetLocalCache();
@@ -6711,13 +6716,13 @@ async function sendChatMsg() {
         const res = await fetch(`${API_BASE}/chat/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ groupId: _chatCurrentGroupId, encryptedContent: payload })
+            body: JSON.stringify({ groupId: _chatCurrentGroupId, content: payload })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
             throw new Error(data.error || 'Nachricht senden fehlgeschlagen');
         }
-        const finalMessage = { id: data.id, sender: currentUser?.username || 'Du', encrypted_content: payload, created_at: data.created_at || new Date().toISOString() };
+        const finalMessage = { id: data.id, sender: currentUser?.username || 'Du', content: payload, created_at: data.created_at || new Date().toISOString() };
         const nextCache = chatGetLocalCache();
         nextCache[_chatCurrentGroupId] = (nextCache[_chatCurrentGroupId] || []).map(msg => String(msg.id || '') === String(tempId) ? finalMessage : msg);
         chatSetLocalCache(nextCache);

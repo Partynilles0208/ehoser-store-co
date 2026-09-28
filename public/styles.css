@@ -3831,6 +3831,22 @@ textarea:focus {
     animation: final-flash 0.35s ease-out 15.3s forwards;
 }
 
+.intro-skip-hint {
+    position: absolute; left: 50%; bottom: 28px; z-index: 12;
+    transform: translateX(-50%); color: rgba(247,244,238,.62);
+    font: 600 .78rem "Space Grotesk", sans-serif; letter-spacing: .08em;
+    text-transform: uppercase; white-space: nowrap;
+}
+
+.mode-card-group-call {
+    border-color: rgba(37,211,102,.24) !important;
+    background: linear-gradient(145deg, rgba(0,168,132,.14), rgba(17,27,33,.72)) !important;
+}
+.mode-card-group-call:hover {
+    border-color: rgba(37,211,102,.58) !important;
+    box-shadow: 0 20px 44px rgba(0,168,132,.18) !important;
+}
+
 /* Keyframes */
 @keyframes blue-roll-in {
     0%   { opacity: 1; transform: translateX(130vw) rotate(0deg); }
