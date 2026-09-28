@@ -30,13 +30,13 @@ function safeJsonParse(value, fallback = null) {
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
-let _token = null, _me = null, _myKeys = null;
+let _token = null, _me = null;
 let _meProfile = null;
 let _groups = [], _activeGroupId = null;
-let _groupKeyCache = {}, _lastMsgId = {};
+let _lastMsgId = {};
 let _proBadgeCache = {};
 let _poll = null;
-let _ngMembers = {}; // new-group selected members { username: pubKeyJwk }
+let _ngMembers = {}; // selected members for a new group
 let _recorder = null, _recChunks = [], _recTimer = null, _recSecs = 0;
 let _attachOpen = false;
 let _summaryAiEnabled = false;
@@ -147,14 +147,12 @@ async function finishChatBoot() {
         const proStickerItem = document.getElementById('proStickerItem');
         if (proStickerItem) proStickerItem.style.display = '';
     }
-    _myKeys = await getOrCreateKeys();
     _summaryAiEnabled = localStorage.getItem('ehoserAiSummary') === '1' && Boolean(_meProfile?.isPro);
     if ('serviceWorker' in navigator) {
         _chatServiceWorkerReady = navigator.serviceWorker.register('service-worker.js')
             .then(() => navigator.serviceWorker.ready)
             .catch(() => null);
     }
-    api('/chat/key', 'POST', { publicKey: await exportPub(_myKeys.publicKey) }).catch(() => {});
     await loadGroups();
     await pollMessageNotifications(true);
     _poll = setInterval(pollMessages, 3000);
@@ -259,93 +257,12 @@ async function uploadFile(file, onLabel) {
     return r.json();
 }
 
-// ─── Crypto ───────────────────────────────────────────────────────────────────
-async function getOrCreateKeys() {
-    const stored = localStorage.getItem('chat_privkey_jwk');
-    if (stored) {
-        try {
-            const jwk = JSON.parse(stored);
-            const privateKey = await crypto.subtle.importKey('jwk', jwk, { name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']);
-            const { kty,crv,x,y } = jwk;
-            const publicKey = await crypto.subtle.importKey('jwk', { kty,crv,x,y,key_ops:[] }, { name:'ECDH', namedCurve:'P-256' }, true, []);
-            return { privateKey, publicKey };
-        } catch {}
-    }
-    const kp = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']);
-    const jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
-    localStorage.setItem('chat_privkey_jwk', JSON.stringify(jwk));
-    return { privateKey: kp.privateKey, publicKey: kp.publicKey };
-}
-
-async function exportPub(k) {
-    const { kty,crv,x,y } = await crypto.subtle.exportKey('jwk', k);
-    return JSON.stringify({ kty, crv, x, y, key_ops:[] });
-}
-
-async function importPub(jwkStr) {
-    const j = typeof jwkStr === 'string' ? JSON.parse(jwkStr) : jwkStr;
-    return crypto.subtle.importKey('jwk', { ...j, key_ops:[] }, { name:'ECDH', namedCurve:'P-256' }, true, []);
-}
-
-const b64e = b => btoa(String.fromCharCode(...new Uint8Array(b)));
-const b64d = s => { const b = atob(s); const u = new Uint8Array(b.length); for (let i=0; i<b.length; i++) u[i]=b.charCodeAt(i); return u.buffer; };
-
-async function deriveWrap(myPriv, theirPub) {
-    const bits = await crypto.subtle.deriveBits({ name:'ECDH', public:theirPub }, myPriv, 256);
-    const h = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
-    return crypto.subtle.deriveKey({ name:'HKDF', hash:'SHA-256', salt: new TextEncoder().encode('ehoser-chat-key-wrap-v1'), info: new Uint8Array(0) }, h, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
-}
-
-async function wrapKey(groupKeyB64, recipPubJwk) {
-    const eph = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']);
-    const wk = await deriveWrap(eph.privateKey, await importPub(recipPubJwk));
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, wk, new TextEncoder().encode(groupKeyB64));
-    const { kty,crv,x,y } = await crypto.subtle.exportKey('jwk', eph.publicKey);
-    return JSON.stringify({ eph: JSON.stringify({ kty,crv,x,y,key_ops:[] }), iv: b64e(iv), c: b64e(ct) });
-}
-
-async function unwrapKey(wrapped) {
-    const parsed = safeJsonParse(wrapped, null);
-    if (!parsed || typeof parsed !== 'object' || !parsed.eph || !parsed.iv || !parsed.c) {
-        throw new Error('Ungültiger verschlüsselter Gruppenschlüssel');
-    }
-    const { eph, iv, c } = parsed;
-    const ephParsed = safeJsonParse(eph, null);
-    if (!ephParsed || typeof ephParsed !== 'object') {
-        throw new Error('Ungültiger Schlüssel-Wrapper');
-    }
-    const wk = await deriveWrap(_myKeys.privateKey, await importPub(ephParsed));
-    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: new Uint8Array(b64d(iv)) }, wk, b64d(c));
-    return new TextDecoder().decode(pt);
-}
-
-async function makeGroupKey() { return crypto.subtle.generateKey({ name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']); }
-async function exportKeyB64(k) { return b64e(await crypto.subtle.exportKey('raw', k)); }
-async function importKeyB64(b) { return crypto.subtle.importKey('raw', b64d(b), { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']); }
-
-async function encryptMsg(text, key) {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, new TextEncoder().encode(text));
-    return JSON.stringify({ iv: b64e(iv), c: b64e(ct) });
-}
-
-async function decryptMsg(enc, key) {
-    const parsed = safeJsonParse(enc, null);
-    if (!parsed || typeof parsed !== 'object' || !parsed.iv || !parsed.c) {
-        throw new Error('Ungültige verschlüsselte Nachricht');
-    }
-    const { iv, c } = parsed;
-    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: new Uint8Array(b64d(iv)) }, key, b64d(c));
-    return new TextDecoder().decode(pt);
-}
-
-async function getGroupKey(gid) {
-    if (_groupKeyCache[gid]) return _groupKeyCache[gid];
-    const { encryptedGroupKey } = await api('/chat/groups/' + gid + '/key');
-    const k = await importKeyB64(await unwrapKey(encryptedGroupKey));
-    _groupKeyCache[gid] = k;
-    return k;
+// New chat messages are stored as ordinary JSON text. Older encrypted records
+// cannot be decoded after encryption is disabled and are shown as legacy items.
+function readStoredMessage(value) {
+    const parsed = safeJsonParse(value, null);
+    if (parsed && typeof parsed === 'object' && parsed.iv && parsed.c) return null;
+    return typeof value === 'string' ? value : JSON.stringify(value || '');
 }
 
 // ─── Groups ───────────────────────────────────────────────────────────────────
@@ -395,8 +312,7 @@ async function toggleEhoserAiSummary() {
     localStorage.setItem('ehoserAiSummary', _summaryAiEnabled ? '1' : '0');
     updateAiSummaryToggle();
     if (_summaryAiEnabled && _activeGroupId) {
-        const notice = '⚠️ Hinweis: Für die KI-Zusammenfassung wurde die Ende-zu-Ende-Verschlüsselung kurz aufgehoben.';
-        appendMessage({ id: 'summary-toggle-' + Date.now(), sender: 'ehoser AI', created_at: new Date().toISOString(), encrypted_content: '' }, JSON.stringify({ t: 'ai_summary', summary: notice + ' Die Zusammenfassung bleibt nur auf diesem Gerät aktiv.' }));
+        appendMessage({ id: 'summary-toggle-' + Date.now(), sender: 'ehoser AI', created_at: new Date().toISOString(), content: '' }, JSON.stringify({ t: 'ai_summary', summary: 'Die KI-Zusammenfassung ist für diesen Chat aktiviert.' }));
         const a = document.getElementById('messagesArea'); if (a) a.scrollTop = a.scrollHeight;
     }
 }
@@ -423,7 +339,7 @@ async function selectGroup(gid) {
     ac.style.display = 'flex';
     document.getElementById('topbarName').textContent = g.name;
     document.getElementById('topbarMeta').textContent = 'Mitglieder werden geladen…';
-    document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden entschlüsselt…</div>';
+    document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden geladen…</div>';
     _activeMembers = [];
     updateCallButtons();
     try {
@@ -473,7 +389,7 @@ async function pollMessageNotifications(initial = false) {
             notifyChat(groupName, 'Neue Nachricht von ' + (message.sender || 'jemandem'), 'chat-message-' + message.group_id);
         }
     } catch {
-        // Notifications must never stop the encrypted chat polling.
+        // Notifications must never stop chat polling.
     }
 }
 
@@ -485,19 +401,17 @@ async function loadMessages(gid, initial) {
             if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#2a5060">Noch keine Nachrichten.</div>';
             return;
         }
-        const key = await getGroupKey(gid);
         await fetchProBadges(messages.map((m) => m.sender));
         if (initial) document.getElementById('messagesArea').innerHTML = '';
         for (const m of messages) {
             if (gid !== _activeGroupId) break;
             // Try to find an existing DOM element for this message
             const existingEl = document.querySelector(`[data-msgid="${m.id}"]`);
-            let plain = null;
-            try { plain = await decryptMsg(m.encrypted_content, key); } catch {}
+            const plain = readStoredMessage(m.content);
             if (existingEl) {
-                // If encrypted content changed, update DOM silently
-                if (existingEl.dataset.enc !== m.encrypted_content) {
-                    existingEl.dataset.enc = m.encrypted_content;
+                // If stored content changed, update DOM silently
+                if (existingEl.dataset.stored !== m.content) {
+                    existingEl.dataset.stored = m.content;
                     existingEl.dataset.plain = plain ? encodeURIComponent(plain) : '';
                     const bubble = existingEl.querySelector('.msg-bubble');
                     try {
@@ -534,7 +448,7 @@ function appendMessage(m, plainJson) {
     const time = dateStr + ' ' + timeStr;
     let content = '';
     if (plainJson === null) {
-        content = '<span class="decrypt-err">🔒 Konnte nicht entschlüsselt werden</span>';
+        content = '<span class="decrypt-err">Alte verschlüsselte Nachricht</span>';
     } else {
         const parsed = safeJsonParse(plainJson, { t: 'txt', v: String(plainJson || '') });
         content = renderContent(parsed);
@@ -557,7 +471,7 @@ function appendMessage(m, plainJson) {
     // attach metadata for future updates
     if (m?.id && !String(m.id).startsWith('tmp-')) {
         row.dataset.msgid = String(m.id);
-        row.dataset.enc = m.encrypted_content || '';
+        row.dataset.stored = m.content || '';
         row.dataset.plain = plainJson ? encodeURIComponent(plainJson) : '';
     }
     // temp-id handling: if message id looks like a client-temp id, mark element as pending
@@ -580,7 +494,7 @@ function appendMessage(m, plainJson) {
                 // upgrade pending element
                 const tempKey = pe.getAttribute('data-tempid');
                 pe.dataset.msgid = String(m.id);
-                pe.dataset.enc = m.encrypted_content || '';
+                pe.dataset.stored = m.content || '';
                 pe.dataset.plain = plainJson ? encodeURIComponent(plainJson) : '';
                 pe.removeAttribute('data-tempid');
                 pe.classList.remove('pending');
@@ -751,12 +665,11 @@ async function editMessage(msgId, newText, row) {
     try {
         const gid = _activeGroupId;
         if (!gid) throw new Error('Keine Gruppe aktiv');
-        const key = await getGroupKey(gid);
         const plainObj = { t: 'txt', v: String(newText) };
-        const enc = await encryptMsg(JSON.stringify(plainObj), key);
-        await api('/chat/messages/' + msgId, 'PATCH', { encryptedContent: enc });
+        const storedContent = JSON.stringify(plainObj);
+        await api('/chat/messages/' + msgId, 'PATCH', { content: storedContent });
         // Update DOM silently
-        row.dataset.enc = enc;
+        row.dataset.stored = storedContent;
         row.dataset.plain = encodeURIComponent(JSON.stringify(plainObj));
         const bubble = row.querySelector('.msg-bubble'); if (bubble) bubble.innerHTML = esc(plainObj.v).replace(/\n/g, '<br>');
     } catch (e) { toast('Bearbeiten fehlgeschlagen: ' + e.message, 'err'); }
@@ -782,20 +695,18 @@ async function triggerChatAiSummary() {
         const after = _lastMsgId[_activeGroupId] || 0;
         const { messages } = await api('/chat/messages/' + _activeGroupId + '?after=' + after);
         if (!messages.length) return;
-        const key = await getGroupKey(_activeGroupId);
         const summaries = [];
         for (const m of messages.slice(-6)) {
-            if (!m?.encrypted_content) continue;
+            if (!m?.content) continue;
             try {
-                const plain = await decryptMsg(m.encrypted_content, key);
+                const plain = readStoredMessage(m.content);
                 if (!plain) continue;
                 const parsed = safeJsonParse(plain, { t: 'txt', v: String(plain || '') });
                 if (parsed?.t === 'txt' && typeof parsed.v === 'string' && parsed.v.trim()) summaries.push(parsed.v.trim());
             } catch {}
         }
         const summaryText = summarizeChatMessages(summaries);
-        const warning = '⚠️ Hinweis: Für die KI-Zusammenfassung wurde die Ende-zu-Ende-Verschlüsselung kurz aufgehoben. ' + summaryText;
-        appendMessage({ id: 'ai-summary-' + Date.now(), sender: 'ehoser AI', created_at: new Date().toISOString(), encrypted_content: '' }, JSON.stringify({ t: 'ai_summary', summary: warning }));
+        appendMessage({ id: 'ai-summary-' + Date.now(), sender: 'ehoser AI', created_at: new Date().toISOString(), content: '' }, JSON.stringify({ t: 'ai_summary', summary: summaryText }));
         const area = document.getElementById('messagesArea'); if (area) area.scrollTop = area.scrollHeight;
     } catch {}
 }
@@ -807,17 +718,14 @@ async function sendMessage() {
     if (!text || !_activeGroupId) return;
     inp.value = ''; inp.style.height = ''; inp.disabled = true;
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-    appendMessage({ id: tempId, sender: _me.username, created_at: new Date().toISOString(), encrypted_content: '' }, JSON.stringify({ t:'txt', v:text }));
+    appendMessage({ id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: '' }, JSON.stringify({ t:'txt', v:text }));
     try {
-        const key = await getGroupKey(_activeGroupId);
-        const enc = await encryptMsg(JSON.stringify({ t:'txt', v:text }), key);
-        const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, encryptedContent: enc });
+        const storedContent = JSON.stringify({ t:'txt', v:text });
+        const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, content: storedContent });
         // finalize optimistic message (upgrade pending element or append if missing)
-        finalizePendingMessage(tempId, id, created_at, enc, JSON.stringify({ t:'txt', v:text }));
+        finalizePendingMessage(tempId, id, created_at, storedContent, storedContent);
         _lastMsgId[_activeGroupId] = id;
         if (_summaryAiEnabled && _meProfile?.isPro) {
-            const warning = '⚠️ Hinweis: Die Ende-zu-Ende-Verschlüsselung wurde für die KI-Zusammenfassung kurz aufgehoben.';
-            toast(warning, 'warn');
             setTimeout(() => triggerChatAiSummary(), 300);
         }
         const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
@@ -829,18 +737,17 @@ async function sendMediaMessage(payload) {
     if (!enforceNotificationPermission()) return;
     if (!_activeGroupId) return;
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-    appendMessage({ id: tempId, sender: _me.username, created_at: new Date().toISOString(), encrypted_content: '' }, JSON.stringify(payload));
+    appendMessage({ id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: '' }, JSON.stringify(payload));
     try {
-        const key = await getGroupKey(_activeGroupId);
-        const enc = await encryptMsg(JSON.stringify(payload), key);
-        const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, encryptedContent: enc });
-        finalizePendingMessage(tempId, id, created_at, enc, JSON.stringify(payload));
+        const storedContent = JSON.stringify(payload);
+        const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, content: storedContent });
+        finalizePendingMessage(tempId, id, created_at, storedContent, storedContent);
         _lastMsgId[_activeGroupId] = id;
         const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
     } catch (e) { const el = document.querySelector(`[data-tempid="${tempId}"]`); if (el) el.classList.add('send-failed'); toast('Senden fehlgeschlagen: ' + e.message, 'err'); }
 }
 
-function finalizePendingMessage(tempId, realId, created_at, encrypted_content, plainJson) {
+function finalizePendingMessage(tempId, realId, created_at, content, plainJson) {
     try {
         const area = document.getElementById('messagesArea'); if (!area) return;
         const el = area.querySelector(`[data-tempid="${tempId}"]`);
@@ -858,7 +765,7 @@ function finalizePendingMessage(tempId, realId, created_at, encrypted_content, p
             return;
         }
         // fallback: append server message if pending element not present
-        appendMessage({ id: realId, sender: _me.username, created_at, encrypted_content }, plainJson);
+        appendMessage({ id: realId, sender: _me.username, created_at, content }, plainJson);
         if (_activeGroupId && realId) markMessageSeen(_activeGroupId, realId);
     } catch (e) { console.error('finalizePendingMessage error', e); }
 }
@@ -1450,12 +1357,7 @@ function openNewGroupModal() {
 
 async function toggleNgMember(username) {
     if (_ngMembers[username]) { delete _ngMembers[username]; }
-    else {
-        try {
-            const { publicKey } = await api('/chat/key/' + username);
-            _ngMembers[username] = publicKey;
-        } catch { toast(username + ' hat noch keinen Chat-Schlüssel', 'err'); return; }
-    }
+    else _ngMembers[username] = true;
     renderNgChips();
     searchUsers(document.getElementById('ngSearch').value, 'ngResults');
 }
@@ -1472,14 +1374,8 @@ async function createGroup() {
     const name = document.getElementById('ngName').value.trim();
     if (!name) { toast('Bitte einen Namen eingeben', 'err'); return; }
     try {
-        const myPub = await exportPub(_myKeys.publicKey);
-        const gk = await makeGroupKey();
-        const gkB64 = await exportKeyB64(gk);
-        const memberKeys = {};
-        memberKeys[_me.username] = await wrapKey(gkB64, myPub);
-        for (const [u, pub] of Object.entries(_ngMembers)) memberKeys[u] = await wrapKey(gkB64, pub);
-        const { id, name: gname } = await api('/chat/groups', 'POST', { name, memberKeys });
-        _groupKeyCache[id] = gk;
+        const members = Object.keys(_ngMembers);
+        const { id, name: gname } = await api('/chat/groups', 'POST', { name, members });
         closeModal('newGroupModal');
         toast('Gruppe "' + gname + '" erstellt', 'ok');
         await loadGroups();
@@ -1501,11 +1397,7 @@ async function addMember(username) {
     document.getElementById('amResults').style.display = 'none';
     st.textContent = username + ' wird hinzugefügt…';
     try {
-        const { publicKey } = await api('/chat/key/' + username);
-        const gk = await getGroupKey(_activeGroupId);
-        const gkB64 = await exportKeyB64(gk);
-        const encKey = await wrapKey(gkB64, publicKey);
-        await api('/chat/groups/' + _activeGroupId + '/members', 'POST', { username, encryptedGroupKey: encKey });
+        await api('/chat/groups/' + _activeGroupId + '/members', 'POST', { username });
         st.textContent = '✓ ' + username + ' hinzugefügt';
         const { members } = await api('/chat/groups/' + _activeGroupId + '/members');
         _activeMembers = members || [];
