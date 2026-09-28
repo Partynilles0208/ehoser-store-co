@@ -227,7 +227,21 @@
         }
     </style>
 </head>
-<body class="entry-locked">
+<body class="entry-locked splash-active">
+
+    <div id="introSplash" class="intro-splash" aria-label="ehoser Intro">
+        <div class="intro-logo-blue">E</div>
+        <div class="intro-ehoser-text">ehoser</div>
+        <div class="intro-logo-pink">E</div>
+        <div class="intro-nils-text"><span class="intro-by">entwickelt von</span><span class="intro-nils">Nils Becker</span></div>
+        <div id="introBadgeBlue" class="intro-badge-row"><span class="intro-badge-icon intro-badge-icon-blue">KI</span><span class="intro-badge-label">KI &amp; Kreativität</span></div>
+        <div id="introBadgeGreen" class="intro-badge-row"><span class="intro-badge-icon intro-badge-icon-green">✓</span><span class="intro-badge-label">Kostenlos &amp; Community</span></div>
+        <div class="intro-flash"></div>
+        <div id="introBigLogo" class="intro-big-logo">E<div class="intro-shine"></div></div>
+        <div class="intro-tagline">Dein digitales Control Center</div>
+        <div class="intro-skip-hint">Enter zum Überspringen</div>
+        <div class="intro-flash-final"></div>
+    </div>
 
     <div id="ownershipNotice" class="ownership-notice" role="dialog" aria-modal="true" aria-labelledby="ownershipNoticeTitle">
         <div class="ownership-notice-card">
@@ -445,6 +459,14 @@
                                 <h3>Neu: SKYBREAK</h3>
                                 <p>Starte das ehoser Battle Royale mit Auth, Lobby, Bots, Autos, Bauen, Sniper und Sturmzone.</p>
                                 <span class="mode-badge mode-badge-ki">Battle Royale</span>
+                            </div>
+                        </button>
+                        <button class="mode-card mode-card-group-call" onclick="window.location.href='/group-call/'">
+                            <div class="mode-card-icon">📹</div>
+                            <div class="mode-card-body">
+                                <h3>Neu: Gruppenanruf</h3>
+                                <p>Nutzer auswählen und gemeinsam per Audio oder Video sprechen.</p>
+                                <span class="mode-badge mode-badge-chat">Mehrteilnehmer-Anruf</span>
                             </div>
                         </button>
                         <button class="mode-card mode-card-games" onclick="selectMode('games')">

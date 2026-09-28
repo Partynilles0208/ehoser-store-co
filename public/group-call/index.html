@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ehoser Gruppenanruf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="loginWall" class="center-wall" style="display:none">
+    <div class="wall-card"><div class="app-logo">E</div><h1>Anmeldung erforderlich</h1><p>Melde dich zuerst bei ehoser an.</p><a href="../">Zur Anmeldung</a></div>
+  </div>
+
+  <div id="incomingInvite" class="invite-overlay" style="display:none">
+    <div class="invite-card">
+      <div class="invite-pulse">📞</div>
+      <p>Eingehender Gruppenanruf</p>
+      <h2 id="inviteHost">Jemand ruft an</h2>
+      <span id="invitePeople"></span>
+      <div class="invite-actions"><button class="danger" onclick="declineInvite()">Ablehnen</button><button class="accept" onclick="acceptInvite()">Annehmen</button></div>
+    </div>
+  </div>
+
+  <main id="lobby" class="app-shell" style="display:none">
+    <header class="app-header">
+      <a class="brand" href="../"><span class="app-logo small">E</span><span><strong>ehoser</strong><small>Gruppenanruf</small></span></a>
+      <a class="back-link" href="../chat/">Zum Chat</a>
+    </header>
+    <section class="lobby-card">
+      <div class="lobby-copy"><span class="eyebrow">Bis zu 8 Personen</span><h1>Gemeinsam sprechen.<br>Kamera, wenn ihr wollt.</h1><p>Wähle Nutzernamen aus und starte den Anruf. Mikrofon, Kamera, Teilnehmerübersicht und Verbindungsstatus sind direkt dabei.</p></div>
+      <div class="selector-card">
+        <label for="userSearch">Teilnehmer auswählen</label>
+        <input id="userSearch" type="search" placeholder="Nutzername suchen …" autocomplete="off">
+        <div id="selectedUsers" class="selected-users"><span>Noch niemand ausgewählt</span></div>
+        <div id="userResults" class="user-results"></div>
+        <button id="startGroupCallBtn" class="start-call" onclick="startGroupCall()" disabled>📞 Gruppenanruf starten</button>
+        <p id="lobbyStatus" class="status-line"></p>
+      </div>
+    </section>
+  </main>
+
+  <section id="callRoom" class="call-room" style="display:none">
+    <header class="call-header"><div><span class="live-dot"></span><strong>Gruppenanruf</strong><small id="roomStatus">Verbindung wird aufgebaut …</small></div><button onclick="copyRoomId()">Raum-ID kopieren</button></header>
+    <div id="videoGrid" class="video-grid"></div>
+    <div class="call-controls">
+      <button id="muteBtn" onclick="toggleMute()"><span>🎙️</span><small>Stumm</small></button>
+      <button id="cameraBtn" onclick="toggleCamera()"><span>📷</span><small>Kamera an</small></button>
+      <button onclick="toggleFullscreen()"><span>⛶</span><small>Vollbild</small></button>
+      <button class="hangup" onclick="leaveRoom()"><span>☎</span><small>Auflegen</small></button>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
