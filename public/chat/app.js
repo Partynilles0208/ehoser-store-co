@@ -3,7 +3,10 @@ const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : 
 const API = API_ORIGIN + '/api';
 const CHAT_CACHE_VERSION = 'v3';
 const CHAT_UPDATE_VERSION = '2026-09-chat-refresh';
-const CHAT_PAGE_OPENED_AT = Date.now();
+const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
+let _chatGoogleClientId = '';
+let _chatGoogleInitialized = false;
+let _chatGoogleConfigLoading = false;
 
 // Robust date parser: server may return UTC timestamps without timezone
 function parseServerDate(s) {
@@ -147,12 +150,8 @@ function replaceCachedMessage(groupId, oldId, message) {
 }
 
 function prepareChatUpdateSplash() {
-    const lastUser = localStorage.getItem('ehoserChatLastUser');
-    if (!lastUser) return;
-    if (localStorage.getItem(`ehoserChatUpdateSeen:${CHAT_UPDATE_VERSION}:${lastUser}`) === '1') {
-        const splash = document.getElementById('chatUpdateSplash');
-        if (splash) splash.style.display = 'none';
-    }
+    const splash = document.getElementById('chatUpdateSplash');
+    if (splash) splash.style.display = 'none';
 }
 
 async function runChatEntrySequence() {
@@ -163,19 +162,218 @@ async function runChatEntrySequence() {
     const seenKey = `ehoserChatUpdateSeen:${CHAT_UPDATE_VERSION}:${username}`;
     if (localStorage.getItem(seenKey) !== '1') {
         if (splash) splash.style.display = 'flex';
-        const remaining = Math.max(0, 3000 - (Date.now() - CHAT_PAGE_OPENED_AT));
-        await new Promise((resolve) => setTimeout(resolve, remaining));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
         localStorage.setItem(seenKey, '1');
     }
     if (splash) splash.style.display = 'none';
     if (ownership) ownership.style.display = 'flex';
 }
 
+function runChatBrandIntro() {
+    const intro = document.getElementById('chatBrandIntro');
+    if (!intro || sessionStorage.getItem('ehoserChatIntroShown') === '1') {
+        intro?.remove();
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+        let finished = false;
+        let timer = null;
+        const onKeydown = (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            finish();
+        };
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timer);
+            window.removeEventListener('keydown', onKeydown);
+            sessionStorage.setItem('ehoserChatIntroShown', '1');
+            intro.classList.add('finished');
+            setTimeout(() => intro.remove(), 380);
+            resolve();
+        };
+        window.addEventListener('keydown', onKeydown);
+        timer = setTimeout(finish, 3200);
+    });
+}
+
+function setChatAuthMode(mode) {
+    const register = mode === 'register';
+    document.getElementById('chatLoginForm').style.display = register ? 'none' : 'grid';
+    document.getElementById('chatRegisterForm').style.display = register ? 'grid' : 'none';
+    document.getElementById('chatLoginTab').classList.toggle('active', !register);
+    document.getElementById('chatRegisterTab').classList.toggle('active', register);
+    setChatAuthStatus('');
+}
+
+function setChatAuthStatus(message = '', error = false) {
+    const status = document.getElementById('chatAuthStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('error', error);
+}
+
+function prepareChatAuthWall(message = '') {
+    const accessCode = localStorage.getItem(CHAT_ACCESS_CODE_KEY) || '';
+    const username = localStorage.getItem('ehoserChatLastUser') || '';
+    document.getElementById('chatUpdateSplash').style.display = 'none';
+    document.getElementById('chatLoginUnlockCode').value = accessCode;
+    document.getElementById('chatRegisterUnlockCode').value = accessCode;
+    document.getElementById('chatLoginUsername').value = username;
+    setChatAuthStatus(message, Boolean(message));
+    show('loginWall');
+    initChatGoogleAuth();
+}
+
+function saveChatAuth(data, username, accessCode) {
+    localStorage.setItem('token', data.token);
+    localStorage.setItem(CHAT_ACCESS_CODE_KEY, accessCode);
+    if (username) localStorage.setItem('ehoserChatLastUser', username);
+}
+
+async function initChatGoogleAuth() {
+    if (_chatGoogleInitialized || _chatGoogleConfigLoading) return;
+    _chatGoogleConfigLoading = true;
+    try {
+        if (!_chatGoogleClientId) {
+            const response = await fetch(API + '/config');
+            const config = await response.json().catch(() => ({}));
+            _chatGoogleClientId = config.googleClientId || '';
+        }
+        if (!_chatGoogleClientId) return;
+        if (!window.google?.accounts?.id) {
+            setTimeout(initChatGoogleAuth, 500);
+            return;
+        }
+        window.google.accounts.id.initialize({
+            client_id: _chatGoogleClientId,
+            callback: submitChatGoogleLogin,
+            auto_select: false,
+            cancel_on_tap_outside: true
+        });
+        const host = document.getElementById('chatGoogleSignIn');
+        if (host) {
+            host.replaceChildren();
+            const width = Math.max(220, Math.min(320, Math.floor(host.getBoundingClientRect().width || 320)));
+            window.google.accounts.id.renderButton(host, { theme: 'filled_black', size: 'large', width, text: 'continue_with' });
+        }
+        _chatGoogleInitialized = true;
+    } catch {
+        // Username/password login remains available if Google is unavailable.
+    } finally {
+        _chatGoogleConfigLoading = false;
+    }
+}
+
+async function submitChatGoogleLogin(response) {
+    const loginVisible = document.getElementById('chatLoginForm').style.display !== 'none';
+    const inputId = loginVisible ? 'chatLoginUnlockCode' : 'chatRegisterUnlockCode';
+    const accessCode = document.getElementById(inputId).value.trim();
+    if (!accessCode) {
+        setChatAuthStatus('Bitte zuerst den Zugangscode eingeben.', true);
+        return;
+    }
+    setChatAuthStatus('Google-Anmeldung läuft…');
+    try {
+        const result = await fetch(API + '/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: response?.credential, unlockCode: accessCode })
+        });
+        const data = await result.json().catch(() => ({}));
+        if (!result.ok) throw new Error(data.error || 'Google-Anmeldung fehlgeschlagen.');
+        saveChatAuth(data, data.username, accessCode);
+        window.location.replace('/chat/');
+    } catch (error) {
+        setChatAuthStatus(error.message || 'Google-Anmeldung fehlgeschlagen.', true);
+    }
+}
+
+async function submitChatLogin(event) {
+    event.preventDefault();
+    const accessCode = document.getElementById('chatLoginUnlockCode').value.trim();
+    const username = document.getElementById('chatLoginUsername').value.trim();
+    const password = document.getElementById('chatLoginPassword').value;
+    const loginCode = document.getElementById('chatLoginCode').value.trim();
+    if (!password && !loginCode) {
+        setChatAuthStatus('Bitte Passwort oder Login-Code eingeben.', true);
+        return;
+    }
+    const button = document.getElementById('chatLoginSubmit');
+    button.disabled = true;
+    button.textContent = 'Anmeldung läuft…';
+    setChatAuthStatus('');
+    try {
+        const response = await fetch(API + '/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, unlockCode: accessCode, password: password || undefined, loginCode: loginCode || undefined })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || data.moderation?.reason || 'Anmeldung fehlgeschlagen.');
+        saveChatAuth(data, username, accessCode);
+        if (data.redirectToAdmin) window.location.replace('/admin.html');
+        else window.location.replace('/chat/');
+    } catch (error) {
+        setChatAuthStatus(error.message || 'Anmeldung fehlgeschlagen.', true);
+        button.disabled = false;
+        button.textContent = 'Chat öffnen';
+    }
+}
+
+async function submitChatRegister(event) {
+    event.preventDefault();
+    const accessCode = document.getElementById('chatRegisterUnlockCode').value.trim();
+    const username = document.getElementById('chatRegisterUsername').value.trim();
+    const email = document.getElementById('chatRegisterEmail').value.trim();
+    const password = document.getElementById('chatRegisterPassword').value;
+    const confirmation = document.getElementById('chatRegisterPasswordConfirm').value;
+    if (password !== confirmation) {
+        setChatAuthStatus('Die Passwörter stimmen nicht überein.', true);
+        return;
+    }
+    const button = document.getElementById('chatRegisterSubmit');
+    button.disabled = true;
+    button.textContent = 'Account wird erstellt…';
+    setChatAuthStatus('');
+    try {
+        const response = await fetch(API + '/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username,
+                email: email || undefined,
+                password,
+                unlockCode: accessCode,
+                referralCode: new URLSearchParams(window.location.search).get('ref') || undefined
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Registrierung fehlgeschlagen.');
+        saveChatAuth(data, username, accessCode);
+        if (data.loginCode) window.alert(`Dein Login-Code: ${data.loginCode}\nBewahre ihn sicher auf.`);
+        window.location.replace('/chat/');
+    } catch (error) {
+        setChatAuthStatus(error.message || 'Registrierung fehlgeschlagen.', true);
+        button.disabled = false;
+        button.textContent = 'Account erstellen';
+    }
+}
+
+function logoutChat() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('proStatus');
+    localStorage.removeItem('premiumStatus');
+    window.location.replace('/chat/');
+}
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 (async () => {
+    await runChatBrandIntro();
     prepareChatUpdateSplash();
     _token = localStorage.getItem('token');
-    if (!_token) { show('loginWall'); return; }
+    if (!_token) { prepareChatAuthWall(); return; }
     try {
         // Raw fetch statt api() – wir brauchen den genauen Status-Code
         const resp = await fetch(API + '/verify-token', {
@@ -184,17 +382,13 @@ async function runChatEntrySequence() {
         });
         if (resp.status === 401) {
             // Token abgelaufen → einmalig neu anmelden nötig (nur 1x, dann 10 Jahre gültig)
+            localStorage.removeItem('token');
             localStorage.removeItem('proStatus');
-            const wall = document.getElementById('loginWall');
-            wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">🔑</div><h2>Erneut anmelden</h2><p style="color:#a88">Deine Sitzung ist abgelaufen. Melde dich neu an.</p><a href="/" class="btn-primary" style="margin-top:8px;display:block;text-align:center">Zur Anmeldung</a></div>`;
-            show('loginWall');
+            prepareChatAuthWall('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');
             return;
         }
         if (!resp.ok) {
-            // Server-Fehler: Token behalten, Retry anbieten
-            const wall = document.getElementById('loginWall');
-            wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">⚠️</div><h2>Verbindungsfehler</h2><p>Der Server antwortet nicht. Bitte versuche es erneut.</p><button class="btn-primary" onclick="location.reload()">Neu laden</button><a href="/" class="btn-secondary" style="margin-top:8px;display:block">Zurück zur Anmeldung</a></div>`;
-            show('loginWall');
+            prepareChatAuthWall('Der Server antwortet nicht. Bitte versuche es erneut.');
             return;
         }
         const r = await resp.json();
@@ -221,10 +415,7 @@ async function runChatEntrySequence() {
             }
         }
     } catch {
-        // Netzwerkfehler: Token behalten, Retry anbieten
-        const wall = document.getElementById('loginWall');
-        wall.innerHTML = `<div class="login-wall-box"><div class="lw-brand"><div class="lw-logo">E</div><span class="lw-name">ehoser</span></div><div class="lw-icon">⚠️</div><h2>Keine Verbindung</h2><p>Netzwerkfehler. Bitte überprüfe deine Verbindung.</p><button class="btn-primary" onclick="location.reload()">Neu laden</button><a href="/" class="btn-secondary" style="margin-top:8px;display:block">Zurück zur Anmeldung</a></div>`;
-        show('loginWall');
+        prepareChatAuthWall('Keine Verbindung. Bitte überprüfe dein Internet und versuche es erneut.');
         return;
     }
     if (!('Notification' in window)) {
@@ -1730,37 +1921,6 @@ document.addEventListener('keydown', (event) => {
 navigator.mediaDevices?.addEventListener?.('devicechange', () => {
     if (_currentCall) refreshCallDevices();
 });
-
-// ─── FaceWarp Picker ──────────────────────────────────────────────────────────
-function openFacewarpPicker() {
-    document.getElementById('attachMenu').style.display = 'none';
-    _attachOpen = false;
-    document.getElementById('attachBtn').classList.remove('active');
-    const saved = getSavedFacewarps();
-    const grid = document.getElementById('fwGrid');
-    if (!saved.length) {
-        grid.innerHTML = '<div class="fw-empty">Noch keine gespeicherten Bilder.<br>Erstelle eines im Face Warp Editor.</div>';
-    } else {
-        grid.innerHTML = saved.map((u,i) => `<img class="fw-grid-img" src="${esc(u)}" onclick="sendFwImage('${esc(u)}')">`).join('');
-    }
-    openModal('fwModal');
-}
-
-async function sendFwImage(url) {
-    closeModal('fwModal');
-    await sendMediaMessage({ t:'fw', url });
-}
-
-function openFacewarpEditor() {
-    closeModal('fwModal');
-    localStorage.setItem('faceWarpReturnToChat', '1');
-    const tier = _meProfile?.isPro ? 'pro' : 'basic';
-    window.open('/facewarp/?tier=' + tier, '_blank');
-}
-
-function getSavedFacewarps() {
-    try { return JSON.parse(localStorage.getItem('chatSavedFacewarps') || '[]'); } catch { return []; }
-}
 
 async function fetchProBadges(usernames) {
     const unique = [...new Set((usernames || []).filter(Boolean))].filter((u) => !_proBadgeCache[u]);

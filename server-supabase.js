@@ -1248,6 +1248,12 @@ app.use('/api', (req, res, next) => {
     return res.status(401).json({ error: 'Ungueltiger Token' });
   }
 });
+const chatOnlyRedirectPaths = [
+  '/', '/index.html', '/dreamcoring', '/dreamcoring/', '/earthdrive', '/earthdrive/',
+  '/facewarp', '/facewarp/', '/learning', '/learning/', '/skybreak', '/skybreak/', '/skybreak-auth.html'
+];
+app.get(chatOnlyRedirectPaths, (req, res) => res.redirect(302, '/chat/'));
+
 require('./lib/earthdrive').mountEarthDrive(app, { readAuthUser, getProfile });
 
 app.use(express.static(path.join(__dirname, 'public'), {
