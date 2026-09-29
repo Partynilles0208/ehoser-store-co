@@ -64,6 +64,8 @@ let _ringAudioContext = null;
 let _notifiedIncomingCallId = null;
 let _finishingCall = false;
 let _callPollBusy = false;
+let _callFacingMode = 'user';
+let _cameraSwitchBusy = false;
 let _chatServiceWorkerReady = null;
 let _groupCallInvitePoll = null;
 let _lastGroupCallInviteId = null;
@@ -1070,6 +1072,7 @@ function updateCallControlState() {
     const videoTrack = _localCallStream?.getVideoTracks?.()[0];
     const muteButton = document.getElementById('muteCallBtn');
     const cameraButton = document.getElementById('cameraCallBtn');
+    const switchButton = document.getElementById('switchCameraCallBtn');
     if (muteButton) {
         const muted = Boolean(audioTrack && !audioTrack.enabled);
         muteButton.classList.toggle('active', muted);
@@ -1083,7 +1086,17 @@ function updateCallControlState() {
         if (label) label.textContent = enabled ? 'Kamera aus' : 'Kamera';
     }
     const localVideo = document.getElementById('localVideo');
-    if (localVideo) localVideo.classList.toggle('visible', Boolean(videoTrack?.enabled));
+    if (localVideo) {
+        localVideo.classList.toggle('visible', Boolean(videoTrack?.enabled));
+        localVideo.classList.toggle('rear-camera', _callFacingMode === 'environment');
+    }
+    if (switchButton) {
+        switchButton.style.display = videoTrack?.enabled ? 'flex' : 'none';
+        switchButton.disabled = _cameraSwitchBusy || !videoTrack?.enabled;
+        switchButton.classList.toggle('switching', _cameraSwitchBusy);
+        const label = switchButton.querySelector('small');
+        if (label) label.textContent = _cameraSwitchBusy ? 'Wechsel…' : 'Drehen';
+    }
 }
 
 function updateRemoteVideoState() {
@@ -1109,8 +1122,52 @@ function startCallTimer() {
 async function getCallMedia(withVideo) {
     return navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: withVideo ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
+        video: withVideo ? cameraVideoConstraints(_callFacingMode) : false
     });
+}
+
+function cameraVideoConstraints(facingMode, deviceId = '') {
+    const constraints = {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: { ideal: facingMode }
+    };
+    if (deviceId) {
+        delete constraints.facingMode;
+        constraints.deviceId = { exact: deviceId };
+    }
+    return constraints;
+}
+
+async function acquireOtherCamera(oldTrack, facingMode) {
+    const oldDeviceId = oldTrack?.getSettings?.().deviceId || '';
+    const devices = navigator.mediaDevices.enumerateDevices
+        ? (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'videoinput')
+        : [];
+    const alternatives = devices.filter((device) => !oldDeviceId || device.deviceId !== oldDeviceId);
+    const labelPattern = facingMode === 'environment'
+        ? /(back|rear|environment|rück|hinten)/i
+        : /(front|user|face|vorder|selfie)/i;
+    const target = alternatives.find((device) => labelPattern.test(device.label || '')) || alternatives[0] || null;
+    const constraints = cameraVideoConstraints(facingMode, target?.deviceId || '');
+
+    if (oldTrack?.applyConstraints) {
+        try {
+            await oldTrack.applyConstraints(constraints);
+            const settings = oldTrack.getSettings?.() || {};
+            if ((target?.deviceId && settings.deviceId === target.deviceId) || settings.facingMode === facingMode) {
+                return { track: oldTrack, stream: null };
+            }
+        } catch {}
+    }
+
+    if (devices.length === 1 && !alternatives.length) {
+        throw new Error('Keine zweite Kamera gefunden.');
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+    const track = stream.getVideoTracks()[0];
+    if (!track) throw new Error('Andere Kamera konnte nicht geöffnet werden.');
+    return { track, stream };
 }
 
 function createPeerConnection() {
@@ -1187,6 +1244,7 @@ async function startCall(mediaType = 'audio') {
         toast('Anrufe gehen nur in Chats mit genau 2 Mitgliedern.', 'err');
         return;
     }
+    _callFacingMode = 'user';
     _currentCall = { id: null, role: 'caller', peerName, mediaType, remoteVideoEnabled: mediaType === 'video' };
     updateCallButtons();
     openCallUi(peerName, mediaType === 'video' ? 'Kamera und Mikrofon werden gestartet…' : 'Mikrofon wird gestartet…', mediaType === 'video');
@@ -1278,6 +1336,7 @@ async function acceptIncomingCall() {
     document.getElementById('incomingCallOverlay').style.display = 'none';
     _incomingCall = null;
     const withVideo = call.media_type === 'video';
+    _callFacingMode = 'user';
     openCallUi(call.caller, withVideo ? 'Kamera und Mikrofon werden gestartet…' : 'Mikrofon wird gestartet…', withVideo);
     try {
         _localCallStream = await getCallMedia(withVideo);
@@ -1399,7 +1458,7 @@ async function toggleCallVideo() {
     let track = _localCallStream?.getVideoTracks?.()[0];
     try {
         if (!track) {
-            const cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+            const cameraStream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints(_callFacingMode), audio: false });
             track = cameraStream.getVideoTracks()[0];
             _localCallStream.addTrack(track);
             _peerConnection.addTrack(track, _localCallStream);
@@ -1414,6 +1473,40 @@ async function toggleCallVideo() {
         updateCallControlState();
     } catch (error) {
         toast(error?.name === 'NotAllowedError' ? 'Kamera wurde nicht erlaubt.' : 'Kamera konnte nicht gestartet werden.', 'err');
+    }
+}
+
+async function switchCallCamera() {
+    const oldTrack = _localCallStream?.getVideoTracks?.()[0];
+    if (!oldTrack?.enabled || !_peerConnection || _cameraSwitchBusy) return;
+    _cameraSwitchBusy = true;
+    updateCallControlState();
+    const nextFacingMode = _callFacingMode === 'user' ? 'environment' : 'user';
+    let replacement = null;
+    let installed = false;
+    try {
+        replacement = await acquireOtherCamera(oldTrack, nextFacingMode);
+        if (replacement.track !== oldTrack) {
+            const sender = _peerConnection.getSenders().find((item) => item.track?.kind === 'video');
+            if (!sender) throw new Error('Videoverbindung ist noch nicht bereit.');
+            await sender.replaceTrack(replacement.track);
+            _localCallStream.removeTrack(oldTrack);
+            _localCallStream.addTrack(replacement.track);
+            oldTrack.stop();
+            installed = true;
+        }
+        _callFacingMode = nextFacingMode;
+        const localVideo = document.getElementById('localVideo');
+        localVideo.srcObject = _localCallStream;
+        await localVideo.play().catch(() => {});
+        postCallSignal('media', { video: true }).catch(() => {});
+        setCallStatus(nextFacingMode === 'environment' ? 'Rückkamera aktiv' : 'Vorderkamera aktiv');
+    } catch (error) {
+        if (!installed && replacement?.track && replacement.track !== oldTrack) replacement.track.stop();
+        toast(error?.message || 'Kamera konnte nicht gewechselt werden.', 'err');
+    } finally {
+        _cameraSwitchBusy = false;
+        updateCallControlState();
     }
 }
 
@@ -1441,6 +1534,8 @@ async function endCallLocally(message = 'Anruf beendet.') {
     _queuedIceCandidates = [];
     _pendingLocalIce = [];
     _lastCallSignalId = 0;
+    _callFacingMode = 'user';
+    _cameraSwitchBusy = false;
     document.getElementById('localVideo').srcObject = null;
     document.getElementById('remoteVideo').srcObject = null;
     document.getElementById('remoteAudio').srcObject = null;
