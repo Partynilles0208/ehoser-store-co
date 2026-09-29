@@ -87,6 +87,7 @@ let _topbarMemberText = '';
 let _typingGroupId = null;
 let _typingLastSentAt = 0;
 let _typingStopTimer = null;
+let _chatSettingsLoginCode = null;
 
 const RTC_CONFIG = {
     iceServers: [
@@ -446,6 +447,7 @@ async function finishChatBoot() {
     _chatStarted = true;
     await runChatEntrySequence();
     show('chatApp');
+    applyChatPreferences();
     document.getElementById('sidebarMe').textContent = '👤 ' + _me.username;
     if (_meProfile?.isPro) {
         const proStickerItem = document.getElementById('proStickerItem');
@@ -687,6 +689,77 @@ function readStoredMessage(value) {
     return typeof value === 'string' ? value : JSON.stringify(value || '');
 }
 
+const CHAT_TRANSLATIONS = {
+    de: {
+        search: 'Chats durchsuchen', chats: 'Chats', logout: 'Abmelden',
+        groupCall: 'Gruppenanruf', groupCallSub: 'Mit mehreren sprechen',
+        emptyChat: 'Wähle einen Chat aus<br>oder starte einen neuen.',
+        emptyNote: 'Nachrichten, Bilder und Anrufe', messagePlaceholder: 'Nachricht…',
+        noChats: 'Noch keine Chats.<br>Tippe oben auf ＋.', noResult: 'Kein Chat gefunden.',
+        privateChat: 'Privater Chat', members: 'Mitglieder', member: 'Mitglied',
+        oldMessage: 'Alte Nachricht', message: 'Nachricht', you: 'Du',
+        photo: '📷 Foto', video: '🎥 Video', audio: '🎤 Sprachnachricht',
+        file: '📎 Datei', sticker: '✨ Sticker', summary: '🤖 Zusammenfassung',
+        loadingMembers: 'Mitglieder werden geladen…', typingOne: 'schreibt gerade…',
+        typingMany: 'schreiben…', typingGroup: 'Mehrere Personen schreiben gerade…'
+    },
+    en: {
+        search: 'Search chats', chats: 'Chats', logout: 'Log out',
+        groupCall: 'Group call', groupCallSub: 'Talk with several people',
+        emptyChat: 'Choose a chat<br>or start a new one.',
+        emptyNote: 'Messages, media and calls', messagePlaceholder: 'Message…',
+        noChats: 'No chats yet.<br>Tap ＋ above.', noResult: 'No chat found.',
+        privateChat: 'Private chat', members: 'members', member: 'member',
+        oldMessage: 'Old message', message: 'Message', you: 'You',
+        photo: '📷 Photo', video: '🎥 Video', audio: '🎤 Voice message',
+        file: '📎 File', sticker: '✨ Sticker', summary: '🤖 Summary',
+        loadingMembers: 'Loading members…', typingOne: 'is typing…',
+        typingMany: 'are typing…', typingGroup: 'Several people are typing…'
+    }
+};
+
+function chatLanguage() {
+    const language = String(_meProfile?.settings?.language || 'de').toLowerCase();
+    return Object.prototype.hasOwnProperty.call(CHAT_TRANSLATIONS, language) ? language : 'de';
+}
+
+function chatText(key) {
+    return CHAT_TRANSLATIONS[chatLanguage()]?.[key] || CHAT_TRANSLATIONS.de[key] || key;
+}
+
+function applyChatPreferences() {
+    const settings = _meProfile?.settings || {};
+    const language = chatLanguage();
+    document.documentElement.lang = language;
+    document.body.classList.toggle('chat-compact', Boolean(settings.chatCompactMode));
+    const search = document.getElementById('chatSearchInput');
+    if (search) {
+        search.placeholder = chatText('search');
+        search.setAttribute('aria-label', chatText('search'));
+    }
+    const staticText = {
+        chatListTitle: chatText('chats'),
+        groupCallTitle: chatText('groupCall'),
+        groupCallSubtitle: chatText('groupCallSub'),
+        chatLogoutButton: chatText('logout'),
+        emptyChatHint: chatText('emptyChat'),
+        emptyChatNote: chatText('emptyNote')
+    };
+    Object.entries(staticText).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (!element) return;
+        if (id === 'emptyChatHint') element.innerHTML = value;
+        else element.textContent = value;
+    });
+    const input = document.getElementById('msgInput');
+    if (input) input.placeholder = chatText('messagePlaceholder');
+    renderGroupList();
+    if (_activeMembers.length) {
+        _topbarMemberText = _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
+        updateTypingIndicator([]);
+    }
+}
+
 // ─── Groups ───────────────────────────────────────────────────────────────────
 async function loadGroups() {
     try {
@@ -699,16 +772,19 @@ async function loadGroups() {
 
 function renderGroupList() {
     const el = document.getElementById('groupList');
-    if (!_groups.length) { el.innerHTML = '<p class="empty-hint">Noch keine Chats.<br>Tippe oben auf ＋.</p>'; return; }
+    if (!el) return;
+    if (!_groups.length) { el.innerHTML = '<p class="empty-hint">' + chatText('noChats') + '</p>'; return; }
     const visibleGroups = _groups.filter((group) => String(group.name || '').toLowerCase().includes(_chatGroupFilter));
     if (!visibleGroups.length) {
-        el.innerHTML = '<p class="empty-hint">Kein Chat gefunden.</p>';
+        el.innerHTML = '<p class="empty-hint">' + chatText('noResult') + '</p>';
         return;
     }
     el.innerHTML = visibleGroups.map(g => {
         const cached = getCachedMessages(g.id).filter((message) => !String(message?.id || '').startsWith('tmp-'));
         const lastMessage = cached[cached.length - 1] || null;
-        const listPreview = getChatListPreview(lastMessage, g);
+        const listPreview = _meProfile?.settings?.chatShowPreviews === false
+            ? (g.type === 'private' ? chatText('privateChat') : (Number(g.member_count) || 0) + ' ' + chatText('members'))
+            : getChatListPreview(lastMessage, g);
         const listTime = lastMessage
             ? parseServerDate(lastMessage.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
             : '';
@@ -724,19 +800,19 @@ function renderGroupList() {
 }
 
 function getChatListPreview(message, group) {
-    if (!message) return group.type === 'private' ? 'Privater Chat' : `${Number(group.member_count) || 0} Mitglieder`;
+    if (!message) return group.type === 'private' ? chatText('privateChat') : (Number(group.member_count) || 0) + ' ' + chatText('members');
     const stored = readStoredMessage(message.content);
-    if (stored === null) return 'Alte Nachricht';
+    if (stored === null) return chatText('oldMessage');
     const parsed = safeJsonParse(stored, { t: 'txt', v: String(stored || '') });
     const labels = {
-        img: '📷 Foto', vid: '🎥 Video', aud: '🎤 Sprachnachricht', fw: '🎭 Face Warp',
-        file: '📎 Datei', pro_sticker: '✨ Sticker', ai_summary: '🤖 Zusammenfassung'
+        img: chatText('photo'), vid: chatText('video'), aud: chatText('audio'), fw: '🎭 Face Warp',
+        file: chatText('file'), pro_sticker: chatText('sticker'), ai_summary: chatText('summary')
     };
     const text = parsed?.t === 'txt'
         ? String(parsed.v || '').replace(/\s+/g, ' ').trim()
-        : (labels[parsed?.t] || 'Nachricht');
-    const sender = message.sender === _me?.username ? 'Du: ' : (group.type === 'private' ? '' : `${message.sender || ''}: `);
-    return `${sender}${text || 'Nachricht'}`;
+        : (labels[parsed?.t] || chatText('message'));
+    const sender = message.sender === _me?.username ? chatText('you') + ': ' : (group.type === 'private' ? '' : String(message.sender || '') + ': ');
+    return sender + (text || chatText('message'));
 }
 
 function filterChatGroups(value) {
@@ -802,7 +878,7 @@ async function selectGroup(gid) {
     ac.style.display = 'flex';
     document.getElementById('topbarName').textContent = g.name;
     document.getElementById('topbarGroupIcon').textContent = g.type === 'private' ? '👤' : '👥';
-    _topbarMemberText = 'Mitglieder werden geladen…';
+    _topbarMemberText = chatText('loadingMembers');
     updateTypingIndicator([]);
     const cachedMessages = getCachedMessages(gid);
     if (cachedMessages.length) renderCachedMessages(gid, cachedMessages);
@@ -813,7 +889,7 @@ async function selectGroup(gid) {
         const { members } = await api('/chat/groups/' + gid + '/members');
         if (gid !== _activeGroupId) return;
         _activeMembers = members || [];
-        _topbarMemberText = _activeMembers.length + ' Mitglied' + (_activeMembers.length !== 1 ? 'er' : '');
+        _topbarMemberText = _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
         updateTypingIndicator([]);
     } catch {}
     updateCallButtons();
@@ -974,10 +1050,10 @@ function updateTypingIndicator(usernames = []) {
         return;
     }
     meta.textContent = typing.length === 1
-        ? typing[0] + ' schreibt gerade…'
+        ? typing[0] + ' ' + chatText('typingOne')
         : typing.length === 2
-            ? typing[0] + ' und ' + typing[1] + ' schreiben…'
-            : 'Mehrere Personen schreiben gerade…';
+            ? typing[0] + (chatLanguage() === 'de' ? ' und ' : ' and ') + typing[1] + ' ' + chatText('typingMany')
+            : chatText('typingGroup');
     meta.classList.add('typing');
 }
 
@@ -1390,7 +1466,10 @@ function finalizePendingMessage(tempId, realId, created_at, content, plainJson) 
 }
 
 function handleMsgKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey && _meProfile?.settings?.chatEnterToSend !== false) {
+        e.preventDefault();
+        sendMessage();
+    }
 }
 
 function handleMessageInput(el) {
@@ -2232,6 +2311,117 @@ async function sendProSticker() {
         return;
     }
     await sendMediaMessage({ t: 'pro_sticker', label: 'ehoser PRO Sticker' });
+}
+
+// ─── Chat settings ───────────────────────────────────────────────────────────
+async function openChatSettings() {
+    const settings = _meProfile?.settings || {};
+    const username = _me?.username || 'Nutzer';
+    document.getElementById('settingsUsername').textContent = username;
+    document.getElementById('settingsEmail').textContent = 'Kontodaten werden geladen…';
+    document.getElementById('settingsAvatar').textContent = username.slice(0, 2).toUpperCase();
+    document.getElementById('settingsPlan').textContent = _meProfile?.isPremium ? 'Premium' : (_meProfile?.isPro ? 'PRO' : 'Gratis');
+    document.getElementById('settingsLanguage').value = chatLanguage();
+    document.getElementById('settingsEnterToSend').checked = settings.chatEnterToSend !== false;
+    document.getElementById('settingsCompactMode').checked = Boolean(settings.chatCompactMode);
+    document.getElementById('settingsShowPreviews').checked = settings.chatShowPreviews !== false;
+    const permission = window.Notification?.permission;
+    document.getElementById('settingsNotificationState').textContent = permission === 'granted'
+        ? 'Aktiv für Nachrichten und Anrufe'
+        : permission === 'denied' ? 'Im Browser blockiert' : 'Noch nicht erlaubt';
+    const code = document.getElementById('settingsLoginCode');
+    code.textContent = '••••••';
+    code.dataset.revealed = 'false';
+    document.getElementById('settingsRevealCode').textContent = 'Anzeigen';
+    document.getElementById('settingsSaveStatus').textContent = '';
+    _chatSettingsLoginCode = null;
+    openModal('chatSettingsModal');
+
+    const [accountResult, codeResult] = await Promise.allSettled([
+        api('/me'),
+        api('/me/login-code')
+    ]);
+    if (accountResult.status === 'fulfilled') {
+        const account = accountResult.value;
+        _meProfile = account.profile || _meProfile;
+        const email = account.user?.email;
+        document.getElementById('settingsEmail').textContent = email || 'Keine E-Mail hinterlegt';
+        document.getElementById('settingsPlan').textContent = _meProfile?.isPremium ? 'Premium' : (_meProfile?.isPro ? 'PRO' : 'Gratis');
+    } else {
+        document.getElementById('settingsEmail').textContent = 'Kontodaten konnten nicht geladen werden';
+    }
+    if (codeResult.status === 'fulfilled') {
+        _chatSettingsLoginCode = codeResult.value.loginCode || null;
+    }
+}
+
+async function loadChatSettingsLoginCode() {
+    if (_chatSettingsLoginCode) return _chatSettingsLoginCode;
+    try {
+        const data = await api('/me/login-code');
+        _chatSettingsLoginCode = data.loginCode || null;
+    } catch {}
+    return _chatSettingsLoginCode;
+}
+
+async function toggleChatLoginCode() {
+    const display = document.getElementById('settingsLoginCode');
+    const button = document.getElementById('settingsRevealCode');
+    if (display.dataset.revealed === 'true') {
+        display.textContent = '••••••';
+        display.dataset.revealed = 'false';
+        button.textContent = 'Anzeigen';
+        return;
+    }
+    button.disabled = true;
+    const loginCode = await loadChatSettingsLoginCode();
+    button.disabled = false;
+    if (!loginCode) {
+        toast('Login-Code konnte nicht geladen werden.', 'err');
+        return;
+    }
+    display.textContent = loginCode;
+    display.dataset.revealed = 'true';
+    button.textContent = 'Verbergen';
+}
+
+async function copyChatLoginCode() {
+    const loginCode = await loadChatSettingsLoginCode();
+    if (!loginCode) {
+        toast('Login-Code konnte nicht geladen werden.', 'err');
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(loginCode);
+        toast('Login-Code kopiert.', 'ok');
+    } catch {
+        toast('Kopieren wurde vom Browser blockiert.', 'err');
+    }
+}
+
+async function saveChatSettings() {
+    const button = document.getElementById('settingsSaveButton');
+    const status = document.getElementById('settingsSaveStatus');
+    button.disabled = true;
+    status.className = 'status-msg';
+    status.textContent = 'Wird gespeichert…';
+    try {
+        const data = await api('/me/settings', 'PUT', {
+            language: document.getElementById('settingsLanguage').value,
+            chatEnterToSend: document.getElementById('settingsEnterToSend').checked,
+            chatCompactMode: document.getElementById('settingsCompactMode').checked,
+            chatShowPreviews: document.getElementById('settingsShowPreviews').checked
+        });
+        _meProfile = data.profile || _meProfile;
+        applyChatPreferences();
+        status.textContent = '✓ Gespeichert';
+        toast('Einstellungen gespeichert.', 'ok');
+    } catch (error) {
+        status.className = 'status-msg error';
+        status.textContent = error.message || 'Speichern fehlgeschlagen';
+    } finally {
+        button.disabled = false;
+    }
 }
 
 // ─── Groups: New ─────────────────────────────────────────────────────────────

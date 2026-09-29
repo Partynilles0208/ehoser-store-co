@@ -83,20 +83,21 @@
         <span class="brand-sub">Chat</span>
       </div>
       <div class="sidebar-head-actions">
+        <button id="chatSettingsButton" type="button" onclick="openChatSettings()" aria-label="Einstellungen öffnen" title="Einstellungen">⚙</button>
         <button type="button" onclick="openNewGroupModal()" aria-label="Neuen Chat erstellen" title="Neuer Chat">＋</button>
       </div>
     </div>
-    <label class="chat-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Chats durchsuchen" oninput="filterChatGroups(this.value)" aria-label="Chats durchsuchen"></label>
-    <div class="sidebar-section-title">Chats</div>
+    <label class="chat-search"><span aria-hidden="true">⌕</span><input id="chatSearchInput" type="search" placeholder="Chats durchsuchen" oninput="filterChatGroups(this.value)" aria-label="Chats durchsuchen"></label>
+    <div id="chatListTitle" class="sidebar-section-title">Chats</div>
     <div id="groupList" class="group-list">
       <p class="empty-hint">Noch keine Chats.<br>Tippe oben auf ＋.</p>
     </div>
     <div class="sidebar-footer">
       <a class="btn-group-call-app" href="../group-call/">
         <span>📹</span>
-        <span><strong>Gruppenanruf</strong><small>Mit mehreren sprechen</small></span>
+        <span><strong id="groupCallTitle">Gruppenanruf</strong><small id="groupCallSubtitle">Mit mehreren sprechen</small></span>
       </a>
-      <div class="sidebar-account"><span id="sidebarMe" class="sidebar-me"></span><button type="button" onclick="logoutChat()">Abmelden</button></div>
+      <div class="sidebar-account"><span id="sidebarMe" class="sidebar-me"></span><button id="chatLogoutButton" type="button" onclick="logoutChat()">Abmelden</button></div>
     </div>
   </aside>
 
@@ -109,8 +110,8 @@
         <div class="empty-logo">E</div>
         <span class="empty-wordmark">ehoser</span>
       </div>
-      <p class="empty-hint-big">Wähle einen Chat aus<br>oder starte einen neuen.</p>
-      <span class="empty-chat-note">Nachrichten, Bilder und Anrufe</span>
+      <p id="emptyChatHint" class="empty-hint-big">Wähle einen Chat aus<br>oder starte einen neuen.</p>
+      <span id="emptyChatNote" class="empty-chat-note">Nachrichten, Bilder und Anrufe</span>
     </div>
 
     <!-- Active Chat -->
@@ -330,6 +331,75 @@
     <div id="amStatus" class="status-msg"></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal('addMemberModal')">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Chat-Einstellungen ─────────────────────────────────────────── -->
+<div id="chatSettingsModal" class="modal-overlay" style="display:none" onclick="closeIfOverlay(event,'chatSettingsModal')">
+  <div class="modal chat-settings-modal">
+    <div class="modal-head">
+      <div>
+        <span class="settings-kicker">ehoser Chat</span>
+        <h3>Einstellungen</h3>
+      </div>
+      <button class="modal-x" type="button" onclick="closeModal('chatSettingsModal')" aria-label="Einstellungen schließen">✕</button>
+    </div>
+
+    <section class="settings-profile-card">
+      <div id="settingsAvatar" class="settings-avatar">E</div>
+      <div class="settings-profile-copy">
+        <strong id="settingsUsername">–</strong>
+        <span id="settingsEmail">Kontodaten werden geladen…</span>
+      </div>
+      <span id="settingsPlan" class="settings-plan">Gratis</span>
+    </section>
+
+    <section class="settings-section">
+      <div class="settings-section-title"><span>🔐</span><div><strong>Konto</strong><small>Dein Ersatzcode für die Anmeldung</small></div></div>
+      <div class="settings-code-row">
+        <code id="settingsLoginCode" data-revealed="false">••••••</code>
+        <button id="settingsRevealCode" type="button" onclick="toggleChatLoginCode()">Anzeigen</button>
+        <button type="button" onclick="copyChatLoginCode()">Kopieren</button>
+      </div>
+      <p class="settings-warning">Teile deinen Login-Code mit niemandem.</p>
+    </section>
+
+    <section class="settings-section">
+      <div class="settings-section-title"><span>💬</span><div><strong>Chat</strong><small>Darstellung und Bedienung</small></div></div>
+      <label class="settings-select-row" for="settingsLanguage">
+        <span><strong>Sprache</strong><small>Sprache der Chat-Oberfläche</small></span>
+        <select id="settingsLanguage">
+          <option value="de">Deutsch</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label class="settings-switch-row">
+        <span><strong>Enter sendet</strong><small>Mit Umschalt + Enter bleibt ein Zeilenumbruch möglich</small></span>
+        <input id="settingsEnterToSend" type="checkbox">
+        <span class="settings-switch" aria-hidden="true"></span>
+      </label>
+      <label class="settings-switch-row">
+        <span><strong>Kompakte Ansicht</strong><small>Mehr Chats und Nachrichten gleichzeitig sehen</small></span>
+        <input id="settingsCompactMode" type="checkbox">
+        <span class="settings-switch" aria-hidden="true"></span>
+      </label>
+      <label class="settings-switch-row">
+        <span><strong>Nachrichtenvorschau</strong><small>Letzte Nachricht in der Chatliste anzeigen</small></span>
+        <input id="settingsShowPreviews" type="checkbox">
+        <span class="settings-switch" aria-hidden="true"></span>
+      </label>
+    </section>
+
+    <section class="settings-notification-row">
+      <span aria-hidden="true">🔔</span>
+      <div><strong>Benachrichtigungen</strong><small id="settingsNotificationState">Status wird geprüft…</small></div>
+    </section>
+
+    <div class="modal-actions settings-actions">
+      <span id="settingsSaveStatus" class="status-msg" aria-live="polite"></span>
+      <button class="btn-secondary" type="button" onclick="closeModal('chatSettingsModal')">Schließen</button>
+      <button id="settingsSaveButton" class="btn-primary" type="button" onclick="saveChatSettings()">Speichern</button>
     </div>
   </div>
 </div>

@@ -545,6 +545,9 @@ function normalizeSettings(raw) {
     language: typeof src.language === 'string' ? src.language : 'de',
     design: typeof src.design === 'string' ? src.design : 'standard',
     energySaver: Boolean(src.energySaver),
+    chatEnterToSend: src.chatEnterToSend !== false,
+    chatCompactMode: Boolean(src.chatCompactMode),
+    chatShowPreviews: src.chatShowPreviews !== false,
     displayName: typeof src.displayName === 'string' ? src.displayName.trim().slice(0, 40) : '',
     avatarUrl: typeof src.avatarUrl === 'string' ? src.avatarUrl.trim().slice(0, 2048) : '',
     premiumUntil: typeof src.premiumUntil === 'string' ? src.premiumUntil : null,
@@ -1960,11 +1963,15 @@ app.put('/api/me/settings', async (req, res) => {
   if (!auth) return;
   const current = await getProfile(auth.username);
   const settings = normalizeSettings({
+    ...(current.settings || {}),
     ...(req.body || {}),
     personalization: current.settings?.personalization,
     moderation: current.settings?.moderation,
     credits: current.settings?.credits,
-    planRequests: current.settings?.planRequests
+    planRequests: current.settings?.planRequests,
+    oasisUsage: current.settings?.oasisUsage,
+    passwordHash: current.settings?.passwordHash,
+    _emailPending: current.settings?._emailPending
   });
   const profile = await upsertProfile(auth.username, { settings });
   res.json({ ok: true, profile });
