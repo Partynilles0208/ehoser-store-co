@@ -77,6 +77,7 @@ let _preferredCallSpeakerId = localStorage.getItem('ehoserCallSpeakerId') || '';
 let _chatServiceWorkerReady = null;
 let _groupCallInvitePoll = null;
 let _lastGroupCallInviteId = null;
+let _chatGroupFilter = '';
 
 const RTC_CONFIG = {
     iceServers: [
@@ -140,6 +141,7 @@ function persistMessages(groupId, messages) {
         })
         .slice(-180);
     writeChatCache('messages', cache);
+    if (_groups.length && document.getElementById('groupList')) renderGroupList();
 }
 
 function replaceCachedMessage(groupId, oldId, message) {
@@ -147,6 +149,7 @@ function replaceCachedMessage(groupId, oldId, message) {
     const list = Array.isArray(cache[groupId]) ? cache[groupId] : [];
     cache[groupId] = list.map((item) => String(item.id) === String(oldId) ? message : item).slice(-180);
     writeChatCache('messages', cache);
+    if (_groups.length && document.getElementById('groupList')) renderGroupList();
 }
 
 function prepareChatUpdateSplash() {
@@ -603,15 +606,49 @@ async function loadGroups() {
 
 function renderGroupList() {
     const el = document.getElementById('groupList');
-    if (!_groups.length) { el.innerHTML = '<p class="empty-hint">Keine Gruppen.<br>Erstelle eine neue!</p>'; return; }
-    el.innerHTML = _groups.map(g => `
+    if (!_groups.length) { el.innerHTML = '<p class="empty-hint">Noch keine Chats.<br>Tippe oben auf ＋.</p>'; return; }
+    const visibleGroups = _groups.filter((group) => String(group.name || '').toLowerCase().includes(_chatGroupFilter));
+    if (!visibleGroups.length) {
+        el.innerHTML = '<p class="empty-hint">Kein Chat gefunden.</p>';
+        return;
+    }
+    el.innerHTML = visibleGroups.map(g => {
+        const cached = getCachedMessages(g.id).filter((message) => !String(message?.id || '').startsWith('tmp-'));
+        const lastMessage = cached[cached.length - 1] || null;
+        const listPreview = getChatListPreview(lastMessage, g);
+        const listTime = lastMessage
+            ? parseServerDate(lastMessage.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+            : '';
+        return `
         <div class="group-item${_activeGroupId === g.id ? ' active' : ''}" onclick="selectGroup('${g.id}')">
             <div class="gi-avatar">${g.type === 'private' ? '👤' : '👥'}</div>
             <div class="gi-info">
-                <div class="gi-name">${esc(g.name)}</div>
-                <div class="gi-sub">${g.type === 'private' ? 'Privater Chat' : `${Number(g.member_count) || 0} Mitglieder`}</div>
+                <div class="gi-head"><div class="gi-name">${esc(g.name)}</div><time>${esc(listTime)}</time></div>
+                <div class="gi-sub">${esc(listPreview)}</div>
             </div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
+}
+
+function getChatListPreview(message, group) {
+    if (!message) return group.type === 'private' ? 'Privater Chat' : `${Number(group.member_count) || 0} Mitglieder`;
+    const stored = readStoredMessage(message.content);
+    if (stored === null) return 'Alte Nachricht';
+    const parsed = safeJsonParse(stored, { t: 'txt', v: String(stored || '') });
+    const labels = {
+        img: '📷 Foto', vid: '🎥 Video', aud: '🎤 Sprachnachricht', fw: '🎭 Face Warp',
+        file: '📎 Datei', pro_sticker: '✨ Sticker', ai_summary: '🤖 Zusammenfassung'
+    };
+    const text = parsed?.t === 'txt'
+        ? String(parsed.v || '').replace(/\s+/g, ' ').trim()
+        : (labels[parsed?.t] || 'Nachricht');
+    const sender = message.sender === _me?.username ? 'Du: ' : (group.type === 'private' ? '' : `${message.sender || ''}: `);
+    return `${sender}${text || 'Nachricht'}`;
+}
+
+function filterChatGroups(value) {
+    _chatGroupFilter = String(value || '').trim().toLowerCase();
+    renderGroupList();
 }
 
 function updateAiSummaryToggle() {
@@ -657,6 +694,10 @@ function isMessageSeen(gid, id) {
 
 async function selectGroup(gid) {
     _activeGroupId = gid;
+    const chatApp = document.getElementById('chatApp');
+    const opensMobileView = window.matchMedia?.('(max-width: 760px)').matches && !chatApp?.classList.contains('chat-open');
+    chatApp?.classList.add('chat-open');
+    if (opensMobileView) history.pushState({ ehoserChatView: true }, '', window.location.href);
     renderGroupList();
     const g = _groups.find(x => x.id === gid);
     if (!g) return;
@@ -665,6 +706,7 @@ async function selectGroup(gid) {
     const ac = document.getElementById('activeChat');
     ac.style.display = 'flex';
     document.getElementById('topbarName').textContent = g.name;
+    document.getElementById('topbarGroupIcon').textContent = g.type === 'private' ? '👤' : '👥';
     document.getElementById('topbarMeta').textContent = 'Mitglieder werden geladen…';
     const cachedMessages = getCachedMessages(gid);
     if (cachedMessages.length) renderCachedMessages(gid, cachedMessages);
@@ -682,6 +724,20 @@ async function selectGroup(gid) {
     document.getElementById('msgInput').focus();
     updateAiSummaryToggle();
 }
+
+function closeMobileChat() {
+    if (history.state?.ehoserChatView) {
+        history.back();
+        return;
+    }
+    document.getElementById('chatApp')?.classList.remove('chat-open');
+    document.getElementById('msgInput')?.blur();
+}
+
+window.addEventListener('popstate', () => {
+    document.getElementById('chatApp')?.classList.remove('chat-open');
+    document.getElementById('msgInput')?.blur();
+});
 
 function updateCallButtons() {
     const supported = Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia);
@@ -743,7 +799,7 @@ async function loadMessages(gid, initial) {
                 if (existingEl.dataset.stored !== m.content) {
                     existingEl.dataset.stored = m.content;
                     existingEl.dataset.plain = plain ? encodeURIComponent(plain) : '';
-                    const bubble = existingEl.querySelector('.msg-bubble');
+                    const bubble = existingEl.querySelector('.msg-content') || existingEl.querySelector('.msg-bubble');
                     try {
                         const pj = safeJsonParse(plain, { t: 'txt', v: String(plain || '') });
                         if (pj && pj.t === 'txt') bubble.innerHTML = esc(pj.v || '').replace(/\n/g, '<br>');
@@ -789,9 +845,7 @@ function appendMessage(m, plainJson) {
     if (m?.id && _activeGroupId && isMessageSeen(_activeGroupId, m.id)) return;
     const own = m.sender === _me?.username;
     const ts = parseServerDate(m.created_at || Date.now());
-    const dateStr = ts.toLocaleDateString('de-DE');
     const timeStr = ts.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
-    const time = dateStr + ' ' + timeStr;
     let content = '';
     if (plainJson === null) {
         content = '<span class="decrypt-err">Alte verschlüsselte Nachricht</span>';
@@ -801,6 +855,7 @@ function appendMessage(m, plainJson) {
     }
     const row = document.createElement('div');
     row.className = 'msg-row' + (own ? ' own' : '');
+    row.dataset.dateKey = `${ts.getFullYear()}-${ts.getMonth()}-${ts.getDate()}`;
     const senderName = m.sender || 'ehoser AI';
     const isSenderPro = senderName !== 'ehoser AI' && _proBadgeCache[senderName]?.isPro;
     const senderBadge = isSenderPro ? '<span class="msg-pro-badge">⭐ PRO</span>' : '';
@@ -811,9 +866,15 @@ function appendMessage(m, plainJson) {
         <div class="${avatarClass}">${avatarText}</div>
         <div class="msg-body">
             ${(!own && senderName !== 'ehoser AI') ? '<span class="' + senderClass + '">' + esc(senderName) + senderBadge + '</span>' : ''}
-            <div class="msg-bubble">${content}</div>
-            <span class="msg-time">${time}</span>
+            <div class="msg-bubble"><div class="msg-content">${content}</div><span class="msg-meta"><span class="msg-time">${timeStr}</span>${own ? '<span class="msg-ticks" aria-label="Zugestellt">✓✓</span>' : ''}</span></div>
         </div>`;
+    const lastVisibleMessage = area.querySelector('.msg-row:last-of-type');
+    if (!lastVisibleMessage || lastVisibleMessage.dataset.dateKey !== row.dataset.dateKey) {
+        const separator = document.createElement('div');
+        separator.className = 'msg-date';
+        separator.textContent = formatMessageDate(ts);
+        area.appendChild(separator);
+    }
     // attach metadata for future updates
     if (m?.id && !String(m.id).startsWith('tmp-')) {
         row.dataset.msgid = String(m.id);
@@ -834,7 +895,7 @@ function appendMessage(m, plainJson) {
     const pendingEls = area.querySelectorAll('[data-tempid]');
     for (const pe of pendingEls) {
         try {
-            const pb = pe.querySelector('.msg-bubble')?.innerHTML || '';
+            const pb = pe.querySelector('.msg-content')?.innerHTML || '';
             const pSenderOwn = pe.classList.contains('own');
             if (pb === content && pSenderOwn === own) {
                 // upgrade pending element
@@ -845,7 +906,7 @@ function appendMessage(m, plainJson) {
                 pe.removeAttribute('data-tempid');
                 pe.classList.remove('pending');
                 // update time (include date)
-                const timeEl = pe.querySelector('.msg-time'); if (timeEl) timeEl.textContent = time;
+                const timeEl = pe.querySelector('.msg-time'); if (timeEl) timeEl.textContent = timeStr;
                 if (_activeGroupId && m.id) markMessageSeen(_activeGroupId, m.id);
                 if (tempKey) delete _pendingMessages[tempKey];
                 return;
@@ -865,6 +926,16 @@ function appendMessage(m, plainJson) {
     } catch (e) {}
     area.appendChild(row);
     if (m?.id && _activeGroupId) markMessageSeen(_activeGroupId, m.id);
+}
+
+function formatMessageDate(date) {
+    const current = new Date();
+    const today = new Date(current.getFullYear(), current.getMonth(), current.getDate());
+    const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dayDifference = Math.round((today - target) / 86400000);
+    if (dayDifference === 0) return 'Heute';
+    if (dayDifference === 1) return 'Gestern';
+    return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function renderContent(p) {
@@ -1017,7 +1088,7 @@ async function editMessage(msgId, newText, row) {
         // Update DOM silently
         row.dataset.stored = storedContent;
         row.dataset.plain = encodeURIComponent(JSON.stringify(plainObj));
-        const bubble = row.querySelector('.msg-bubble'); if (bubble) bubble.innerHTML = esc(plainObj.v).replace(/\n/g, '<br>');
+        const content = row.querySelector('.msg-content'); if (content) content.innerHTML = esc(plainObj.v).replace(/\n/g, '<br>');
         const cached = getCachedMessages(gid).map((message) => String(message.id) === String(msgId) ? { ...message, content: storedContent } : message);
         const allCache = readChatCache('messages', {});
         allCache[gid] = cached;
@@ -1113,10 +1184,8 @@ function finalizePendingMessage(tempId, realId, created_at, content, plainJson) 
             el.removeAttribute('data-tempid');
             el.classList.remove('pending');
             const ts2 = parseServerDate(created_at || Date.now());
-            const dateStr2 = ts2.toLocaleDateString('de-DE');
             const timeStr2 = ts2.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
-            const timeFull = dateStr2 + ' ' + timeStr2;
-            const timeEl = el.querySelector('.msg-time'); if (timeEl) timeEl.textContent = timeFull;
+            const timeEl = el.querySelector('.msg-time'); if (timeEl) timeEl.textContent = timeStr2;
             if (_activeGroupId && realId) markMessageSeen(_activeGroupId, realId);
             delete _pendingMessages[tempId];
             return;
