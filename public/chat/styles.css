@@ -369,6 +369,7 @@ body {
 .topbar-group-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: #6a7175; font-size: 1.12rem; }
 .topbar-name { font-family: var(--font); font-weight: 600; font-size: .98rem; color: #e9edef; }
 .topbar-meta { font-size: .75rem; color: var(--muted); }
+.topbar-meta.typing { color: #25d366; font-weight: 600; }
 .chat-topbar-right { display: flex; align-items: center; gap: 8px; }
 .call-icon-btn {
     width: 38px; height: 38px; padding: 0; border-radius: 50%;
@@ -612,7 +613,8 @@ body {
 .msg-row.send-failed .msg-bubble::after { content: " • Senden fehlgeschlagen"; color: #ff7b7b; }
 
 .msg-time { font-size: .62rem; line-height: 1; color: #8696a0; }
-.msg-ticks { color: #53bdeb; font-size: .68rem; letter-spacing: -.2em; padding-right: .2em; }
+.msg-ticks { color: #8696a0; font-size: .68rem; letter-spacing: -.2em; padding-right: .2em; }
+.msg-ticks.read { color: #53bdeb; }
 .decrypt-err { font-size: .78rem; color: #7a4040; font-style: italic; }
 
 /* ── Media messages ─────────────────────────────────────────────────────── */

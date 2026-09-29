@@ -191,7 +191,8 @@
         <textarea id="msgInput" class="msg-input" rows="1"
           placeholder="Nachricht…"
           onkeydown="handleMsgKey(event)"
-          oninput="autoResize(this)"></textarea>
+          oninput="handleMessageInput(this)"
+          onblur="stopChatTyping()"></textarea>
 
         <!-- Send -->
         <div id="sendBtnWrap">
