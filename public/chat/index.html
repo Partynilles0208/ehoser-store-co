@@ -89,19 +89,20 @@
         <span class="brand-name">ehoser</span>
         <span class="brand-sub">Chat</span>
       </div>
+      <div class="sidebar-head-actions">
+        <button type="button" onclick="openNewGroupModal()" aria-label="Neuen Chat erstellen" title="Neuer Chat">＋</button>
+      </div>
     </div>
-    <div class="sidebar-section-title">Gruppen</div>
+    <label class="chat-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Chats durchsuchen" oninput="filterChatGroups(this.value)" aria-label="Chats durchsuchen"></label>
+    <div class="sidebar-section-title">Chats</div>
     <div id="groupList" class="group-list">
-      <p class="empty-hint">Keine Gruppen.<br>Erstelle eine neue!</p>
+      <p class="empty-hint">Noch keine Chats.<br>Tippe oben auf ＋.</p>
     </div>
     <div class="sidebar-footer">
       <a class="btn-group-call-app" href="../group-call/">
         <span>📹</span>
         <span><strong>Gruppenanruf</strong><small>Mit mehreren sprechen</small></span>
       </a>
-      <button class="btn-new-group" onclick="openNewGroupModal()">
-        <span class="new-group-icon">＋</span> Neue Gruppe
-      </button>
       <div class="sidebar-account"><span id="sidebarMe" class="sidebar-me"></span><button type="button" onclick="logoutChat()">Abmelden</button></div>
     </div>
   </aside>
@@ -115,7 +116,7 @@
         <div class="empty-logo">E</div>
         <span class="empty-wordmark">ehoser</span>
       </div>
-      <p class="empty-hint-big">Wähle eine Gruppe aus<br>oder erstelle eine neue.</p>
+      <p class="empty-hint-big">Wähle einen Chat aus<br>oder starte einen neuen.</p>
       <span class="empty-chat-note">Nachrichten, Bilder und Anrufe</span>
     </div>
 
@@ -125,7 +126,8 @@
       <!-- Topbar -->
       <div class="chat-topbar">
         <div class="chat-topbar-left">
-          <span class="topbar-group-icon">👥</span>
+          <button class="mobile-back-btn" type="button" onclick="closeMobileChat()" aria-label="Zur Chatliste">‹</button>
+          <span id="topbarGroupIcon" class="topbar-group-icon">👥</span>
           <div>
             <div id="topbarName" class="topbar-name"></div>
             <div id="topbarMeta" class="topbar-meta"></div>
@@ -139,8 +141,8 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6.8A1.8 1.8 0 0 0 13.2 5H4.8A1.8 1.8 0 0 0 3 6.8v10.4A1.8 1.8 0 0 0 4.8 19h8.4a1.8 1.8 0 0 0 1.8-1.8v-1.7l4.1 2.55a1.25 1.25 0 0 0 1.9-1.06V7.01a1.25 1.25 0 0 0-1.9-1.06Z"/></svg>
           </button>
           <button id="chatAiSummaryToggle" class="topbar-btn topbar-btn-ghost ai-summary-toggle" onclick="toggleEhoserAiSummary()">🤖 ehoser AI</button>
-          <button class="topbar-btn" onclick="openAddMemberModal()">+ Mitglied</button>
-          <button class="topbar-btn topbar-btn-ghost" onclick="openMembersModal()">👥 Mitglieder</button>
+          <button class="topbar-btn topbar-icon-btn" onclick="openAddMemberModal()" title="Mitglied hinzufügen" aria-label="Mitglied hinzufügen">＋</button>
+          <button class="topbar-btn topbar-btn-ghost topbar-icon-btn" onclick="openMembersModal()" title="Mitglieder anzeigen" aria-label="Mitglieder anzeigen">👥</button>
         </div>
       </div>
 
