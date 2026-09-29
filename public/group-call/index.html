@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="laptop.css">
 </head>
 <body>
   <div id="loginWall" class="center-wall" style="display:none">
@@ -45,10 +46,18 @@
   <section id="callRoom" class="call-room" style="display:none">
     <header class="call-header"><div><span class="live-dot"></span><strong>Gruppenanruf</strong><small id="roomStatus">Verbindung wird aufgebaut …</small></div><button onclick="copyRoomId()">Raum-ID kopieren</button></header>
     <div id="videoGrid" class="video-grid"></div>
+    <div id="groupDevicePanel" class="device-panel" style="display:none" aria-label="Anrufgeräte auswählen">
+      <div class="device-panel-head"><strong>Laptop-Geräte</strong><button type="button" onclick="toggleDevicePanel(false)" aria-label="Gerätemenü schließen">✕</button></div>
+      <label>Kamera<select id="groupCameraSelect" onchange="selectGroupCamera(this.value)"></select></label>
+      <label>Mikrofon<select id="groupMicSelect" onchange="selectGroupMicrophone(this.value)"></select></label>
+      <label id="groupSpeakerRow">Lautsprecher<select id="groupSpeakerSelect" onchange="selectGroupSpeaker(this.value)"></select></label>
+      <p>M = Stumm · V = Kamera · C = Kamera wechseln</p>
+    </div>
     <div class="call-controls">
       <button id="muteBtn" onclick="toggleMute()"><span>🎙️</span><small>Stumm</small></button>
       <button id="cameraBtn" onclick="toggleCamera()"><span>📷</span><small>Kamera an</small></button>
       <button id="switchCameraBtn" onclick="switchCamera()" aria-label="Zwischen Vorder- und Rückkamera wechseln" title="Kamera wechseln" style="display:none"><span>🔄</span><small>Drehen</small></button>
+      <button id="groupDeviceBtn" onclick="toggleDevicePanel()" aria-label="Kamera, Mikrofon und Lautsprecher auswählen" title="Laptop-Geräte auswählen"><span>⚙️</span><small>Geräte</small></button>
       <button onclick="toggleFullscreen()"><span>⛶</span><small>Vollbild</small></button>
       <button class="hangup" onclick="leaveRoom()"><span>☎</span><small>Auflegen</small></button>
     </div>

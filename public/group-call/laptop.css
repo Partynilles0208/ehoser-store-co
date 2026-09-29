@@ -1,0 +1,66 @@
+.device-panel {
+  position: absolute;
+  z-index: 8;
+  left: 50%;
+  bottom: 120px;
+  width: min(420px, calc(100% - 28px));
+  transform: translateX(-50%);
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 20px;
+  background: rgba(17, 27, 33, .97);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+  backdrop-filter: blur(20px);
+}
+
+.device-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.device-panel-head strong { font: 800 1rem "Space Grotesk", sans-serif; }
+.device-panel-head button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: #2a3942;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.device-panel label {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  color: #aebac1;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.device-panel select {
+  width: 100%;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font: 600 .85rem Outfit, sans-serif;
+}
+
+.device-panel p {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: .72rem;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .device-panel { bottom: 108px; }
+  .call-controls { justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+  .call-controls::-webkit-scrollbar { display: none; }
+  .call-controls button { width: 56px; min-width: 56px; }
+}

@@ -66,6 +66,11 @@ let _finishingCall = false;
 let _callPollBusy = false;
 let _callFacingMode = 'user';
 let _cameraSwitchBusy = false;
+let _callVideoInputCount = 0;
+let _callDevicePanelOpen = false;
+let _preferredCallCameraId = localStorage.getItem('ehoserCallCameraId') || '';
+let _preferredCallMicId = localStorage.getItem('ehoserCallMicId') || '';
+let _preferredCallSpeakerId = localStorage.getItem('ehoserCallSpeakerId') || '';
 let _chatServiceWorkerReady = null;
 let _groupCallInvitePoll = null;
 let _lastGroupCallInviteId = null;
@@ -1058,6 +1063,9 @@ function openCallUi(peerName, status, withLocalVideo = false) {
     document.getElementById('callTimer').textContent = '';
     overlay.classList.remove('video-active');
     overlay.style.display = 'flex';
+    _callDevicePanelOpen = false;
+    document.getElementById('callDevicePanel').style.display = 'none';
+    document.getElementById('deviceSettingsCallBtn')?.classList.remove('active');
     document.getElementById('localVideo').classList.toggle('visible', withLocalVideo);
     updateCallControlState();
 }
@@ -1091,7 +1099,7 @@ function updateCallControlState() {
         localVideo.classList.toggle('rear-camera', _callFacingMode === 'environment');
     }
     if (switchButton) {
-        switchButton.style.display = videoTrack?.enabled ? 'flex' : 'none';
+        switchButton.style.display = videoTrack?.enabled && _callVideoInputCount > 1 ? 'flex' : 'none';
         switchButton.disabled = _cameraSwitchBusy || !videoTrack?.enabled;
         switchButton.classList.toggle('switching', _cameraSwitchBusy);
         const label = switchButton.querySelector('small');
@@ -1120,10 +1128,28 @@ function startCallTimer() {
 }
 
 async function getCallMedia(withVideo) {
-    return navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: withVideo ? cameraVideoConstraints(_callFacingMode) : false
-    });
+    try {
+        return await navigator.mediaDevices.getUserMedia({
+            audio: callAudioConstraints(_preferredCallMicId),
+            video: withVideo ? cameraVideoConstraints(_callFacingMode, _preferredCallCameraId) : false
+        });
+    } catch (error) {
+        if (!['NotFoundError', 'OverconstrainedError'].includes(error?.name) || (!_preferredCallMicId && !_preferredCallCameraId)) throw error;
+        _preferredCallMicId = '';
+        _preferredCallCameraId = '';
+        localStorage.removeItem('ehoserCallMicId');
+        localStorage.removeItem('ehoserCallCameraId');
+        return navigator.mediaDevices.getUserMedia({
+            audio: callAudioConstraints(),
+            video: withVideo ? cameraVideoConstraints(_callFacingMode) : false
+        });
+    }
+}
+
+function callAudioConstraints(deviceId = '') {
+    const constraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    if (deviceId) constraints.deviceId = { exact: deviceId };
+    return constraints;
 }
 
 function cameraVideoConstraints(facingMode, deviceId = '') {
@@ -1170,6 +1196,118 @@ async function acquireOtherCamera(oldTrack, facingMode) {
     return { track, stream };
 }
 
+function fillCallDeviceSelect(selectId, devices, selectedId, fallbackLabel) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.replaceChildren();
+    devices.forEach((device, index) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `${fallbackLabel} ${index + 1}`;
+        select.appendChild(option);
+    });
+    if (selectedId && devices.some((device) => device.deviceId === selectedId)) select.value = selectedId;
+}
+
+async function refreshCallDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter((device) => device.kind === 'videoinput');
+        const microphones = devices.filter((device) => device.kind === 'audioinput');
+        const speakers = devices.filter((device) => device.kind === 'audiooutput');
+        _callVideoInputCount = cameras.length;
+        const currentCamera = _localCallStream?.getVideoTracks?.()[0]?.getSettings?.().deviceId || _preferredCallCameraId;
+        const currentMic = _localCallStream?.getAudioTracks?.()[0]?.getSettings?.().deviceId || _preferredCallMicId;
+        fillCallDeviceSelect('callCameraSelect', cameras, currentCamera, 'Kamera');
+        fillCallDeviceSelect('callMicSelect', microphones, currentMic, 'Mikrofon');
+        fillCallDeviceSelect('callSpeakerSelect', speakers, _preferredCallSpeakerId, 'Lautsprecher');
+        const speakerSupported = typeof document.getElementById('remoteAudio')?.setSinkId === 'function';
+        document.getElementById('callSpeakerRow').style.display = speakerSupported && speakers.length ? 'grid' : 'none';
+        updateCallControlState();
+    } catch {}
+}
+
+function toggleCallDevicePanel(force) {
+    if (!_currentCall) return;
+    _callDevicePanelOpen = typeof force === 'boolean' ? force : !_callDevicePanelOpen;
+    document.getElementById('callDevicePanel').style.display = _callDevicePanelOpen ? 'block' : 'none';
+    document.getElementById('deviceSettingsCallBtn')?.classList.toggle('active', _callDevicePanelOpen);
+    if (_callDevicePanelOpen) refreshCallDevices();
+}
+
+async function selectCallCamera(deviceId) {
+    if (!deviceId || !_localCallStream || !_peerConnection) return;
+    const oldTrack = _localCallStream.getVideoTracks()[0];
+    if (!oldTrack) {
+        toast('Schalte zuerst die Kamera ein.', 'err');
+        return;
+    }
+    try {
+        let newTrack = oldTrack;
+        try { await oldTrack.applyConstraints(cameraVideoConstraints('user', deviceId)); } catch {}
+        if (oldTrack.getSettings?.().deviceId !== deviceId) {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints('user', deviceId), audio: false });
+            newTrack = stream.getVideoTracks()[0];
+            const sender = _peerConnection.getSenders().find((item) => item.track?.kind === 'video');
+            if (!newTrack || !sender) throw new Error('Kamera konnte nicht übernommen werden.');
+            await sender.replaceTrack(newTrack);
+            _localCallStream.removeTrack(oldTrack);
+            _localCallStream.addTrack(newTrack);
+            oldTrack.stop();
+        }
+        _preferredCallCameraId = deviceId;
+        localStorage.setItem('ehoserCallCameraId', deviceId);
+        _callFacingMode = newTrack.getSettings?.().facingMode || 'user';
+        const localVideo = document.getElementById('localVideo');
+        localVideo.srcObject = _localCallStream;
+        await localVideo.play().catch(() => {});
+        updateCallControlState();
+        await refreshCallDevices();
+        setCallStatus('Kamera gewechselt');
+    } catch (error) {
+        toast(error?.message || 'Kamera konnte nicht gewechselt werden.', 'err');
+    }
+}
+
+async function selectCallMicrophone(deviceId) {
+    if (!deviceId || !_localCallStream || !_peerConnection) return;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: callAudioConstraints(deviceId), video: false });
+        const newTrack = stream.getAudioTracks()[0];
+        const oldTrack = _localCallStream.getAudioTracks()[0];
+        const sender = _peerConnection.getSenders().find((item) => item.track?.kind === 'audio');
+        if (!newTrack || !sender) throw new Error('Mikrofon konnte nicht übernommen werden.');
+        newTrack.enabled = oldTrack?.enabled ?? true;
+        await sender.replaceTrack(newTrack);
+        if (oldTrack) {
+            _localCallStream.removeTrack(oldTrack);
+            oldTrack.stop();
+        }
+        _localCallStream.addTrack(newTrack);
+        _preferredCallMicId = deviceId;
+        localStorage.setItem('ehoserCallMicId', deviceId);
+        updateCallControlState();
+        await refreshCallDevices();
+        setCallStatus('Mikrofon gewechselt');
+    } catch (error) {
+        toast(error?.message || 'Mikrofon konnte nicht gewechselt werden.', 'err');
+    }
+}
+
+async function selectCallSpeaker(deviceId) {
+    if (!deviceId) return;
+    try {
+        const outputs = [document.getElementById('remoteAudio'), document.getElementById('remoteVideo')];
+        await Promise.all(outputs.filter((element) => typeof element?.setSinkId === 'function').map((element) => element.setSinkId(deviceId)));
+        _preferredCallSpeakerId = deviceId;
+        localStorage.setItem('ehoserCallSpeakerId', deviceId);
+        setCallStatus('Lautsprecher gewechselt');
+    } catch {
+        toast('Dieser Browser kann den Lautsprecher nicht wechseln.', 'err');
+    }
+}
+
 function createPeerConnection() {
     if (_peerConnection) {
         try { _peerConnection.close(); } catch {}
@@ -1200,6 +1338,10 @@ function createPeerConnection() {
         remoteVideo.muted = true;
         remoteVideo.srcObject = _remoteCallStream;
         remoteAudio.srcObject = _remoteCallStream;
+        if (_preferredCallSpeakerId) {
+            remoteAudio.setSinkId?.(_preferredCallSpeakerId).catch(() => {});
+            remoteVideo.setSinkId?.(_preferredCallSpeakerId).catch(() => {});
+        }
         remoteVideo.play().catch(() => {});
         remoteAudio.play().catch(() => {});
         updateRemoteVideoState();
@@ -1251,6 +1393,7 @@ async function startCall(mediaType = 'audio') {
     try {
         _localCallStream = await getCallMedia(mediaType === 'video');
         document.getElementById('localVideo').srcObject = _localCallStream;
+        refreshCallDevices();
         const peer = createPeerConnection();
         _localCallStream.getTracks().forEach((track) => peer.addTrack(track, _localCallStream));
         updateCallControlState();
@@ -1341,6 +1484,7 @@ async function acceptIncomingCall() {
     try {
         _localCallStream = await getCallMedia(withVideo);
         document.getElementById('localVideo').srcObject = _localCallStream;
+        refreshCallDevices();
         _currentCall = { ...call, role: 'callee', peerName: call.caller, mediaType: call.media_type, remoteVideoEnabled: withVideo };
         _lastCallSignalId = 0;
         _finishingCall = false;
@@ -1458,7 +1602,15 @@ async function toggleCallVideo() {
     let track = _localCallStream?.getVideoTracks?.()[0];
     try {
         if (!track) {
-            const cameraStream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints(_callFacingMode), audio: false });
+            let cameraStream;
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints(_callFacingMode, _preferredCallCameraId), audio: false });
+            } catch (error) {
+                if (!['NotFoundError', 'OverconstrainedError'].includes(error?.name) || !_preferredCallCameraId) throw error;
+                _preferredCallCameraId = '';
+                localStorage.removeItem('ehoserCallCameraId');
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints(_callFacingMode), audio: false });
+            }
             track = cameraStream.getVideoTracks()[0];
             _localCallStream.addTrack(track);
             _peerConnection.addTrack(track, _localCallStream);
@@ -1471,6 +1623,7 @@ async function toggleCallVideo() {
         }
         await postCallSignal('media', { video: Boolean(track.enabled) });
         updateCallControlState();
+        refreshCallDevices();
     } catch (error) {
         toast(error?.name === 'NotAllowedError' ? 'Kamera wurde nicht erlaubt.' : 'Kamera konnte nicht gestartet werden.', 'err');
     }
@@ -1496,10 +1649,13 @@ async function switchCallCamera() {
             installed = true;
         }
         _callFacingMode = nextFacingMode;
+        _preferredCallCameraId = replacement.track.getSettings?.().deviceId || _preferredCallCameraId;
+        if (_preferredCallCameraId) localStorage.setItem('ehoserCallCameraId', _preferredCallCameraId);
         const localVideo = document.getElementById('localVideo');
         localVideo.srcObject = _localCallStream;
         await localVideo.play().catch(() => {});
         postCallSignal('media', { video: true }).catch(() => {});
+        refreshCallDevices();
         setCallStatus(nextFacingMode === 'environment' ? 'Rückkamera aktiv' : 'Vorderkamera aktiv');
     } catch (error) {
         if (!installed && replacement?.track && replacement.track !== oldTrack) replacement.track.stop();
@@ -1536,6 +1692,9 @@ async function endCallLocally(message = 'Anruf beendet.') {
     _lastCallSignalId = 0;
     _callFacingMode = 'user';
     _cameraSwitchBusy = false;
+    _callDevicePanelOpen = false;
+    document.getElementById('callDevicePanel').style.display = 'none';
+    document.getElementById('deviceSettingsCallBtn')?.classList.remove('active');
     document.getElementById('localVideo').srcObject = null;
     document.getElementById('remoteVideo').srcObject = null;
     document.getElementById('remoteAudio').srcObject = null;
@@ -1548,6 +1707,29 @@ async function endCallLocally(message = 'Anruf beendet.') {
     updateCallControlState();
     updateCallButtons();
 }
+
+document.addEventListener('keydown', (event) => {
+    if (!_currentCall || document.getElementById('callOverlay')?.style.display === 'none') return;
+    const target = event.target;
+    if (target?.matches?.('input, textarea, select') || target?.isContentEditable) return;
+    if (event.key === 'Escape' && _callDevicePanelOpen) {
+        event.preventDefault();
+        toggleCallDevicePanel(false);
+    } else if (event.key.toLowerCase() === 'm') {
+        event.preventDefault();
+        toggleCallMute();
+    } else if (event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        toggleCallVideo();
+    } else if (event.key.toLowerCase() === 'c' && _callVideoInputCount > 1) {
+        event.preventDefault();
+        switchCallCamera();
+    }
+});
+
+navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+    if (_currentCall) refreshCallDevices();
+});
 
 // ─── FaceWarp Picker ──────────────────────────────────────────────────────────
 function openFacewarpPicker() {
