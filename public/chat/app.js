@@ -4,9 +4,26 @@ const API = API_ORIGIN + '/api';
 const CHAT_CACHE_VERSION = 'v3';
 const CHAT_UPDATE_VERSION = '2026-09-chat-refresh';
 const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
+const IS_EHOSER_ANDROID_APP = Boolean(window.EhoserAndroid && typeof window.EhoserAndroid.isNativeApp === 'function');
 let _chatGoogleClientId = '';
 let _chatGoogleInitialized = false;
 let _chatGoogleConfigLoading = false;
+
+function hasChatNotificationPermission() {
+    if (IS_EHOSER_ANDROID_APP) {
+        try { return Boolean(window.EhoserAndroid.hasNotificationPermission()); } catch { return false; }
+    }
+    return 'Notification' in window && Notification.permission === 'granted';
+}
+
+function requestNativeChatNotifications() {
+    try { window.EhoserAndroid?.requestNotificationPermission?.(); } catch {}
+}
+
+if (IS_EHOSER_ANDROID_APP) {
+    document.documentElement.classList.add('ehoser-android-app');
+    document.addEventListener('DOMContentLoaded', () => document.body?.classList.add('ehoser-android-app'), { once: true });
+}
 
 // Robust date parser: server may return UTC timestamps without timezone
 function parseServerDate(s) {
@@ -429,11 +446,11 @@ function logoutChat() {
         prepareChatAuthWall('Keine Verbindung. Bitte überprüfe dein Internet und versuche es erneut.');
         return;
     }
-    if (!('Notification' in window)) {
+    if (!IS_EHOSER_ANDROID_APP && !('Notification' in window)) {
         showNotificationWall('Dein Browser unterstützt keine Benachrichtigungen. Öffne den Chat bitte in Chrome, Edge oder Firefox.');
         return;
     }
-    if (Notification.permission !== 'granted') {
+    if (!hasChatNotificationPermission()) {
         showNotificationWall(window.Notification?.permission === 'denied'
             ? 'Benachrichtigungen sind blockiert. Erlaube sie in den Website-Einstellungen und lade die Seite neu.'
             : '');
@@ -454,7 +471,7 @@ async function finishChatBoot() {
         if (proStickerItem) proStickerItem.style.display = '';
     }
     _summaryAiEnabled = localStorage.getItem('ehoserAiSummary') === '1' && Boolean(_meProfile?.isPro);
-    if ('serviceWorker' in navigator) {
+    if (!IS_EHOSER_ANDROID_APP && 'serviceWorker' in navigator) {
         _chatServiceWorkerReady = navigator.serviceWorker.register('service-worker.js')
             .then(() => navigator.serviceWorker.ready)
             .catch(() => null);
@@ -567,14 +584,27 @@ function showNotificationWall(message = '') {
     const button = document.getElementById('notificationEnableBtn');
     if (help) help.textContent = message;
     if (button) {
-        const unsupported = !('Notification' in window);
+        const unsupported = !IS_EHOSER_ANDROID_APP && !('Notification' in window);
         button.disabled = unsupported;
-        button.textContent = window.Notification?.permission === 'denied' ? 'Erneut prüfen' : 'Benachrichtigungen erlauben';
+        button.textContent = IS_EHOSER_ANDROID_APP
+            ? 'Benachrichtigungen aktivieren'
+            : window.Notification?.permission === 'denied' ? 'Erneut prüfen' : 'Benachrichtigungen erlauben';
     }
 }
 
 async function enableChatNotifications() {
     const help = document.getElementById('notificationHelp');
+    if (IS_EHOSER_ANDROID_APP) {
+        if (hasChatNotificationPermission()) {
+            if (help) help.textContent = '';
+            if (_chatStarted) show('chatApp');
+            else await finishChatBoot();
+        } else {
+            if (help) help.textContent = 'Android fragt jetzt nach der Berechtigung.';
+            requestNativeChatNotifications();
+        }
+        return;
+    }
     if (!('Notification' in window)) {
         if (help) help.textContent = 'Benachrichtigungen werden von diesem Browser nicht unterstützt.';
         return;
@@ -594,9 +624,11 @@ async function enableChatNotifications() {
 }
 
 function enforceNotificationPermission() {
-    const allowed = 'Notification' in window && Notification.permission === 'granted';
+    const allowed = hasChatNotificationPermission();
     if (!allowed && _me) {
-        showNotificationWall(window.Notification?.permission === 'denied'
+        showNotificationWall(IS_EHOSER_ANDROID_APP
+            ? 'Benachrichtigungen sind in den Android-App-Einstellungen blockiert.'
+            : window.Notification?.permission === 'denied'
             ? 'Benachrichtigungen sind blockiert. Erlaube sie in den Website-Einstellungen und lade die Seite neu.'
             : 'Aktiviere Benachrichtigungen, um weiter zu chatten.');
     }
@@ -608,6 +640,12 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function notifyChat(title, body, tag, url = '/chat/') {
+    if (IS_EHOSER_ANDROID_APP) {
+        try {
+            window.EhoserAndroid.showNotification(title, body, tag, new URL(url, window.location.origin).toString());
+            return;
+        } catch {}
+    }
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     const options = { body, tag, icon: '/favicon.svg', badge: '/favicon.svg', data: { url } };
     if (_chatServiceWorkerReady) {
@@ -622,6 +660,19 @@ function notifyChat(title, body, tag, url = '/chat/') {
         notification.onclick = () => { window.focus(); notification.close(); };
     } catch {}
 }
+
+window.onEhoserAndroidNotificationPermission = async function onEhoserAndroidNotificationPermission(granted) {
+    if (!IS_EHOSER_ANDROID_APP) return;
+    const help = document.getElementById('notificationHelp');
+    if (!granted) {
+        showNotificationWall('Ohne Benachrichtigungen kann ehoser Chat nicht geöffnet werden. Erlaube sie in den Android-App-Einstellungen.');
+        if (help) help.textContent = 'Berechtigung noch nicht erlaubt.';
+        return;
+    }
+    if (help) help.textContent = '';
+    if (_chatStarted) show('chatApp');
+    else await finishChatBoot();
+};
 
 async function pollGroupCallInvites() {
     if (!_chatStarted) return;
@@ -908,6 +959,26 @@ function closeMobileChat() {
     document.getElementById('chatApp')?.classList.remove('chat-open');
     document.getElementById('msgInput')?.blur();
 }
+
+window.handleEhoserAndroidBack = function handleEhoserAndroidBack() {
+    const openModal = [...document.querySelectorAll('.modal-overlay')].find((modal) => modal.style.display !== 'none');
+    if (openModal) {
+        openModal.style.display = 'none';
+        return true;
+    }
+    const attachMenu = document.getElementById('attachMenu');
+    if (attachMenu?.style.display !== 'none') {
+        attachMenu.style.display = 'none';
+        _attachOpen = false;
+        return true;
+    }
+    const chatApp = document.getElementById('chatApp');
+    if (chatApp?.classList.contains('chat-open')) {
+        closeMobileChat();
+        return true;
+    }
+    return false;
+};
 
 window.addEventListener('popstate', () => {
     stopChatTyping();
@@ -2325,10 +2396,14 @@ async function openChatSettings() {
     document.getElementById('settingsEnterToSend').checked = settings.chatEnterToSend !== false;
     document.getElementById('settingsCompactMode').checked = Boolean(settings.chatCompactMode);
     document.getElementById('settingsShowPreviews').checked = settings.chatShowPreviews !== false;
-    const permission = window.Notification?.permission;
+    const permission = IS_EHOSER_ANDROID_APP
+        ? (hasChatNotificationPermission() ? 'granted' : 'denied')
+        : window.Notification?.permission;
     document.getElementById('settingsNotificationState').textContent = permission === 'granted'
         ? 'Aktiv für Nachrichten und Anrufe'
-        : permission === 'denied' ? 'Im Browser blockiert' : 'Noch nicht erlaubt';
+        : permission === 'denied'
+            ? (IS_EHOSER_ANDROID_APP ? 'In Android blockiert' : 'Im Browser blockiert')
+            : 'Noch nicht erlaubt';
     const code = document.getElementById('settingsLoginCode');
     code.textContent = '••••••';
     code.dataset.revealed = 'false';

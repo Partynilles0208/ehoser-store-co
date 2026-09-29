@@ -26,6 +26,18 @@ body {
     overflow: hidden;
 }
 
+/* Android APK: same chat surface, tuned for touch and system insets. */
+html.ehoser-android-app,
+body.ehoser-android-app {
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+}
+body.ehoser-android-app .chat-brand-intro small { display: none; }
+body.ehoser-android-app button,
+body.ehoser-android-app select,
+body.ehoser-android-app input,
+body.ehoser-android-app textarea { touch-action: manipulation; }
+
 .chat-brand-intro {
     position: fixed; inset: 0; z-index: 1600; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 13px; overflow: hidden;
@@ -911,6 +923,14 @@ body.chat-compact .msg-row { margin: 0; }
 }
 
 @media (max-width: 760px) {
+    body.ehoser-android-app .sidebar-brand {
+        padding-top: max(12px, env(safe-area-inset-top));
+    }
+
+    body.ehoser-android-app .input-wrap {
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+
     .chat-app {
         flex-direction: row;
         height: 100svh;
