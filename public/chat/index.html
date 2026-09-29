@@ -221,6 +221,13 @@
     <p id="callStatus">Verbindung wird aufgebaut…</p>
     <span id="callTimer" class="call-timer"></span>
   </div>
+  <div id="callDevicePanel" class="call-device-panel" style="display:none" aria-label="Anrufgeräte auswählen">
+    <div class="device-panel-head"><strong>Laptop-Geräte</strong><button type="button" onclick="toggleCallDevicePanel(false)" aria-label="Gerätemenü schließen">✕</button></div>
+    <label>Kamera<select id="callCameraSelect" onchange="selectCallCamera(this.value)"></select></label>
+    <label>Mikrofon<select id="callMicSelect" onchange="selectCallMicrophone(this.value)"></select></label>
+    <label id="callSpeakerRow">Lautsprecher<select id="callSpeakerSelect" onchange="selectCallSpeaker(this.value)"></select></label>
+    <p>M = Stumm · V = Kamera · C = Kamera wechseln</p>
+  </div>
   <div class="call-controls">
     <button id="muteCallBtn" class="call-control" onclick="toggleCallMute()" aria-label="Mikrofon stummschalten">
       <span class="control-icon">🎙️</span><small>Stumm</small>
@@ -230,6 +237,9 @@
     </button>
     <button id="switchCameraCallBtn" class="call-control camera-switch" onclick="switchCallCamera()" aria-label="Zwischen Vorder- und Rückkamera wechseln" title="Kamera wechseln" style="display:none">
       <span class="control-icon">🔄</span><small>Drehen</small>
+    </button>
+    <button id="deviceSettingsCallBtn" class="call-control" onclick="toggleCallDevicePanel()" aria-label="Kamera, Mikrofon und Lautsprecher auswählen" title="Laptop-Geräte auswählen">
+      <span class="control-icon">⚙️</span><small>Geräte</small>
     </button>
     <button class="call-control hangup" onclick="hangUpCall()" aria-label="Anruf beenden">
       <span class="control-icon">✕</span><small>Auflegen</small>

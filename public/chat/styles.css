@@ -389,6 +389,18 @@ body {
 .call-control.camera-switch .control-icon { background: rgba(0,168,132,.3); }
 .call-control.camera-switch.switching .control-icon { animation: cameraSpin .7s linear infinite; }
 @keyframes cameraSpin { to { transform: rotate(360deg); } }
+.call-device-panel {
+    position: absolute; z-index: 6; left: 50%; bottom: 126px; width: min(420px, calc(100% - 28px));
+    transform: translateX(-50%); padding: 18px; border: 1px solid rgba(255,255,255,.14);
+    border-radius: 20px; background: rgba(17,27,33,.96); color: #e9edef;
+    box-shadow: 0 24px 70px rgba(0,0,0,.55); backdrop-filter: blur(20px);
+}
+.device-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.device-panel-head strong { font: 800 1rem "Space Grotesk", sans-serif; }
+.device-panel-head button { width: 30px; height: 30px; border: 0; border-radius: 50%; background: #2a3942; color: #e9edef; cursor: pointer; }
+.call-device-panel label { display: grid; gap: 6px; margin-top: 10px; color: #aebac1; font-size: .78rem; font-weight: 700; }
+.call-device-panel select { width: 100%; height: 42px; padding: 0 10px; border: 1px solid #2a3942; border-radius: 10px; background: #202c33; color: #e9edef; font: 600 .85rem var(--font); }
+.call-device-panel p { margin-top: 12px; color: #8696a0; font-size: .72rem; text-align: center; }
 .ai-summary-toggle.active {
     background: linear-gradient(135deg, rgba(110,231,183,.18), rgba(124,58,237,.28));
     border-color: rgba(110,231,183,.45);
@@ -838,8 +850,10 @@ body {
 
     .call-icon-btn { width: 36px; height: 36px; }
     .local-video { width: 34vw; top: 14px; right: 14px; border-radius: 15px; }
-    .call-controls { gap: 8px; padding: 10px 12px; width: calc(100% - 24px); justify-content: center; }
-    .call-control { width: 64px; }
+    .call-controls { gap: 8px; padding: 10px 12px; width: calc(100% - 24px); justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+    .call-controls::-webkit-scrollbar { display: none; }
+    .call-control { width: 58px; min-width: 58px; }
     .control-icon { width: 48px; height: 48px; }
+    .call-device-panel { bottom: 112px; }
     .notification-wall-box { padding: 30px 22px; }
 }

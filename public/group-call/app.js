@@ -24,6 +24,11 @@ let lastCursor = 0;
 let userSearchTimer = null;
 let cameraFacingMode = 'user';
 let cameraSwitchBusy = false;
+let videoInputCount = 0;
+let devicePanelOpen = false;
+let preferredCameraId = localStorage.getItem('ehoserGroupCallCameraId') || '';
+let preferredMicId = localStorage.getItem('ehoserGroupCallMicId') || '';
+let preferredSpeakerId = localStorage.getItem('ehoserGroupCallSpeakerId') || '';
 const peers = new Map();
 
 function esc(value) {
@@ -166,16 +171,21 @@ async function enterRoom(room) {
   document.getElementById('lobby').style.display = 'none';
   document.getElementById('callRoom').style.display = 'flex';
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: false
-    });
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: groupAudioConstraints(preferredMicId), video: false });
+    } catch (error) {
+      if (!['NotFoundError', 'OverconstrainedError'].includes(error?.name) || !preferredMicId) throw error;
+      preferredMicId = '';
+      localStorage.removeItem('ehoserGroupCallMicId');
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: groupAudioConstraints(), video: false });
+    }
   } catch (error) {
     setRoomStatus(error.name === 'NotAllowedError' ? 'Mikrofon wurde nicht erlaubt.' : 'Mikrofon konnte nicht gestartet werden.');
     return;
   }
   renderParticipantTile(me.username, localStream, true);
   updateLocalMediaTile();
+  refreshGroupDevices();
   syncRoomParticipants(room);
   await pollRoom();
   roomPoll = setInterval(pollRoom, 1200);
@@ -244,6 +254,7 @@ function renderParticipantTile(username, stream, own = false) {
   const video = tile.querySelector('video');
   video.srcObject = stream;
   video.muted = own;
+  if (!own && preferredSpeakerId) video.setSinkId?.(preferredSpeakerId).catch(() => {});
   video.play().catch(() => {});
   tile.classList.toggle('own-camera', own);
   if (own) tile.classList.toggle('rear-camera', cameraFacingMode === 'environment');
@@ -332,10 +343,16 @@ function updateLocalMediaTile() {
   document.getElementById('cameraBtn').classList.toggle('active', camera);
   document.getElementById('cameraBtn').querySelector('small').textContent = camera ? 'Kamera aus' : 'Kamera an';
   const switchButton = document.getElementById('switchCameraBtn');
-  switchButton.style.display = camera ? 'flex' : 'none';
+  switchButton.style.display = camera && videoInputCount > 1 ? 'flex' : 'none';
   switchButton.disabled = cameraSwitchBusy || !camera;
   switchButton.classList.toggle('switching', cameraSwitchBusy);
   switchButton.querySelector('small').textContent = cameraSwitchBusy ? 'Wechsel…' : 'Drehen';
+}
+
+function groupAudioConstraints(deviceId = '') {
+  const constraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  if (deviceId) constraints.deviceId = { exact: deviceId };
+  return constraints;
 }
 
 function cameraVideoConstraints(facingMode, deviceId = '') {
@@ -380,6 +397,121 @@ async function acquireOtherCamera(oldTrack, facingMode) {
   return { track, stream };
 }
 
+function fillGroupDeviceSelect(selectId, devices, selectedId, fallbackLabel) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  select.replaceChildren();
+  devices.forEach((device, index) => {
+    const option = document.createElement('option');
+    option.value = device.deviceId;
+    option.textContent = device.label || `${fallbackLabel} ${index + 1}`;
+    select.appendChild(option);
+  });
+  if (selectedId && devices.some((device) => device.deviceId === selectedId)) select.value = selectedId;
+}
+
+async function refreshGroupDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter((device) => device.kind === 'videoinput');
+    const microphones = devices.filter((device) => device.kind === 'audioinput');
+    const speakers = devices.filter((device) => device.kind === 'audiooutput');
+    videoInputCount = cameras.length;
+    const currentCamera = localStream?.getVideoTracks?.()[0]?.getSettings?.().deviceId || preferredCameraId;
+    const currentMic = localStream?.getAudioTracks?.()[0]?.getSettings?.().deviceId || preferredMicId;
+    fillGroupDeviceSelect('groupCameraSelect', cameras, currentCamera, 'Kamera');
+    fillGroupDeviceSelect('groupMicSelect', microphones, currentMic, 'Mikrofon');
+    fillGroupDeviceSelect('groupSpeakerSelect', speakers, preferredSpeakerId, 'Lautsprecher');
+    const firstRemoteVideo = document.querySelector('.participant-tile video');
+    const speakerSupported = typeof firstRemoteVideo?.setSinkId === 'function'
+      || (typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype);
+    document.getElementById('groupSpeakerRow').style.display = speakerSupported && speakers.length ? 'grid' : 'none';
+    updateLocalMediaTile();
+  } catch {}
+}
+
+function toggleDevicePanel(force) {
+  if (!currentRoom) return;
+  devicePanelOpen = typeof force === 'boolean' ? force : !devicePanelOpen;
+  document.getElementById('groupDevicePanel').style.display = devicePanelOpen ? 'block' : 'none';
+  document.getElementById('groupDeviceBtn')?.classList.toggle('active', devicePanelOpen);
+  if (devicePanelOpen) refreshGroupDevices();
+}
+
+async function selectGroupCamera(deviceId) {
+  const oldTrack = localStream?.getVideoTracks?.()[0];
+  if (!deviceId || !oldTrack) {
+    setRoomStatus('Schalte zuerst die Kamera ein.');
+    return;
+  }
+  try {
+    let newTrack = oldTrack;
+    try { await oldTrack.applyConstraints(cameraVideoConstraints('user', deviceId)); } catch {}
+    if (oldTrack.getSettings?.().deviceId !== deviceId) {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints('user', deviceId), audio: false });
+      newTrack = stream.getVideoTracks()[0];
+      if (!newTrack) throw new Error('Kamera konnte nicht übernommen werden.');
+      const videoSenders = [...peers.values()]
+        .map((peer) => peer.pc.getSenders().find((sender) => sender.track?.kind === 'video'))
+        .filter(Boolean);
+      await Promise.all(videoSenders.map((sender) => sender.replaceTrack(newTrack).catch(() => null)));
+      localStream.removeTrack(oldTrack);
+      localStream.addTrack(newTrack);
+      oldTrack.stop();
+    }
+    preferredCameraId = deviceId;
+    localStorage.setItem('ehoserGroupCallCameraId', deviceId);
+    cameraFacingMode = newTrack.getSettings?.().facingMode || 'user';
+    renderParticipantTile(me.username, localStream, true);
+    updateLocalMediaTile();
+    await refreshGroupDevices();
+    setRoomStatus('Kamera gewechselt');
+  } catch (error) {
+    setRoomStatus(error?.message || 'Kamera konnte nicht gewechselt werden.');
+  }
+}
+
+async function selectGroupMicrophone(deviceId) {
+  if (!deviceId || !localStream) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: groupAudioConstraints(deviceId), video: false });
+    const newTrack = stream.getAudioTracks()[0];
+    if (!newTrack) throw new Error('Mikrofon konnte nicht übernommen werden.');
+    const audioSenders = [...peers.values()]
+      .map((peer) => peer.pc.getSenders().find((sender) => sender.track?.kind === 'audio'))
+      .filter(Boolean);
+    await Promise.all(audioSenders.map((sender) => sender.replaceTrack(newTrack).catch(() => null)));
+    const oldTrack = localStream.getAudioTracks()[0];
+    newTrack.enabled = oldTrack?.enabled ?? true;
+    if (oldTrack) {
+      localStream.removeTrack(oldTrack);
+      oldTrack.stop();
+    }
+    localStream.addTrack(newTrack);
+    preferredMicId = deviceId;
+    localStorage.setItem('ehoserGroupCallMicId', deviceId);
+    updateLocalMediaTile();
+    await refreshGroupDevices();
+    setRoomStatus('Mikrofon gewechselt');
+  } catch (error) {
+    setRoomStatus(error?.message || 'Mikrofon konnte nicht gewechselt werden.');
+  }
+}
+
+async function selectGroupSpeaker(deviceId) {
+  if (!deviceId) return;
+  try {
+    const outputs = [...document.querySelectorAll('.participant-tile video')].filter((video) => !video.muted && typeof video.setSinkId === 'function');
+    await Promise.all(outputs.map((video) => video.setSinkId(deviceId)));
+    preferredSpeakerId = deviceId;
+    localStorage.setItem('ehoserGroupCallSpeakerId', deviceId);
+    setRoomStatus('Lautsprecher gewechselt');
+  } catch {
+    setRoomStatus('Dieser Browser kann den Lautsprecher nicht wechseln.');
+  }
+}
+
 async function broadcastMediaState() {
   const payload = {
     audio: Boolean(localStream?.getAudioTracks()[0]?.enabled),
@@ -400,7 +532,15 @@ async function toggleCamera() {
   let track = localStream?.getVideoTracks()[0];
   try {
     if (!track) {
-      const cameraStream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints(cameraFacingMode), audio: false });
+      let cameraStream;
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints(cameraFacingMode, preferredCameraId), audio: false });
+      } catch (error) {
+        if (!['NotFoundError', 'OverconstrainedError'].includes(error?.name) || !preferredCameraId) throw error;
+        preferredCameraId = '';
+        localStorage.removeItem('ehoserGroupCallCameraId');
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: cameraVideoConstraints(cameraFacingMode), audio: false });
+      }
       track = cameraStream.getVideoTracks()[0];
       localStream.addTrack(track);
       for (const [username, peer] of peers) {
@@ -412,6 +552,7 @@ async function toggleCamera() {
     }
     updateLocalMediaTile();
     await broadcastMediaState();
+    refreshGroupDevices();
   } catch (error) {
     setRoomStatus(error.name === 'NotAllowedError' ? 'Kamera wurde nicht erlaubt.' : 'Kamera konnte nicht gestartet werden.');
   }
@@ -438,8 +579,11 @@ async function switchCamera() {
       installed = true;
     }
     cameraFacingMode = nextFacingMode;
+    preferredCameraId = replacement.track.getSettings?.().deviceId || preferredCameraId;
+    if (preferredCameraId) localStorage.setItem('ehoserGroupCallCameraId', preferredCameraId);
     renderParticipantTile(me.username, localStream, true);
     await broadcastMediaState();
+    refreshGroupDevices();
     setRoomStatus(nextFacingMode === 'environment' ? 'Rückkamera aktiv' : 'Vorderkamera aktiv');
   } catch (error) {
     if (!installed && replacement?.track && replacement.track !== oldTrack) replacement.track.stop();
@@ -465,12 +609,38 @@ async function endLocally(message) {
   lastCursor = 0;
   cameraFacingMode = 'user';
   cameraSwitchBusy = false;
+  devicePanelOpen = false;
+  document.getElementById('groupDevicePanel').style.display = 'none';
+  document.getElementById('groupDeviceBtn')?.classList.remove('active');
   document.getElementById('videoGrid').innerHTML = '';
   document.getElementById('callRoom').style.display = 'none';
   document.getElementById('lobby').style.display = 'block';
   setLobbyStatus(message);
   invitePoll = setInterval(pollInvite, 2200);
 }
+
+document.addEventListener('keydown', (event) => {
+  if (!currentRoom || document.getElementById('callRoom')?.style.display === 'none') return;
+  const target = event.target;
+  if (target?.matches?.('input, textarea, select') || target?.isContentEditable) return;
+  if (event.key === 'Escape' && devicePanelOpen) {
+    event.preventDefault();
+    toggleDevicePanel(false);
+  } else if (event.key.toLowerCase() === 'm') {
+    event.preventDefault();
+    toggleMute();
+  } else if (event.key.toLowerCase() === 'v') {
+    event.preventDefault();
+    toggleCamera();
+  } else if (event.key.toLowerCase() === 'c' && videoInputCount > 1) {
+    event.preventDefault();
+    switchCamera();
+  }
+});
+
+navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+  if (currentRoom) refreshGroupDevices();
+});
 
 function copyRoomId() {
   if (!currentRoom) return;
