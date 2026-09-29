@@ -2233,6 +2233,8 @@ app.post('/api/me/moderation/finalize-delete', async (req, res) => {
     await supabase.from('installations').delete().eq('user_id', auth.id);
     await supabaseAdmin.from('chat_group_members').delete().eq('username', auth.username);
     await supabaseAdmin.from('chat_messages').delete().eq('sender', auth.username);
+    await supabaseAdmin.from('chat_messages').delete().eq('sender', chatMemberStateSender(auth.username, 'receipt'));
+    await supabaseAdmin.from('chat_messages').delete().eq('sender', chatMemberStateSender(auth.username, 'typing'));
     await supabaseAdmin.from('user_profiles').delete().eq('username', auth.username);
     const { error } = await supabase.from('users').delete().eq('id', auth.id);
     if (error) throw error;
@@ -3344,6 +3346,118 @@ const CHAT_CALL_EVENT_SENDER = '__ehoser_call_event__';
 const CHAT_CALL_EVENT_PREFIX = 'ehoser-call-v1:';
 const GROUP_CALL_EVENT_SENDER = '__ehoser_group_call_event__';
 const GROUP_CALL_EVENT_PREFIX = 'ehoser-group-call-v1:';
+const CHAT_MEMBER_STATE_SENDER_PREFIX = 'ehoser-chat-state:';
+const CHAT_RECEIPT_CONTENT_PREFIX = 'ehoser-chat-receipt-v1:';
+const CHAT_TYPING_CONTENT_PREFIX = 'ehoser-chat-typing-v1:';
+
+function chatMemberStateSender(username, kind = 'receipt') {
+  return CHAT_MEMBER_STATE_SENDER_PREFIX + kind + ':' + String(username || '').slice(0, 64);
+}
+
+function parseChatMemberState(row) {
+  const raw = String(row?.encrypted_content || '');
+  const sender = String(row?.sender || '');
+  if (!sender.startsWith(CHAT_MEMBER_STATE_SENDER_PREFIX)) return null;
+  const rest = sender.slice(CHAT_MEMBER_STATE_SENDER_PREFIX.length);
+  const separator = rest.indexOf(':');
+  if (separator < 1) return null;
+  const kind = rest.slice(0, separator);
+  const username = rest.slice(separator + 1);
+  try {
+    if (kind === 'receipt' && raw.startsWith(CHAT_RECEIPT_CONTENT_PREFIX)) {
+      const state = JSON.parse(raw.slice(CHAT_RECEIPT_CONTENT_PREFIX.length));
+      return {
+        kind,
+        username,
+        deliveredMessageId: Math.max(0, Number.parseInt(state.deliveredMessageId, 10) || 0),
+        readMessageId: Math.max(0, Number.parseInt(state.readMessageId, 10) || 0)
+      };
+    }
+    if (kind === 'typing' && raw.startsWith(CHAT_TYPING_CONTENT_PREFIX)) {
+      const state = JSON.parse(raw.slice(CHAT_TYPING_CONTENT_PREFIX.length));
+      return { kind, username, typingUntil: state.typingUntil ? String(state.typingUntil) : null };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function getStoredChatMemberState(groupId, username, kind) {
+  const sender = chatMemberStateSender(username, kind);
+  const { data: rows, error: selectError } = await supabaseAdmin
+    .from('chat_messages')
+    .select('id,sender,encrypted_content')
+    .eq('group_id', groupId)
+    .eq('sender', sender)
+    .order('id', { ascending: false })
+    .limit(1);
+  if (selectError) throw selectError;
+  return { sender, row: rows?.[0] || null, state: parseChatMemberState(rows?.[0]) };
+}
+
+async function saveChatReceiptState(groupId, username, patch = {}) {
+  const { sender, row, state } = await getStoredChatMemberState(groupId, username, 'receipt');
+  const previous = state || {
+    deliveredMessageId: 0,
+    readMessageId: 0
+  };
+  const deliveredMessageId = Math.max(previous.deliveredMessageId, Number(patch.deliveredMessageId) || 0);
+  const readMessageId = Math.max(previous.readMessageId, Number(patch.readMessageId) || 0);
+  const encrypted_content = CHAT_RECEIPT_CONTENT_PREFIX + JSON.stringify({
+    deliveredMessageId,
+    readMessageId
+  });
+  const result = row
+    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content }).eq('id', row.id)
+    : await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender, encrypted_content });
+  if (result.error) throw result.error;
+  return { username, deliveredMessageId, readMessageId };
+}
+
+async function saveChatTypingState(groupId, username, typingUntil) {
+  const { sender, row } = await getStoredChatMemberState(groupId, username, 'typing');
+  const encrypted_content = CHAT_TYPING_CONTENT_PREFIX + JSON.stringify({ typingUntil: typingUntil || null });
+  const result = row
+    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content }).eq('id', row.id)
+    : await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender, encrypted_content });
+  if (result.error) throw result.error;
+  return { username, typingUntil: typingUntil || null };
+}
+
+async function getChatGroupActivity(groupId, viewerUsername) {
+  const [{ data: members, error: membersError }, { data: rows, error: stateError }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId),
+    supabaseAdmin.from('chat_messages')
+      .select('id,sender,encrypted_content')
+      .eq('group_id', groupId)
+      .like('sender', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+      .order('id', { ascending: true })
+  ]);
+  if (membersError) throw membersError;
+  if (stateError) throw stateError;
+
+  const receipts = new Map();
+  const typings = new Map();
+  for (const row of rows || []) {
+    const state = parseChatMemberState(row);
+    if (state?.kind === 'receipt') receipts.set(state.username, state);
+    if (state?.kind === 'typing') typings.set(state.username, state);
+  }
+  const recipients = (members || []).map((member) => member.username).filter((name) => name !== viewerUsername);
+  const deliveredUpTo = recipients.length
+    ? Math.min(...recipients.map((name) => receipts.get(name)?.deliveredMessageId || 0))
+    : 0;
+  const readUpTo = recipients.length
+    ? Math.min(...recipients.map((name) => receipts.get(name)?.readMessageId || 0))
+    : 0;
+  const now = Date.now();
+  const typing = recipients.filter((name) => {
+    const until = Date.parse(typings.get(name)?.typingUntil || '');
+    return Number.isFinite(until) && until > now;
+  });
+  return { deliveredUpTo, readUpTo, typing };
+}
 
 function parseChatCallEvent(row) {
   const raw = String(row?.encrypted_content || '');
@@ -3941,6 +4055,7 @@ app.post('/api/chat/groups/:id/report', async (req, res) => {
     .eq('group_id', id)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .order('id', { ascending: false })
     .limit(10);
 
@@ -4028,11 +4143,69 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   // Muss Mitglied sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
-  let query = supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER).order('id', { ascending: true }).limit(50);
+  let query = supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER).not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%').order('id', { ascending: true }).limit(50);
   if (after) query = query.gt('id', after);
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
   const messages = (data || []).map(({ encrypted_content: content, ...message }) => ({ ...message, content }));
-  res.json({ messages });
+  const deliveredMessageId = messages.reduce((max, message) => Math.max(max, Number(message.id) || 0), 0);
+  try {
+    if (deliveredMessageId) await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
+    const activity = await getChatGroupActivity(groupId, user.username);
+    return res.json({ messages, activity });
+  } catch (activityError) {
+    console.error('Chat activity update failed:', activityError.message);
+    return res.json({ messages, activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] } });
+  }
+});
+
+// Read receipts: the greatest message id that is actually visible to this member.
+app.post('/api/chat/groups/:groupId/read', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId } = req.params;
+  const requestedId = Math.max(0, Number.parseInt(req.body?.upTo, 10) || 0);
+  if (!requestedId) return res.status(400).json({ error: 'Ungültige Nachrichten-ID' });
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  const { data: latest, error } = await supabaseAdmin
+    .from('chat_messages')
+    .select('id')
+    .eq('group_id', groupId)
+    .neq('sender', CHAT_CALL_EVENT_SENDER)
+    .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .lte('id', requestedId)
+    .order('id', { ascending: false })
+    .limit(1);
+  if (error) return res.status(500).json({ error: 'Lesestatus konnte nicht gespeichert werden' });
+  const readMessageId = Number(latest?.[0]?.id) || 0;
+  if (!readMessageId) return res.json({ ok: true });
+  try {
+    await saveChatReceiptState(groupId, user.username, {
+      deliveredMessageId: readMessageId,
+      readMessageId
+    });
+    return res.json({ ok: true });
+  } catch (stateError) {
+    console.error('Save chat read receipt failed:', stateError.message);
+    return res.status(500).json({ error: 'Lesestatus konnte nicht gespeichert werden' });
+  }
+});
+
+// Typing presence expires automatically, so a closed tab never stays on "schreibt".
+app.post('/api/chat/groups/:groupId/typing', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId } = req.params;
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  const typingUntil = req.body?.active ? new Date(Date.now() + 6000).toISOString() : null;
+  try {
+    await saveChatTypingState(groupId, user.username, typingUntil);
+    return res.json({ ok: true, typingUntil });
+  } catch (stateError) {
+    console.error('Save chat typing state failed:', stateError.message);
+    return res.status(500).json({ error: 'Schreibstatus konnte nicht gespeichert werden' });
+  }
 });
 
 // Lightweight metadata feed for browser notifications.
@@ -4054,6 +4227,7 @@ app.get('/api/chat/notifications', async (req, res) => {
       .in('group_id', groupIds)
       .neq('sender', CHAT_CALL_EVENT_SENDER)
       .neq('sender', GROUP_CALL_EVENT_SENDER)
+      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
       .order('id', { ascending: false })
       .limit(1);
     if (error) return res.status(500).json({ error: 'Benachrichtigungen konnten nicht gestartet werden' });
@@ -4066,6 +4240,7 @@ app.get('/api/chat/notifications', async (req, res) => {
     .in('group_id', groupIds)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .gt('id', after)
     .order('id', { ascending: true })
     .limit(50);
