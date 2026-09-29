@@ -799,6 +799,54 @@ body {
 .member-av { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg,#1a3050,#2a5080); display: flex; align-items: center; justify-content: center; font-size: .72rem; font-weight: 700; color: #90c8e8; flex-shrink: 0; }
 .creator-badge { margin-left: auto; font-size: .68rem; background: rgba(124,58,237,.2); border: 1px solid rgba(124,58,237,.4); color: var(--accent2); border-radius: 20px; padding: 2px 8px; }
 
+/* ── Chat settings ──────────────────────────────────────────────────────── */
+.chat-settings-modal { width: min(600px, calc(100% - 24px)); max-height: min(820px, calc(100svh - 32px)); overflow-y: auto; }
+.settings-kicker { display: block; margin-bottom: 2px; color: #8696a0; font-size: .64rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.settings-profile-card {
+    display: flex; align-items: center; gap: 13px; margin-bottom: 14px; padding: 14px;
+    border: 1px solid #2a3942; border-radius: 15px; background: #202c33;
+}
+.settings-avatar { width: 48px; height: 48px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg,#00a884,#25d366); color: #071511; font-weight: 900; }
+.settings-profile-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.settings-profile-copy strong { overflow: hidden; color: #e9edef; text-overflow: ellipsis; white-space: nowrap; }
+.settings-profile-copy span { overflow: hidden; color: #8696a0; font-size: .73rem; text-overflow: ellipsis; white-space: nowrap; }
+.settings-plan { flex-shrink: 0; padding: 5px 9px; border-radius: 999px; background: rgba(0,168,132,.18); color: #7ee4cc; font-size: .67rem; font-weight: 800; }
+.settings-section { margin-top: 10px; overflow: hidden; border: 1px solid #2a3942; border-radius: 15px; background: #111b21; }
+.settings-section-title { display: flex; align-items: center; gap: 11px; padding: 13px 14px; border-bottom: 1px solid #2a3942; background: #182229; }
+.settings-section-title > span { font-size: 1.2rem; }
+.settings-section-title > div { display: flex; flex-direction: column; gap: 1px; }
+.settings-section-title strong, .settings-select-row strong, .settings-switch-row strong, .settings-notification-row strong { color: #e9edef; font-size: .84rem; }
+.settings-section-title small, .settings-select-row small, .settings-switch-row small, .settings-notification-row small { display: block; margin-top: 2px; color: #8696a0; font-size: .68rem; font-weight: 400; }
+.settings-code-row { display: flex; align-items: center; gap: 7px; padding: 13px 14px 7px; }
+.settings-code-row code { min-width: 0; flex: 1; overflow: hidden; padding: 9px 11px; border-radius: 9px; background: #202c33; color: #e9edef; font: 700 .88rem/1 "Space Grotesk", monospace; letter-spacing: .08em; text-overflow: ellipsis; }
+.settings-code-row button { min-height: 34px; padding: 0 10px; border: 1px solid #3b4a54; border-radius: 9px; background: #202c33; color: #aebac1; font: 700 .7rem var(--font); cursor: pointer; }
+.settings-code-row button:hover { border-color: #00a884; color: #e9edef; }
+.settings-warning { padding: 0 14px 12px; color: #d8a85f; font-size: .66rem; }
+.settings-select-row, .settings-switch-row {
+    min-height: 60px; display: flex; align-items: center; gap: 14px; padding: 10px 14px;
+    border-bottom: 1px solid rgba(134,150,160,.12); cursor: pointer;
+}
+.settings-section > :last-child { border-bottom: 0; }
+.settings-select-row > span, .settings-switch-row > span:first-child { min-width: 0; flex: 1; }
+.settings-select-row select { min-width: 118px; height: 36px; padding: 0 9px; border: 1px solid #3b4a54; border-radius: 9px; outline: 0; background: #202c33; color: #e9edef; font: 600 .78rem var(--font); }
+.settings-switch-row input { position: absolute; opacity: 0; pointer-events: none; }
+.settings-switch { position: relative; width: 42px; height: 23px; flex: 0 0 42px !important; border-radius: 999px; background: #3b4a54; transition: background .18s; }
+.settings-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: #dbe3e7; transition: transform .18s; }
+.settings-switch-row input:checked + .settings-switch { background: #00a884; }
+.settings-switch-row input:checked + .settings-switch::after { transform: translateX(19px); background: #fff; }
+.settings-switch-row input:focus-visible + .settings-switch { outline: 2px solid #53bdeb; outline-offset: 2px; }
+.settings-notification-row { display: flex; align-items: center; gap: 11px; margin-top: 10px; padding: 12px 14px; border: 1px solid #2a3942; border-radius: 15px; background: #182229; }
+.settings-notification-row > span { font-size: 1.15rem; }
+.settings-notification-row > div { display: flex; flex-direction: column; }
+.settings-actions { align-items: center; flex-wrap: wrap; }
+.settings-actions .status-msg { min-width: 0; flex: 1; margin: 0; }
+
+body.chat-compact .group-item { min-height: 58px; }
+body.chat-compact .gi-avatar { width: 42px; height: 42px; }
+body.chat-compact .messages-area { gap: 0; padding-top: 10px; }
+body.chat-compact .msg-bubble { padding: 5px 7px 3px; font-size: .84rem; }
+body.chat-compact .msg-row { margin: 0; }
+
 /* ── FaceWarp Picker ─────────────────────────────────────────────────────── */
 .fw-actions { margin-bottom: 18px; }
 .fw-option-btn {
@@ -974,6 +1022,10 @@ body {
     .control-icon { width: 48px; height: 48px; }
     .call-device-panel { bottom: 112px; }
     .notification-wall-box { padding: 30px 22px; }
+    .chat-settings-modal { width: 100%; max-height: 100svh; border-radius: 0; }
+    .settings-code-row { flex-wrap: wrap; }
+    .settings-code-row code { flex-basis: 100%; }
+    .settings-actions .status-msg { flex-basis: 100%; }
 }
 
 @media (max-width: 680px) {
