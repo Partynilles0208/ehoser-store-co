@@ -26,13 +26,6 @@
   <div class="chat-update-spinner" aria-label="Chat-Update wird geladen"></div>
 </div>
 
-<div id="ownershipNotice" class="chat-ownership-notice" style="display:none" role="dialog" aria-modal="true" aria-labelledby="ownershipNoticeTitle">
-  <div class="chat-ownership-card">
-    <h2 id="ownershipNoticeTitle">Ehoser wird Besitzer wechseln</h2>
-    <button type="button" class="btn-primary" onclick="document.getElementById('ownershipNotice').remove()">Schließen</button>
-  </div>
-</div>
-
 <!-- ── Notification permission wall ─────────────────────────────────────── -->
 <div id="notificationWall" class="notification-wall" style="display:none">
   <div class="notification-wall-box">
@@ -208,6 +201,24 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- ── Hold F8: Online users ────────────────────────────────────────────── -->
+<div id="onlineHoldOverlay" class="online-hold-overlay" style="display:none" aria-hidden="true">
+  <section class="online-hold-card" aria-labelledby="onlineHoldTitle">
+    <div class="online-hold-head">
+      <div>
+        <span class="online-hold-kicker">ehoser Chat</span>
+        <h2 id="onlineHoldTitle"><span aria-hidden="true">●</span> Online</h2>
+      </div>
+      <span class="online-hold-key">F8 gedrückt halten</span>
+    </div>
+    <div id="onlineHoldCount" class="online-hold-count">Online-Liste wird geladen…</div>
+    <ul id="onlineHoldList" class="online-hold-list">
+      <li class="online-hold-loading">Online-Liste wird geladen…</li>
+    </ul>
+    <p class="online-hold-help">F8 loslassen, um zum Chat zurückzukehren</p>
+  </section>
 </div>
 
 <div id="groupCallInviteBanner" class="group-call-invite-banner" style="display:none">

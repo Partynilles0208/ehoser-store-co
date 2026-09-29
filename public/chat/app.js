@@ -78,6 +78,9 @@ let _chatServiceWorkerReady = null;
 let _groupCallInvitePoll = null;
 let _lastGroupCallInviteId = null;
 let _chatGroupFilter = '';
+let _presenceHeartbeat = null;
+let _onlineListOpen = false;
+let _onlineListRequestId = 0;
 
 const RTC_CONFIG = {
     iceServers: [
@@ -159,7 +162,6 @@ function prepareChatUpdateSplash() {
 
 async function runChatEntrySequence() {
     const splash = document.getElementById('chatUpdateSplash');
-    const ownership = document.getElementById('ownershipNotice');
     const username = _me?.username || 'unknown';
     localStorage.setItem('ehoserChatLastUser', username);
     const seenKey = `ehoserChatUpdateSeen:${CHAT_UPDATE_VERSION}:${username}`;
@@ -169,7 +171,6 @@ async function runChatEntrySequence() {
         localStorage.setItem(seenKey, '1');
     }
     if (splash) splash.style.display = 'none';
-    if (ownership) ownership.style.display = 'flex';
 }
 
 function runChatBrandIntro() {
@@ -460,10 +461,87 @@ async function finishChatBoot() {
     _poll = setInterval(pollMessages, 3000);
     _callPoll = setInterval(pollCalls, 1500);
     _groupCallInvitePoll = setInterval(pollGroupCallInvites, 2500);
+    sendChatHeartbeat();
+    clearInterval(_presenceHeartbeat);
+    _presenceHeartbeat = setInterval(sendChatHeartbeat, 60000);
+    initHoldOnlineList();
     pollCalls();
     pollGroupCallInvites();
     document.addEventListener('click', globalClickClose);
     updateAiSummaryToggle();
+}
+
+async function sendChatHeartbeat() {
+    if (!_chatStarted || !_token) return;
+    try { await api('/heartbeat', 'POST'); } catch {}
+}
+
+function initHoldOnlineList() {
+    if (window._ehoserOnlineHoldReady) return;
+    window._ehoserOnlineHoldReady = true;
+    const isF8 = (event) => event.key === 'F8' || event.code === 'F8';
+    window.addEventListener('keydown', (event) => {
+        if (!isF8(event)) return;
+        event.preventDefault();
+        if (!_chatStarted || event.repeat || _onlineListOpen) return;
+        showOnlineHoldList();
+    });
+    window.addEventListener('keyup', (event) => {
+        if (!isF8(event)) return;
+        event.preventDefault();
+        hideOnlineHoldList();
+    });
+    window.addEventListener('blur', hideOnlineHoldList);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) hideOnlineHoldList();
+    });
+}
+
+async function showOnlineHoldList() {
+    const overlay = document.getElementById('onlineHoldOverlay');
+    const list = document.getElementById('onlineHoldList');
+    const count = document.getElementById('onlineHoldCount');
+    if (!overlay || !list || !count) return;
+    const requestId = ++_onlineListRequestId;
+    _onlineListOpen = true;
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    list.innerHTML = '<li class="online-hold-loading">Online-Liste wird geladen…</li>';
+    count.textContent = 'Online-Liste wird geladen…';
+    try {
+        await sendChatHeartbeat();
+        const data = await api('/online-users');
+        if (!_onlineListOpen || requestId !== _onlineListRequestId) return;
+        const users = Array.isArray(data) ? data : (data.users || []);
+        count.textContent = users.length === 1 ? '1 Person ist online' : `${users.length} Personen sind online`;
+        if (!users.length) {
+            list.innerHTML = '<li class="online-hold-empty">Gerade ist niemand online.</li>';
+            return;
+        }
+        list.innerHTML = users.map((user) => {
+            const username = String(user?.username || 'Gast');
+            const isMe = username.toLowerCase() === String(_me?.username || '').toLowerCase();
+            const initials = user?.kind === 'guest' ? 'G' : username.slice(0, 2).toUpperCase();
+            return `<li${isMe ? ' class="is-me"' : ''}>
+                <span class="online-hold-avatar">${esc(initials)}</span>
+                <span class="online-hold-name">${esc(username)}${isMe ? '<small>Du</small>' : ''}</span>
+                <span class="online-hold-status"><i></i>online</span>
+            </li>`;
+        }).join('');
+    } catch {
+        if (!_onlineListOpen || requestId !== _onlineListRequestId) return;
+        count.textContent = 'Verbindung fehlgeschlagen';
+        list.innerHTML = '<li class="online-hold-empty">Die Online-Liste konnte nicht geladen werden.</li>';
+    }
+}
+
+function hideOnlineHoldList() {
+    _onlineListOpen = false;
+    _onlineListRequestId += 1;
+    const overlay = document.getElementById('onlineHoldOverlay');
+    if (!overlay) return;
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
 }
 
 function showNotificationWall(message = '') {
