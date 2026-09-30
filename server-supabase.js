@@ -126,6 +126,14 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   encrypted_content TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_by TEXT NULL;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP NULL;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_by TEXT NULL;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hide_edit_mark BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMP NULL;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS pinned_by TEXT NULL;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
 CREATE TABLE IF NOT EXISTS chat_group_meta (
   group_id UUID PRIMARY KEY,
   type TEXT NOT NULL DEFAULT 'group',
@@ -269,6 +277,16 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
         created_at TIMESTAMP DEFAULT NOW(),
         PRIMARY KEY (group_id, username)
       );
+    `);
+    await pool.query(`
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_by TEXT NULL;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP NULL;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_by TEXT NULL;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS hide_edit_mark BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMP NULL;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS pinned_by TEXT NULL;
+      ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
     `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS chat_reports (
@@ -2513,6 +2531,44 @@ app.get('/api/admin/users', async (req, res) => {
   }
 });
 
+// Admin: Neuen Notfall-Login-Code erstellen. Der bisherige Code wird nie ausgelesen.
+app.post('/api/admin/users/:id/reset-login-code', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+  }
+
+  try {
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id,username')
+      .eq('id', userId)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    // A new code is returned once to the authorised admin; existing codes are never exposed.
+    const loginCode = 'EHO-' + crypto.randomBytes(5).toString('hex').toUpperCase();
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({ access_code: loginCode })
+      .eq('id', user.id);
+    if (updateError) throw updateError;
+
+    console.info('Admin reset login code for user:', user.username);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ ok: true, username: user.username, loginCode });
+  } catch (error) {
+    console.error('Admin login-code reset error:', error);
+    return res.status(500).json({ error: 'Login-Code konnte nicht zurückgesetzt werden' });
+  }
+});
+
 app.get('/api/admin/plan-requests', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
@@ -4126,6 +4182,19 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
   res.json({ ok: true });
 });
 
+const CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at,deleted_at,deleted_by,edited_at,edited_by,hide_edit_mark,pinned_at,pinned_by,updated_at';
+const DELETED_CHAT_MESSAGE_CONTENT = JSON.stringify({ t: 'deleted' });
+
+function publicChatMessage(row) {
+  if (!row) return null;
+  const { encrypted_content: content, ...message } = row;
+  return { ...message, content };
+}
+
+function isSilentChatEditor(username) {
+  return String(username || '').toLowerCase() === 'meisterlool_707';
+}
+
 // POST /api/chat/messages — Nachricht als JSON-Text senden
 app.post('/api/chat/messages', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
@@ -4142,27 +4211,45 @@ app.post('/api/chat/messages', async (req, res) => {
   res.json({ id: data.id, created_at: data.created_at });
 });
 
-// GET /api/chat/messages/:groupId?after=<id> — Nachrichten abrufen (polling)
+// GET /api/chat/messages/:groupId?after=<id>&changedAfter=<ISO time> — Nachrichten abrufen (polling)
 app.get('/api/chat/messages/:groupId', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { groupId } = req.params;
   const after = parseInt(req.query.after) || 0;
+  const changedAfterValue = String(req.query.changedAfter || '');
+  const changedAfterMs = Date.parse(changedAfterValue);
+  const changedAfter = Number.isNaN(changedAfterMs) ? null : new Date(changedAfterMs).toISOString();
   // Muss Mitglied sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
-  let query = supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content,created_at').eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER).not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%').order('id', { ascending: true }).limit(50);
+  let query = supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER).not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%').order('id', { ascending: true }).limit(50);
   if (after) query = query.gt('id', after);
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
-  const messages = (data || []).map(({ encrypted_content: content, ...message }) => ({ ...message, content }));
+  const changedQuery = changedAfter
+    ? supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER).not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%').gt('updated_at', changedAfter).order('updated_at', { ascending: true }).limit(50)
+    : null;
+  const [{ data, error }, changedResult] = await Promise.all([query, changedQuery]);
+  if (error || changedResult?.error) return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
+  const merged = new Map();
+  for (const message of [...(data || []), ...(changedResult?.data || [])]) merged.set(String(message.id), message);
+  const messages = [...merged.values()].sort((a, b) => Number(a.id) - Number(b.id)).map(publicChatMessage);
+  const { data: pinnedRow, error: pinnedError } = await supabaseAdmin
+    .from('chat_messages')
+    .select(CHAT_MESSAGE_FIELDS)
+    .eq('group_id', groupId)
+    .is('deleted_at', null)
+    .not('pinned_at', 'is', null)
+    .order('pinned_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (pinnedError) console.warn('Angepinnte Chat-Nachricht konnte nicht geladen werden:', pinnedError.message);
   const deliveredMessageId = messages.reduce((max, message) => Math.max(max, Number(message.id) || 0), 0);
   try {
     if (deliveredMessageId) await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
     const activity = await getChatGroupActivity(groupId, user.username);
-    return res.json({ messages, activity });
+    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString() });
   } catch (activityError) {
     console.error('Chat activity update failed:', activityError.message);
-    return res.json({ messages, activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] } });
+    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString() });
   }
 });
 
@@ -4235,6 +4322,7 @@ app.get('/api/chat/notifications', async (req, res) => {
       .neq('sender', CHAT_CALL_EVENT_SENDER)
       .neq('sender', GROUP_CALL_EVENT_SENDER)
       .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+      .is('deleted_at', null)
       .order('id', { ascending: false })
       .limit(1);
     if (error) return res.status(500).json({ error: 'Benachrichtigungen konnten nicht gestartet werden' });
@@ -4248,6 +4336,7 @@ app.get('/api/chat/notifications', async (req, res) => {
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .is('deleted_at', null)
     .gt('id', after)
     .order('id', { ascending: true })
     .limit(50);
@@ -4609,25 +4698,125 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { id } = req.params;
   const { content } = req.body;
-  if (!id || !content || typeof content !== 'string') return res.status(400).json({ error: 'Ungültige Anfrage' });
+  if (!id || !content || typeof content !== 'string' || content.length > 65536) return res.status(400).json({ error: 'Ungültige Anfrage' });
+
+  let payload;
+  try { payload = JSON.parse(content); } catch { return res.status(400).json({ error: 'Nur Textnachrichten können bearbeitet werden' }); }
+  if (!payload || payload.t !== 'txt' || typeof payload.v !== 'string') {
+    return res.status(400).json({ error: 'Nur Textnachrichten können bearbeitet werden' });
+  }
 
   // Existierende Nachricht holen
-  const { data: msgRow, error: selErr } = await supabaseAdmin.from('chat_messages').select('id,sender,group_id').eq('id', id).maybeSingle();
+  const { data: msgRow, error: selErr } = await supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('id', id).maybeSingle();
   if (selErr) return res.status(500).json({ error: 'DB Fehler' });
   if (!msgRow) return res.status(404).json({ error: 'Nachricht nicht gefunden' });
+  if (msgRow.deleted_at) return res.status(409).json({ error: 'Gelöschte Nachrichten können nicht bearbeitet werden' });
 
   // Prüfen: Nutzer muss Mitglied der Gruppe sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', msgRow.group_id).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
 
   // Erlaubt wenn Absender selbst ist oder der spezielle Benutzer meisterlool_707
-  if (msgRow.sender !== user.username && user.username !== 'meisterlool_707') {
+  if (msgRow.sender !== user.username && !isSilentChatEditor(user.username)) {
     return res.status(403).json({ error: 'Nicht berechtigt zu bearbeiten' });
   }
 
-  const { error } = await supabaseAdmin.from('chat_messages').update({ encrypted_content: content }).eq('id', id);
+  const now = new Date().toISOString();
+  const { data: updated, error } = await supabaseAdmin
+    .from('chat_messages')
+    .update({
+      encrypted_content: content,
+      edited_at: now,
+      edited_by: user.username,
+      // meisterlool_707's existing moderation edit remains deliberately silent.
+      hide_edit_mark: isSilentChatEditor(user.username),
+      updated_at: now
+    })
+    .eq('id', id)
+    .select(CHAT_MESSAGE_FIELDS)
+    .single();
   if (error) return res.status(500).json({ error: 'Fehler beim Aktualisieren' });
-  res.json({ ok: true });
+  res.json({ ok: true, message: publicChatMessage(updated) });
+});
+
+// DELETE /api/chat/messages/:id — Nachricht für alle als gelöschten Hinweis behalten
+app.delete('/api/chat/messages/:id', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const { data: msgRow, error: selectError } = await supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('id', id).maybeSingle();
+  if (selectError) return res.status(500).json({ error: 'DB Fehler' });
+  if (!msgRow) return res.status(404).json({ error: 'Nachricht nicht gefunden' });
+  if (msgRow.deleted_at) return res.status(409).json({ error: 'Nachricht wurde bereits gelöscht' });
+
+  const { data: self } = await supabaseAdmin
+    .from('chat_group_members')
+    .select('username')
+    .eq('group_id', msgRow.group_id)
+    .eq('username', user.username)
+    .maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+  if (msgRow.sender !== user.username) return res.status(403).json({ error: 'Du kannst nur eigene Nachrichten löschen' });
+
+  const now = new Date().toISOString();
+  const { data: updated, error } = await supabaseAdmin
+    .from('chat_messages')
+    .update({
+      encrypted_content: DELETED_CHAT_MESSAGE_CONTENT,
+      deleted_at: now,
+      deleted_by: user.username,
+      pinned_at: null,
+      pinned_by: null,
+      updated_at: now
+    })
+    .eq('id', id)
+    .select(CHAT_MESSAGE_FIELDS)
+    .single();
+  if (error) return res.status(500).json({ error: 'Nachricht konnte nicht gelöscht werden' });
+  res.json({ ok: true, message: publicChatMessage(updated) });
+});
+
+// POST /api/chat/messages/:id/pin — für die Gruppe eine Nachricht an- oder abpinnen
+app.post('/api/chat/messages/:id/pin', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const shouldPin = req.body?.pinned !== false;
+  const { data: msgRow, error: selectError } = await supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('id', id).maybeSingle();
+  if (selectError) return res.status(500).json({ error: 'DB Fehler' });
+  if (!msgRow) return res.status(404).json({ error: 'Nachricht nicht gefunden' });
+  if (msgRow.deleted_at) return res.status(409).json({ error: 'Gelöschte Nachrichten können nicht angepinnt werden' });
+
+  const { data: self } = await supabaseAdmin
+    .from('chat_group_members')
+    .select('username')
+    .eq('group_id', msgRow.group_id)
+    .eq('username', user.username)
+    .maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+
+  const now = new Date().toISOString();
+  const clearedMessageIds = [];
+  if (shouldPin) {
+    const { data: previouslyPinned, error: clearError } = await supabaseAdmin
+      .from('chat_messages')
+      .update({ pinned_at: null, pinned_by: null, updated_at: now })
+      .eq('group_id', msgRow.group_id)
+      .neq('id', id)
+      .not('pinned_at', 'is', null)
+      .select('id');
+    if (clearError) return res.status(500).json({ error: 'Angeheftete Nachricht konnte nicht aktualisiert werden' });
+    for (const row of previouslyPinned || []) clearedMessageIds.push(String(row.id));
+  }
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('chat_messages')
+    .update(shouldPin
+      ? { pinned_at: now, pinned_by: user.username, updated_at: now }
+      : { pinned_at: null, pinned_by: null, updated_at: now })
+    .eq('id', id)
+    .select(CHAT_MESSAGE_FIELDS)
+    .single();
+  if (error) return res.status(500).json({ error: 'Angepinnte Nachricht konnte nicht gespeichert werden' });
+  res.json({ ok: true, message: publicChatMessage(updated), clearedMessageIds });
 });
 
 // ─── VirusTotal Integration ───────────────────────────────────────────────────

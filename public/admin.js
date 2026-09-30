@@ -265,6 +265,7 @@ async function loadRegisteredUsers() {
                         <button class="btn-small" onclick="addPlanMonth(${user.id}, '${user.is_premium ? 'premium' : 'pro'}')">+1 Monat</button>
                         <button class="btn-small" style="background:${user.update_unlocked ? 'rgba(220,50,50,0.2)' : 'rgba(45,190,108,0.2)'}" onclick="unlockUserUpdate(${user.id}, ${user.update_unlocked ? 'false' : 'true'})">${user.update_unlocked ? '🔒 Update sperren' : '🔓 Update freischalten'}</button>
                         <button class="btn-small" style="background:${user.ps_account ? 'rgba(220,50,50,0.2)' : 'rgba(77,159,255,0.2)'}" onclick="toggleUserPs(${user.id}, ${user.ps_account ? 'false' : 'true'})">${user.ps_account ? '🔵 PS entfernen' : '🔵 PS geben'}</button>
+                        <button class="btn-small" style="background:rgba(245,158,11,0.2);color:#fde68a" onclick="resetUserLoginCode(${user.id}, '${escapeJs(user.username)}')">🔑 Login-Code zurücksetzen</button>
                         <button class="btn-small" onclick="requestScreenShare('${escapeJs(user.username)}')">🖥️ Bildschirm</button>
                         <button class="btn-small" onclick="deleteUser(${user.id}, '${escapeJs(user.username)}')">Loeschen</button>
                     </span>
@@ -274,6 +275,38 @@ async function loadRegisteredUsers() {
     } catch (error) {
         setListFallback(usersList, 'Ohne Anmeldung: Nutzerliste leer, Supabase nicht erreichbar.');
         setStatus(`Fehler beim Laden der Nutzer: ${error.message}`, 'error');
+    }
+}
+
+async function resetUserLoginCode(userId, username) {
+    if (!activeAdminCode) {
+        setStatus('Bitte zuerst den Admin-Code eingeben.', 'error');
+        return;
+    }
+    if (!window.confirm(`Für ${username} wirklich einen neuen Login-Code erstellen? Der bisherige Login-Code wird sofort ungültig.`)) return;
+
+    try {
+        const response = await fetch(`${window.location.origin}/api/admin/users/${userId}/reset-login-code`, {
+            method: 'POST',
+            headers: { 'x-admin-key': activeAdminCode }
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setStatus(data.error || 'Login-Code konnte nicht zurückgesetzt werden.', 'error');
+            return;
+        }
+
+        let copied = false;
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(data.loginCode);
+                copied = true;
+            }
+        } catch {}
+        window.prompt(`Neuer Login-Code für ${data.username}. Er wird nur jetzt angezeigt${copied ? ' und wurde in die Zwischenablage kopiert' : ''}:`, data.loginCode);
+        setStatus(`Neuer Login-Code für ${data.username} erstellt. Teile ihn nur nach einer Identitätsprüfung mit.`, 'success');
+    } catch (error) {
+        setStatus(`Fehler beim Zurücksetzen des Login-Codes: ${error.message}`, 'error');
     }
 }
 
