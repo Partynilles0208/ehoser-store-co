@@ -57,6 +57,7 @@ let _token = null, _me = null;
 let _meProfile = null;
 let _groups = [], _activeGroupId = null;
 let _lastMsgId = {};
+let _lastMessageSyncAt = {};
 let _proBadgeCache = {};
 let _poll = null;
 let _ngMembers = {}; // selected members for a new group
@@ -177,6 +178,32 @@ function replaceCachedMessage(groupId, oldId, message) {
     cache[groupId] = list.map((item) => String(item.id) === String(oldId) ? message : item).slice(-180);
     writeChatCache('messages', cache);
     if (_groups.length && document.getElementById('groupList')) renderGroupList();
+}
+
+function updateCachedMessage(groupId, message) {
+    if (!groupId || !message?.id) return;
+    const cache = readChatCache('messages', {});
+    const messages = Array.isArray(cache[groupId]) ? cache[groupId] : [];
+    const index = messages.findIndex((item) => String(item?.id) === String(message.id));
+    if (index >= 0) messages[index] = { ...messages[index], ...message };
+    else messages.push(message);
+    cache[groupId] = messages.slice(-180);
+    writeChatCache('messages', cache);
+    if (_groups.length && document.getElementById('groupList')) renderGroupList();
+}
+
+function getMessageSyncAt(groupId) {
+    if (_lastMessageSyncAt[groupId]) return _lastMessageSyncAt[groupId];
+    const saved = readChatCache('messageSync', {});
+    return String(saved[groupId] || new Date(0).toISOString());
+}
+
+function setMessageSyncAt(groupId, value) {
+    if (!groupId || !value) return;
+    _lastMessageSyncAt[groupId] = value;
+    const saved = readChatCache('messageSync', {});
+    saved[groupId] = value;
+    writeChatCache('messageSync', saved);
 }
 
 function prepareChatUpdateSplash() {
@@ -748,7 +775,7 @@ const CHAT_TRANSLATIONS = {
         emptyNote: 'Nachrichten, Bilder und Anrufe', messagePlaceholder: 'Nachricht…',
         noChats: 'Noch keine Chats.<br>Tippe oben auf ＋.', noResult: 'Kein Chat gefunden.',
         privateChat: 'Privater Chat', members: 'Mitglieder', member: 'Mitglied',
-        oldMessage: 'Alte Nachricht', message: 'Nachricht', you: 'Du',
+        oldMessage: 'Alte Nachricht', deletedMessage: 'Nachricht wurde gelöscht', edited: 'bearbeitet', message: 'Nachricht', you: 'Du',
         photo: '📷 Foto', video: '🎥 Video', audio: '🎤 Sprachnachricht',
         file: '📎 Datei', sticker: '✨ Sticker', summary: '🤖 Zusammenfassung',
         loadingMembers: 'Mitglieder werden geladen…', typingOne: 'schreibt gerade…',
@@ -761,7 +788,7 @@ const CHAT_TRANSLATIONS = {
         emptyNote: 'Messages, media and calls', messagePlaceholder: 'Message…',
         noChats: 'No chats yet.<br>Tap ＋ above.', noResult: 'No chat found.',
         privateChat: 'Private chat', members: 'members', member: 'member',
-        oldMessage: 'Old message', message: 'Message', you: 'You',
+        oldMessage: 'Old message', deletedMessage: 'Message deleted', edited: 'edited', message: 'Message', you: 'You',
         photo: '📷 Photo', video: '🎥 Video', audio: '🎤 Voice message',
         file: '📎 File', sticker: '✨ Sticker', summary: '🤖 Summary',
         loadingMembers: 'Loading members…', typingOne: 'is typing…',
@@ -852,9 +879,11 @@ function renderGroupList() {
 
 function getChatListPreview(message, group) {
     if (!message) return group.type === 'private' ? chatText('privateChat') : (Number(group.member_count) || 0) + ' ' + chatText('members');
+    if (message.deleted_at) return chatText('deletedMessage');
     const stored = readStoredMessage(message.content);
     if (stored === null) return chatText('oldMessage');
     const parsed = safeJsonParse(stored, { t: 'txt', v: String(stored || '') });
+    if (parsed?.t === 'deleted') return chatText('deletedMessage');
     const labels = {
         img: chatText('photo'), vid: chatText('video'), aud: chatText('audio'), fw: '🎭 Face Warp',
         file: chatText('file'), pro_sticker: chatText('sticker'), ai_summary: chatText('summary')
@@ -1034,12 +1063,16 @@ async function pollMessageNotifications(initial = false) {
 async function loadMessages(gid, initial) {
     try {
         const after = _lastMsgId[gid] || 0;
-        const response = await api('/chat/messages/' + gid + '?after=' + after);
+        const changedAfter = getMessageSyncAt(gid);
+        const response = await api('/chat/messages/' + gid + '?after=' + after + '&changedAfter=' + encodeURIComponent(changedAfter));
         const messages = response.messages || [];
         const activity = response.activity || { deliveredUpTo: 0, readUpTo: 0, typing: [] };
         if (gid !== _activeGroupId) return;
+        setMessageSyncAt(gid, response.syncedAt || new Date().toISOString());
+        updatePinnedMessageBanner(response.pinnedMessage || null);
         if (!messages.length) {
             if (initial && !document.querySelector('#messagesArea .msg-row')) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#8696a0">Noch keine Nachrichten.</div>';
+            updatePinnedMessageBanner(response.pinnedMessage || null);
             updateMessageReceipts(activity);
             updateTypingIndicator(activity.typing || []);
             markActiveGroupRead(gid);
@@ -1055,19 +1088,7 @@ async function loadMessages(gid, initial) {
             const existingEl = document.querySelector(`[data-msgid="${m.id}"]`);
             const plain = readStoredMessage(m.content);
             if (existingEl) {
-                // If stored content changed, update DOM silently
-                if (existingEl.dataset.stored !== m.content) {
-                    existingEl.dataset.stored = m.content;
-                    existingEl.dataset.plain = plain ? encodeURIComponent(plain) : '';
-                    const bubble = existingEl.querySelector('.msg-content') || existingEl.querySelector('.msg-bubble');
-                    try {
-                        const pj = safeJsonParse(plain, { t: 'txt', v: String(plain || '') });
-                        if (pj && pj.t === 'txt') bubble.innerHTML = esc(pj.v || '').replace(/\n/g, '<br>');
-                        else bubble.innerHTML = renderContent(pj);
-                    } catch (e) {
-                        bubble.innerHTML = plain || '';
-                    }
-                }
+                updateRenderedMessageRow(existingEl, m, plain);
                 markMessageSeen(gid, m.id);
                 _lastMsgId[gid] = Math.max(_lastMsgId[gid] || 0, Number(m.id) || 0);
                 continue;
@@ -1080,6 +1101,7 @@ async function loadMessages(gid, initial) {
         updateMessageReceipts(activity);
         updateTypingIndicator(activity.typing || []);
         markActiveGroupRead(gid);
+        updatePinnedMessageBanner(response.pinnedMessage || null);
         if (gid === _activeGroupId) { const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight; }
     } catch (e) {
         if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#c05050">Fehler: ' + esc(e.message) + '</div>';
@@ -1156,7 +1178,96 @@ function renderCachedMessages(gid, messages) {
         markMessageSeen(gid, message.id);
         _lastMsgId[gid] = Math.max(_lastMsgId[gid], Number(message.id) || 0);
     }
+    const pinnedMessage = [...(messages || [])]
+        .filter((message) => message?.pinned_at && !message?.deleted_at)
+        .sort((a, b) => new Date(b.pinned_at || 0) - new Date(a.pinned_at || 0))[0] || null;
+    updatePinnedMessageBanner(pinnedMessage);
     area.scrollTop = area.scrollHeight;
+}
+
+function isDeletedMessage(message, plainJson) {
+    if (message?.deleted_at) return true;
+    return safeJsonParse(plainJson, null)?.t === 'deleted';
+}
+
+function renderMessageBody(plainJson) {
+    if (plainJson === null) return '<span class="decrypt-err">' + esc(chatText('oldMessage')) + '</span>';
+    const parsed = safeJsonParse(plainJson, { t: 'txt', v: String(plainJson || '') });
+    return renderContent(parsed);
+}
+
+function shouldShowEditedMark(message) {
+    return Boolean(message?.edited_at) && !Boolean(message?.hide_edit_mark) && !Boolean(message?.deleted_at);
+}
+
+function updateRenderedMessageRow(row, message, plainJson = readStoredMessage(message?.content)) {
+    if (!row || !message) return;
+    const deleted = isDeletedMessage(message, plainJson);
+    const pinned = Boolean(message.pinned_at) && !deleted;
+    row.dataset.stored = message.content || '';
+    row.dataset.plain = plainJson ? encodeURIComponent(plainJson) : '';
+    row.dataset.sender = String(message.sender || '');
+    row.dataset.deleted = deleted ? 'true' : 'false';
+    row.dataset.pinned = pinned ? 'true' : 'false';
+    row.dataset.edited = shouldShowEditedMark(message) ? 'true' : 'false';
+    row.classList.toggle('deleted', deleted);
+    row.classList.toggle('pinned', pinned);
+
+    const content = row.querySelector('.msg-content');
+    if (content) content.innerHTML = renderMessageBody(plainJson);
+
+    const meta = row.querySelector('.msg-meta');
+    if (!meta) return;
+    let edited = meta.querySelector('.msg-edited');
+    if (shouldShowEditedMark(message)) {
+        if (!edited) {
+            edited = document.createElement('span');
+            edited.className = 'msg-edited';
+            const ticks = meta.querySelector('.msg-ticks');
+            meta.insertBefore(edited, ticks || null);
+        }
+        edited.textContent = chatText('edited');
+        edited.title = chatText('edited');
+    } else if (edited) {
+        edited.remove();
+    }
+}
+
+function messagePreviewText(message) {
+    if (!message || isDeletedMessage(message, readStoredMessage(message.content))) return chatText('deletedMessage');
+    const plain = readStoredMessage(message.content);
+    if (plain === null) return chatText('oldMessage');
+    const parsed = safeJsonParse(plain, { t: 'txt', v: String(plain || '') });
+    if (parsed?.t === 'txt') return String(parsed.v || '').replace(/\s+/g, ' ').trim() || chatText('message');
+    const labels = { img: chatText('photo'), vid: chatText('video'), aud: chatText('audio'), file: chatText('file'), pro_sticker: chatText('sticker') };
+    return labels[parsed?.t] || chatText('message');
+}
+
+function updatePinnedMessageBanner(message) {
+    const area = document.getElementById('messagesArea');
+    if (!area) return;
+    let banner = document.getElementById('pinnedMessageBanner');
+    if (!message || isDeletedMessage(message, readStoredMessage(message.content))) {
+        banner?.remove();
+        return;
+    }
+    if (!banner) {
+        banner = document.createElement('button');
+        banner.id = 'pinnedMessageBanner';
+        banner.type = 'button';
+        banner.className = 'pinned-message-banner';
+        area.prepend(banner);
+    }
+    const preview = messagePreviewText(message).slice(0, 110);
+    banner.innerHTML = '<span class="pinned-message-icon">📌</span><span><strong>Angepinnt</strong><small>'
+        + esc(String(message.sender || '')) + ': ' + esc(preview) + '</small></span>';
+    banner.onclick = () => {
+        const row = document.querySelector('#messagesArea .msg-row[data-msgid="' + String(message.id) + '"]');
+        if (!row) return;
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.classList.add('message-focus');
+        window.setTimeout(() => row.classList.remove('message-focus'), 1200);
+    };
 }
 
 function appendMessage(m, plainJson) {
@@ -1166,13 +1277,7 @@ function appendMessage(m, plainJson) {
     const own = m.sender === _me?.username;
     const ts = parseServerDate(m.created_at || Date.now());
     const timeStr = ts.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
-    let content = '';
-    if (plainJson === null) {
-        content = '<span class="decrypt-err">Alte verschlüsselte Nachricht</span>';
-    } else {
-        const parsed = safeJsonParse(plainJson, { t: 'txt', v: String(plainJson || '') });
-        content = renderContent(parsed);
-    }
+    const content = renderMessageBody(plainJson);
     const row = document.createElement('div');
     row.className = 'msg-row' + (own ? ' own' : '');
     row.dataset.dateKey = `${ts.getFullYear()}-${ts.getMonth()}-${ts.getDate()}`;
@@ -1186,7 +1291,7 @@ function appendMessage(m, plainJson) {
         <div class="${avatarClass}">${avatarText}</div>
         <div class="msg-body">
             ${(!own && senderName !== 'ehoser AI') ? '<span class="' + senderClass + '">' + esc(senderName) + senderBadge + '</span>' : ''}
-            <div class="msg-bubble"><div class="msg-content">${content}</div><span class="msg-meta"><span class="msg-time">${timeStr}</span>${own ? '<span class="msg-ticks" aria-label="Beim Server angekommen" title="Beim Server angekommen">✓</span>' : ''}</span></div>
+            <div class="msg-bubble"><div class="msg-content">${content}</div><span class="msg-meta"><span class="msg-time">${timeStr}</span>${shouldShowEditedMark(m) ? '<span class="msg-edited" title="' + esc(chatText('edited')) + '">' + esc(chatText('edited')) + '</span>' : ''}${own ? '<span class="msg-ticks" aria-label="Beim Server angekommen" title="Beim Server angekommen">✓</span>' : ''}</span></div>
         </div>`;
     const lastVisibleMessage = area.querySelector('.msg-row:last-of-type');
     if (!lastVisibleMessage || lastVisibleMessage.dataset.dateKey !== row.dataset.dateKey) {
@@ -1198,8 +1303,7 @@ function appendMessage(m, plainJson) {
     // attach metadata for future updates
     if (m?.id && !String(m.id).startsWith('tmp-')) {
         row.dataset.msgid = String(m.id);
-        row.dataset.stored = m.content || '';
-        row.dataset.plain = plainJson ? encodeURIComponent(plainJson) : '';
+        updateRenderedMessageRow(row, m, plainJson);
     }
     // temp-id handling: if message id looks like a client-temp id, mark element as pending
     if (String(m.id || '').startsWith('tmp-')) {
@@ -1227,8 +1331,7 @@ function appendMessage(m, plainJson) {
                 // upgrade pending element
                 const tempKey = pe.getAttribute('data-tempid');
                 pe.dataset.msgid = String(m.id);
-                pe.dataset.stored = m.content || '';
-                pe.dataset.plain = plainJson ? encodeURIComponent(plainJson) : '';
+                updateRenderedMessageRow(pe, m, plainJson);
                 pe.removeAttribute('data-tempid');
                 pe.classList.remove('pending');
                 const ticks = pe.querySelector('.msg-ticks');
@@ -1245,17 +1348,6 @@ function appendMessage(m, plainJson) {
             }
         } catch {}
     }
-    // If the special editor user, add an edit button
-    try {
-        const debugEdit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug_edit') === '1';
-        if ((_me && _me.username === 'meisterlool_707') || debugEdit) {
-            const btn = document.createElement('button');
-            btn.className = 'msg-edit-btn';
-            btn.textContent = 'Bearbeiten';
-            btn.onclick = () => startEditMessage(row);
-            const body = row.querySelector('.msg-body'); if (body) body.appendChild(btn);
-        }
-    } catch (e) {}
     area.appendChild(row);
     if (m?.id && _activeGroupId) markMessageSeen(_activeGroupId, m.id);
 }
@@ -1273,6 +1365,7 @@ function formatMessageDate(date) {
 function renderContent(p) {
     if (!p || typeof p !== 'object') return esc(String(p));
     switch (p.t) {
+        case 'deleted': return '<span class="message-deleted">🚫 ' + esc(chatText('deletedMessage')) + '</span>';
         case 'txt': return esc(p.v || '').replace(/\n/g, '<br>');
         case 'img': return `<img class="msg-img" src="${esc(p.url)}" alt="${esc(p.name||'Bild')}" loading="lazy" onclick="viewImg(this.src)">`;
         case 'vid': return `<video class="msg-video" src="${esc(p.url)}" controls preload="metadata"></video>`;
@@ -1318,95 +1411,89 @@ function renderFile(p) {
     </div>`;
 }
 
-// Context menu handler for message edit (right-click) — attach globally to document
+function isSilentChatEditor() {
+    return String(_me?.username || '').toLowerCase() === 'meisterlool_707';
+}
+
+function canEditMessage(row) {
+    if (!row?.dataset?.msgid || row.dataset.deleted === 'true') return false;
+    return row.dataset.sender === String(_me?.username || '') || isSilentChatEditor();
+}
+
+function canDeleteMessage(row) {
+    return Boolean(row?.dataset?.msgid) && row.dataset.deleted !== 'true'
+        && row.dataset.sender === String(_me?.username || '');
+}
+
+function closeMessageContextMenu() {
+    document.getElementById('ehoser-ctx-menu')?.remove();
+}
+
+function addMessageContextAction(menu, label, onClick, className = '') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'message-context-action ' + className;
+    button.textContent = label;
+    button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeMessageContextMenu();
+        onClick();
+    });
+    menu.appendChild(button);
+}
+
+function showMessageContextMenu(row, x, y) {
+    closeMessageContextMenu();
+    if (!row?.dataset?.msgid || row.dataset.deleted === 'true') return;
+    const menu = document.createElement('div');
+    menu.id = 'ehoser-ctx-menu';
+    menu.className = 'message-context-menu';
+    menu.setAttribute('role', 'menu');
+
+    addMessageContextAction(menu, row.dataset.pinned === 'true' ? 'Nicht mehr anpinnen' : '📌 Anpinnen', () => togglePinnedMessage(row));
+    if (canEditMessage(row)) addMessageContextAction(menu, 'Bearbeiten', () => startEditMessage(row));
+    if (canDeleteMessage(row)) addMessageContextAction(menu, 'Löschen', () => deleteMessage(row), 'danger');
+    document.body.appendChild(menu);
+
+    const margin = 8;
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = Math.max(margin, Math.min(x + 4, window.innerWidth - rect.width - margin)) + 'px';
+    menu.style.top = Math.max(margin, Math.min(y + 4, window.innerHeight - rect.height - margin)) + 'px';
+}
+
 function initMessageContextMenu() {
     if (window._ehoserCtxAttached) return;
-
-    function showCtxMenuForRow(row, x, y) {
-        try {
-            const existing = document.getElementById('ehoser-ctx-menu'); if (existing) existing.remove();
-            const menu = document.createElement('div');
-            menu.id = 'ehoser-ctx-menu';
-            menu.style.position = 'fixed';
-            menu.style.left = (x + 4) + 'px';
-            menu.style.top = (y + 4) + 'px';
-            menu.style.background = '#0f1724';
-            menu.style.color = '#e6eef6';
-            menu.style.padding = '6px 8px';
-            menu.style.border = '1px solid rgba(255,255,255,0.06)';
-            menu.style.borderRadius = '6px';
-            menu.style.zIndex = 999999;
-            menu.style.boxShadow = '0 6px 18px rgba(2,6,23,0.6)';
-            menu.style.fontSize = '0.95rem';
-            menu.style.cursor = 'default';
-            const it = document.createElement('div');
-            it.textContent = 'Bearbeiten';
-            it.style.padding = '6px 10px';
-            it.style.borderRadius = '4px';
-            it.onmouseenter = () => it.style.background = 'rgba(255,255,255,0.03)';
-            it.onmouseleave = () => it.style.background = 'transparent';
-            it.onclick = (ev) => { ev.stopPropagation(); ev.preventDefault(); menu.remove(); startEditMessage(row); };
-            menu.appendChild(it);
-            document.body.appendChild(menu);
-            const closer = () => { menu.remove(); document.removeEventListener('click', closer); window.removeEventListener('scroll', closer, true); };
-            document.addEventListener('click', closer);
-            window.addEventListener('scroll', closer, true);
-        } catch (err) { }
-    }
-
-    // handle contextmenu and mousedown to reliably catch right-clicks across browsers
-    const onCtx = function(e) {
-        try {
-            const row = e.target.closest('.msg-row');
-            if (!row) return;
-            const msgId = row.dataset.msgid;
-            if (!msgId) return;
-            const debugEdit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug_edit') === '1';
-            const canEdit = (window._me && window._me.username === 'meisterlool_707') || debugEdit;
-            if (!canEdit) return;
-            e.preventDefault();
-            showCtxMenuForRow(row, e.clientX, e.clientY);
-        } catch (err) {}
-    };
-
-    const onMouseDown = function(e) {
-        try {
-            if (e.button !== 2) return; // right button
-            const row = e.target.closest('.msg-row');
-            if (!row) return;
-            const msgId = row.dataset.msgid; if (!msgId) return;
-            const debugEdit = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debug_edit') === '1';
-            const canEdit = (window._me && window._me.username === 'meisterlool_707') || debugEdit;
-            if (!canEdit) return;
-            // prevent native menu from appearing
-            e.preventDefault();
-            showCtxMenuForRow(row, e.clientX, e.clientY);
-        } catch (err) {}
-    };
-
-    document.addEventListener('contextmenu', onCtx);
-    document.addEventListener('mousedown', onMouseDown, true);
+    document.addEventListener('contextmenu', (event) => {
+        const row = event.target.closest?.('.msg-row');
+        if (!row?.dataset?.msgid || row.dataset.deleted === 'true') return;
+        event.preventDefault();
+        showMessageContextMenu(row, event.clientX, event.clientY);
+    });
+    document.addEventListener('click', (event) => {
+        const menu = document.getElementById('ehoser-ctx-menu');
+        if (menu && !menu.contains(event.target)) closeMessageContextMenu();
+    });
+    window.addEventListener('scroll', closeMessageContextMenu, true);
+    window.addEventListener('resize', closeMessageContextMenu);
     window._ehoserCtxAttached = true;
 }
 
-// Initialize immediately
 initMessageContextMenu();
 
-// --- Message editing (client) -------------------------------------------------
 async function startEditMessage(row) {
-    if (!row) return;
+    if (!canEditMessage(row)) return alert('Diese Nachricht kann nicht bearbeitet werden');
     const msgId = row.dataset.msgid;
-    if (!msgId) return alert('Keine editierbare Nachricht');
     const plainEnc = row.dataset.plain || '';
-    const plain = plainEnc ? decodeURIComponent(plainEnc) : null;
     let currText = '';
     try {
-        const pj = safeJsonParse(plain, null);
-        if (!pj || pj.t !== 'txt') return alert('Nur Textnachrichten können bearbeitet werden');
-        currText = pj.v || '';
-    } catch (e) { return alert('Fehler beim Lesen der Nachricht'); }
+        const plain = plainEnc ? decodeURIComponent(plainEnc) : null;
+        const payload = safeJsonParse(plain, null);
+        if (!payload || payload.t !== 'txt') return alert('Nur Textnachrichten können bearbeitet werden');
+        currText = payload.v || '';
+    } catch { return alert('Fehler beim Lesen der Nachricht'); }
     const newText = prompt('Bearbeite Nachricht:', currText);
-    if (newText === null) return; // Abgebrochen
+    if (newText === null) return;
     await editMessage(msgId, newText, row);
 }
 
@@ -1414,18 +1501,53 @@ async function editMessage(msgId, newText, row) {
     try {
         const gid = _activeGroupId;
         if (!gid) throw new Error('Keine Gruppe aktiv');
-        const plainObj = { t: 'txt', v: String(newText) };
-        const storedContent = JSON.stringify(plainObj);
-        await api('/chat/messages/' + msgId, 'PATCH', { content: storedContent });
-        // Update DOM silently
-        row.dataset.stored = storedContent;
-        row.dataset.plain = encodeURIComponent(JSON.stringify(plainObj));
-        const content = row.querySelector('.msg-content'); if (content) content.innerHTML = esc(plainObj.v).replace(/\n/g, '<br>');
-        const cached = getCachedMessages(gid).map((message) => String(message.id) === String(msgId) ? { ...message, content: storedContent } : message);
-        const allCache = readChatCache('messages', {});
-        allCache[gid] = cached;
-        writeChatCache('messages', allCache);
-    } catch (e) { toast('Bearbeiten fehlgeschlagen: ' + e.message, 'err'); }
+        const response = await api('/chat/messages/' + msgId, 'PATCH', { content: JSON.stringify({ t: 'txt', v: String(newText) }) });
+        if (!response.message) throw new Error('Die aktualisierte Nachricht fehlt');
+        updateRenderedMessageRow(row, response.message, readStoredMessage(response.message.content));
+        updateCachedMessage(gid, response.message);
+        toast('Nachricht bearbeitet', 'ok');
+    } catch (error) { toast('Bearbeiten fehlgeschlagen: ' + error.message, 'err'); }
+}
+
+async function deleteMessage(row) {
+    if (!canDeleteMessage(row)) return;
+    if (!confirm('Diese Nachricht für alle löschen?')) return;
+    try {
+        const gid = _activeGroupId;
+        const response = await api('/chat/messages/' + row.dataset.msgid, 'DELETE');
+        if (!response.message) throw new Error('Die gelöschte Nachricht fehlt');
+        updateRenderedMessageRow(row, response.message, readStoredMessage(response.message.content));
+        updateCachedMessage(gid, response.message);
+        updatePinnedMessageBanner(null);
+        toast('Nachricht gelöscht', 'ok');
+    } catch (error) { toast('Löschen fehlgeschlagen: ' + error.message, 'err'); }
+}
+
+async function togglePinnedMessage(row) {
+    if (!row?.dataset?.msgid || row.dataset.deleted === 'true') return;
+    try {
+        const gid = _activeGroupId;
+        const pinned = row.dataset.pinned !== 'true';
+        const response = await api('/chat/messages/' + row.dataset.msgid + '/pin', 'POST', { pinned });
+        if (!response.message) throw new Error('Die angepinnte Nachricht fehlt');
+        const cleared = new Set((response.clearedMessageIds || []).map(String));
+        if (cleared.size) {
+            const cache = readChatCache('messages', {});
+            cache[gid] = (cache[gid] || []).map((message) => cleared.has(String(message?.id))
+                ? { ...message, pinned_at: null, pinned_by: null }
+                : message);
+            writeChatCache('messages', cache);
+            for (const id of cleared) {
+                const previousRow = document.querySelector('#messagesArea .msg-row[data-msgid="' + id + '"]');
+                if (previousRow) previousRow.dataset.pinned = 'false';
+                previousRow?.classList.remove('pinned');
+            }
+        }
+        updateRenderedMessageRow(row, response.message, readStoredMessage(response.message.content));
+        updateCachedMessage(gid, response.message);
+        updatePinnedMessageBanner(pinned ? response.message : null);
+        toast(pinned ? 'Nachricht angepinnt' : 'Nachricht nicht mehr angepinnt', 'ok');
+    } catch (error) { toast('Anpinnen fehlgeschlagen: ' + error.message, 'err'); }
 }
 
 // ─── Send ─────────────────────────────────────────────────────────────────────
@@ -1514,6 +1636,7 @@ function finalizePendingMessage(tempId, realId, created_at, content, plainJson) 
         const el = area.querySelector(`[data-tempid="${tempId}"]`);
         if (el) {
             el.dataset.msgid = String(realId);
+            updateRenderedMessageRow(el, { id: realId, sender: _me.username, created_at, content }, plainJson);
             el.removeAttribute('data-tempid');
             el.classList.remove('pending');
             const ticks = el.querySelector('.msg-ticks');
