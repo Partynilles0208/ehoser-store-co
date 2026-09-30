@@ -2531,6 +2531,44 @@ app.get('/api/admin/users', async (req, res) => {
   }
 });
 
+// Admin: Neuen Notfall-Login-Code erstellen. Der bisherige Code wird nie ausgelesen.
+app.post('/api/admin/users/:id/reset-login-code', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
+    return res.status(401).json({ error: 'Ungültiger Admin-Key' });
+  }
+
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ error: 'Ungültige Nutzer-ID' });
+  }
+
+  try {
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id,username')
+      .eq('id', userId)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    // A new code is returned once to the authorised admin; existing codes are never exposed.
+    const loginCode = 'EHO-' + crypto.randomBytes(5).toString('hex').toUpperCase();
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({ access_code: loginCode })
+      .eq('id', user.id);
+    if (updateError) throw updateError;
+
+    console.info('Admin reset login code for user:', user.username);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ ok: true, username: user.username, loginCode });
+  } catch (error) {
+    console.error('Admin login-code reset error:', error);
+    return res.status(500).json({ error: 'Login-Code konnte nicht zurückgesetzt werden' });
+  }
+});
+
 app.get('/api/admin/plan-requests', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
