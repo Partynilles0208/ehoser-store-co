@@ -2,7 +2,7 @@
 const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : window.location.origin;
 const API = API_ORIGIN + '/api';
 const CHAT_CACHE_VERSION = 'v3';
-const CHAT_UPDATE_VERSION = '2026-09-chat-refresh';
+const CHAT_UPDATE_VERSION = '2026-10-message-integrity-fix';
 const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
 const IS_EHOSER_ANDROID_APP = Boolean(window.EhoserAndroid && typeof window.EhoserAndroid.isNativeApp === 'function');
 let _chatGoogleClientId = '';
