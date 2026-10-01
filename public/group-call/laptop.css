@@ -64,3 +64,84 @@
   .call-controls::-webkit-scrollbar { display: none; }
   .call-controls button { width: 56px; min-width: 56px; }
 }
+
+/* Participant focus mode */
+.call-room { position: relative; overflow: hidden; }
+.participant-tile { cursor: pointer; outline: none; }
+.participant-tile:focus-visible { outline: 2px solid var(--bright); outline-offset: -4px; }
+.call-room.focus-active .call-header { display: none; }
+.call-room.focus-active .video-grid { padding: 0; gap: 0; grid-template-columns: 1fr; grid-auto-rows: 1fr; }
+.video-grid.focus-mode .participant-tile:not(.focused) { display: none; }
+.video-grid.focus-mode .participant-tile.focused { min-height: 100%; width: 100%; height: 100%; border: 0; border-radius: 0; }
+.video-grid.focus-mode .participant-tile.focused .participant-avatar,
+.video-grid.focus-mode .participant-tile.focused .participant-info { display: none; }
+
+.focus-toolbar {
+  position: absolute;
+  z-index: 16;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+.focus-toolbar > * { pointer-events: auto; }
+.focus-toolbar > div { display: flex; gap: 8px; }
+.focus-toolbar button {
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid rgba(233, 237, 239, .18);
+  border-radius: 12px;
+  background: rgba(8, 15, 19, .74);
+  color: var(--text);
+  font: 800 .78rem Outfit, sans-serif;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+}
+.focus-toolbar button:hover { background: rgba(32, 44, 51, .94); }
+
+.call-room.controls-hidden .call-controls {
+  opacity: 0;
+  transform: translate(-50%, 28px);
+  pointer-events: none;
+}
+.call-controls { transition: opacity .2s ease, transform .2s ease; }
+
+.call-sticker-panel {
+  position: absolute;
+  z-index: 17;
+  top: 66px;
+  right: 16px;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(233, 237, 239, .16);
+  border-radius: 15px;
+  background: rgba(8, 15, 19, .86);
+  backdrop-filter: blur(16px);
+}
+.call-sticker-panel button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 11px;
+  background: #202c33;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.call-sticker-panel button:hover { background: #31444e; transform: translateY(-2px); }
+.call-sticker-layer { position: absolute; z-index: 18; inset: 0; display: grid; place-items: center; pointer-events: none; overflow: hidden; }
+.call-sticker-pop { display: grid; place-items: center; gap: 5px; animation: callStickerPop 2.6s ease forwards; text-align: center; }
+.call-sticker-pop span { font-size: clamp(5rem, 18vw, 10rem); filter: drop-shadow(0 10px 22px rgba(0, 0, 0, .55)); }
+.call-sticker-pop small { padding: 5px 9px; border-radius: 999px; background: rgba(5, 11, 14, .75); color: #e9edef; font-weight: 800; }
+@keyframes callStickerPop { 0% { opacity: 0; transform: scale(.45) translateY(40px); } 15%, 72% { opacity: 1; transform: scale(1) translateY(0); } 100% { opacity: 0; transform: scale(1.12) translateY(-38px); } }
+
+@media (max-width: 760px) {
+  .focus-toolbar { top: 10px; left: 10px; right: 10px; }
+  .focus-toolbar button { min-height: 36px; padding: 0 9px; font-size: .68rem; }
+  .focus-toolbar > div { gap: 5px; }
+  .call-sticker-panel { top: 56px; right: 10px; gap: 4px; padding: 6px; }
+  .call-sticker-panel button { width: 32px; height: 32px; font-size: 1rem; }
+}
