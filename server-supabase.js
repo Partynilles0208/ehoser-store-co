@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 60196)
-Total output lines: 6114
-
 ﻿const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -3307,7 +3304,22 @@ app.post('/api/screenshare/respond', async (req, res) => {
   if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
   try {
     await ensureScreenSessionsTableExists();
- …196 tokens truncated…eq('id', sessionId);
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const { sessionId, answer, accept } = req.body;
+    if (!sessionId) return res.status(400).json({ error: 'sessionId fehlt' });
+
+    const { data: session } = await supabaseAdmin
+      .from('screen_sessions').select('username').eq('id', sessionId).single();
+    if (!session || session.username !== decoded.username)
+      return res.status(403).json({ error: 'Session nicht gefunden' });
+
+    if (!accept) {
+      await supabaseAdmin.from('screen_sessions').update({ status: 'declined' }).eq('id', sessionId);
+      return res.json({ ok: true });
+    }
+    await supabaseAdmin.from('screen_sessions')
+      .update({ status: 'active', answer: JSON.stringify(answer) }).eq('id', sessionId);
     res.json({ ok: true });
   } catch {
     return res.status(401).json({ error: 'Fehler' });
