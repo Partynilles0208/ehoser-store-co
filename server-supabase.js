@@ -3998,6 +3998,9 @@ app.post('/api/chat/groups', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const rawName = String(req.body?.name || '').trim();
   const incomingMembers = Array.isArray(req.body?.members) ? req.body.members : [];
+  // Call rooms use the existing member + message tables for authentication and
+  // WebRTC signalling. Mark them as internal so they never show up as chats.
+  const callOnly = req.body?.purpose === 'group-call';
 
   const normalizedMembers = [...new Set(
     incomingMembers
@@ -4014,7 +4017,7 @@ app.post('/api/chat/groups', async (req, res) => {
     return res.status(400).json({ error: 'Eine Gruppe braucht mindestens zwei weitere Kontakte. Für einen einzelnen Kontakt nutze den direkten Chat.' });
   }
 
-  const type = 'group';
+  const type = callOnly ? 'call' : 'group';
   const name = (rawName || `Gruppe (${normalizedMembers.length + 1})`).slice(0, 50);
 
   const id = crypto.randomUUID();
@@ -4064,6 +4067,9 @@ app.get('/api/chat/groups', async (req, res) => {
     const meta = await getGroupMeta(group.id, { type: fallbackType });
     const admins = await listGroupAdmins(group.id, group.created_by);
     const type = meta.type || fallbackType;
+    // A group-call room is only signalling infrastructure, not a conversation.
+    // Do not return it to any chat client, on any device.
+    if (type === 'call') continue;
     const peerUsername = type === 'private'
       ? groupMembers.find((username) => username !== user.username) || null
       : null;
