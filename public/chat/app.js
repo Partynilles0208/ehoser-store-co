@@ -1367,7 +1367,13 @@ function renderMessageBody(plainJson) {
 }
 
 function shouldShowEditedMark(message) {
-    return Boolean(message?.edited_at) && !Boolean(message?.hide_edit_mark) && !Boolean(message?.deleted_at);
+    if (Boolean(message?.hide_edit_mark) || Boolean(message?.deleted_at)) return false;
+    if (Boolean(message?.edited_at)) return true;
+    // Compatibility for installations where the optional edited_at database
+    // column has not been created yet. The server keeps the marker with the
+    // message content in that case, so it also survives another device login.
+    const stored = readStoredMessage(message?.content);
+    return Boolean(safeJsonParse(stored, null)?.edited);
 }
 
 function updateRenderedMessageRow(row, message, plainJson = readStoredMessage(message?.content)) {
