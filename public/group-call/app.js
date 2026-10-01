@@ -122,7 +122,9 @@ async function startGroupCall() {
   setLobbyStatus('Anrufgruppe wird erstellt …');
   try {
     const name = 'Gruppenanruf · ' + new Date().toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const group = await api('/chat/groups', 'POST', { name, members: [...selectedUsers] });
+    // A room still needs a member list for signalling, but it must never become
+    // a visible conversation in the regular chat list.
+    const group = await api('/chat/groups', 'POST', { name, members: [...selectedUsers], purpose: 'group-call' });
     const { room } = await api('/chat/group-calls', 'POST', { groupId: group.id });
     await enterRoom(room);
   } catch (error) {

@@ -360,6 +360,19 @@
     </section>
 
     <section class="settings-section">
+      <div class="settings-section-title"><span>🖼️</span><div><strong>Profilbild</strong><small>Wird bei Nachrichten und Kontakten angezeigt</small></div></div>
+      <div class="settings-avatar-editor">
+        <input id="settingsAvatarUrl" class="settings-avatar-url" type="url" maxlength="2048" autocomplete="url" placeholder="https://…" oninput="refreshChatAvatarPreview()">
+        <div class="settings-avatar-actions">
+          <label class="settings-avatar-file-btn" for="settingsAvatarFile">Bild auswählen</label>
+          <input id="settingsAvatarFile" type="file" accept="image/jpeg,image/png,image/gif,image/webp" onchange="uploadChatAvatar()">
+          <button type="button" onclick="clearChatAvatar()">Entfernen</button>
+        </div>
+        <small id="settingsAvatarHint">JPG, PNG, GIF oder WebP · maximal 8 MB</small>
+      </div>
+    </section>
+
+    <section class="settings-section">
       <div class="settings-section-title"><span>🔐</span><div><strong>Konto</strong><small>Dein Ersatzcode für die Anmeldung</small></div></div>
       <div class="settings-code-row">
         <code id="settingsLoginCode" data-revealed="false">••••••</code>

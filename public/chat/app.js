@@ -147,6 +147,7 @@ let _typingLastSentAt = 0;
 let _typingStopTimer = null;
 let _chatSettingsLoginCode = null;
 let _settingsOnlineRequestId = 0;
+const _chatProfiles = new Map();
 
 const FALLBACK_RTC_CONFIG = {
     iceServers: [
@@ -637,9 +638,8 @@ async function showOnlineHoldList() {
         list.innerHTML = users.map((user) => {
             const username = String(user?.username || 'Gast');
             const isMe = username.toLowerCase() === String(_me?.username || '').toLowerCase();
-            const initials = user?.kind === 'guest' ? 'G' : username.slice(0, 2).toUpperCase();
             return `<li${isMe ? ' class="is-me"' : ''}>
-                <span class="online-hold-avatar">${esc(initials)}</span>
+                ${renderPersonAvatar(username, 'online-hold-avatar', user)}
                 <span class="online-hold-name">${esc(username)}${isMe ? '<small>Du</small>' : ''}</span>
                 <span class="online-hold-status"><i></i>online</span>
             </li>`;
@@ -928,6 +928,7 @@ async function loadGroups() {
         if (groupsResult.status !== 'fulfilled') throw groupsResult.reason;
         const groups = groupsResult.value.groups || [];
         _contacts = contactsResult.status === 'fulfilled' ? (contactsResult.value.contacts || []) : _contacts;
+        rememberChatProfiles(_contacts);
         _groups = mergeGroupsWithContacts(groups, _contacts);
         writeChatCache('groups', groups);
         renderGroupList();
@@ -992,7 +993,7 @@ function renderGroupList() {
             : '';
         return `
         <div class="group-item${_activeGroupId === g.id ? ' active' : ''}${g.is_contact ? ' contact-item' : ''}" onclick="selectGroup('${g.id}')">
-            <div class="gi-avatar">${g.type === 'private' ? '👤' : '👥'}</div>
+            ${renderConversationAvatar(g, 'gi-avatar')}
             <div class="gi-info">
                 <div class="gi-head"><div class="gi-name">${esc(g.name)}</div><time>${esc(listTime)}</time></div>
                 <div class="gi-sub">${esc(listPreview)}</div>
@@ -1092,7 +1093,7 @@ async function selectGroup(gid) {
     const ac = document.getElementById('activeChat');
     ac.style.display = 'flex';
     document.getElementById('topbarName').textContent = g.name;
-    document.getElementById('topbarGroupIcon').textContent = g.type === 'private' ? '👤' : '👥';
+    setConversationAvatar(document.getElementById('topbarGroupIcon'), g);
     _topbarMemberText = chatText('loadingMembers');
     updateTypingIndicator([]);
     const cachedMessages = getCachedMessages(gid);
@@ -1465,9 +1466,11 @@ function appendMessage(m, plainJson) {
     const senderBadge = isSenderPro ? '<span class="msg-pro-badge">⭐ PRO</span>' : '';
     const senderClass = isSenderPro ? 'msg-sender pro-sender' : 'msg-sender';
     const avatarClass = isSenderPro && !own ? 'msg-avatar pro-av' : 'msg-avatar';
-    const avatarText = senderName === 'ehoser AI' ? 'AI' : esc(senderName.substring(0,2).toUpperCase());
+    const avatar = senderName === 'ehoser AI'
+        ? '<span class="' + avatarClass + '"><span class="chat-avatar-fallback">AI</span></span>'
+        : renderPersonAvatar(senderName, avatarClass);
     row.innerHTML = `
-        <div class="${avatarClass}">${avatarText}</div>
+        ${avatar}
         <div class="msg-body">
             ${(!own && senderName !== 'ehoser AI') ? '<span class="' + senderClass + '">' + esc(senderName) + senderBadge + '</span>' : ''}
             <div class="msg-bubble"><div class="msg-content">${content}</div><span class="msg-meta"><span class="msg-time">${timeStr}</span>${shouldShowEditedMark(m) ? '<span class="msg-edited" title="' + esc(chatText('edited')) + '">' + esc(chatText('edited')) + '</span>' : ''}${own ? '<span class="msg-ticks" aria-label="Beim Server angekommen" title="Beim Server angekommen">✓</span>' : ''}</span></div>
@@ -1990,7 +1993,7 @@ function parseRtcValue(value) {
 function openCallUi(peerName, status, withLocalVideo = false) {
     const overlay = document.getElementById('callOverlay');
     document.getElementById('callPeerName').textContent = peerName || 'Anruf';
-    document.getElementById('callAvatar').textContent = callInitials(peerName);
+    replaceAvatarElement(document.getElementById('callAvatar'), renderPersonAvatar(peerName, 'call-avatar'));
     document.getElementById('callStatus').textContent = status || 'Verbindung wird aufgebaut…';
     document.getElementById('callTimer').textContent = '';
     overlay.classList.remove('video-active');
@@ -2443,7 +2446,7 @@ function showIncomingCall(call) {
     _incomingCall = call;
     const caller = call.caller || 'Unbekannt';
     document.getElementById('incomingCallName').textContent = caller;
-    document.getElementById('incomingCallAvatar').textContent = callInitials(caller);
+    replaceAvatarElement(document.getElementById('incomingCallAvatar'), renderPersonAvatar(caller, 'incoming-avatar'));
     document.getElementById('incomingCallKind').textContent = call.media_type === 'video' ? 'Eingehender Videoanruf' : 'Eingehender Audioanruf';
     document.getElementById('incomingCallOverlay').style.display = 'flex';
     if (_notifiedIncomingCallId !== call.id) {
@@ -2791,7 +2794,9 @@ async function openChatSettings() {
     const username = _me?.username || 'Nutzer';
     document.getElementById('settingsUsername').textContent = username;
     document.getElementById('settingsEmail').textContent = 'Kontodaten werden geladen…';
-    document.getElementById('settingsAvatar').textContent = username.slice(0, 2).toUpperCase();
+    document.getElementById('settingsAvatarUrl').value = settings.avatarUrl || '';
+    document.getElementById('settingsAvatarHint').textContent = 'JPG, PNG, GIF oder WebP · maximal 8 MB';
+    refreshChatAvatarPreview();
     document.getElementById('settingsPlan').textContent = _meProfile?.isPremium ? 'Premium' : (_meProfile?.isPro ? 'PRO' : 'Gratis');
     document.getElementById('settingsLanguage').value = chatLanguage();
     document.getElementById('settingsEnterToSend').checked = settings.chatEnterToSend !== false;
@@ -2821,6 +2826,8 @@ async function openChatSettings() {
     if (accountResult.status === 'fulfilled') {
         const account = accountResult.value;
         _meProfile = account.profile || _meProfile;
+        document.getElementById('settingsAvatarUrl').value = _meProfile?.settings?.avatarUrl || document.getElementById('settingsAvatarUrl').value;
+        refreshChatAvatarPreview();
         const email = account.user?.email;
         document.getElementById('settingsEmail').textContent = email || 'Keine E-Mail hinterlegt';
         document.getElementById('settingsPlan').textContent = _meProfile?.isPremium ? 'Premium' : (_meProfile?.isPro ? 'PRO' : 'Gratis');
@@ -2844,6 +2851,7 @@ async function loadSettingsOnlineList() {
         const data = await api('/chat/contacts');
         if (requestId !== _settingsOnlineRequestId) return;
         const users = data.contacts || [];
+        rememberChatProfiles(users);
         const onlineCount = users.filter((user) => isUserOnline(user?.last_seen)).length;
         count.textContent = `${onlineCount} online · ${users.length} Kontakte`;
         if (!users.length) {
@@ -2852,10 +2860,9 @@ async function loadSettingsOnlineList() {
         }
         list.innerHTML = users.map((user) => {
             const username = String(user?.username || 'Gast');
-            const initials = user?.kind === 'guest' ? 'G' : username.slice(0, 2).toUpperCase();
             const online = isUserOnline(user?.last_seen);
             return `<li>
-                <span class="settings-online-avatar">${esc(initials)}</span>
+                ${renderPersonAvatar(username, 'settings-online-avatar', user)}
                 <span class="settings-online-user">${esc(username)}<small>${esc(lastSeenLabel(user?.last_seen))}</small></span>
                 <i class="${online ? '' : 'offline'}" aria-label="${online ? 'online' : 'zuletzt online'}"></i>
             </li>`;
@@ -2922,9 +2929,13 @@ async function saveChatSettings() {
             language: document.getElementById('settingsLanguage').value,
             chatEnterToSend: document.getElementById('settingsEnterToSend').checked,
             chatCompactMode: document.getElementById('settingsCompactMode').checked,
-            chatShowPreviews: document.getElementById('settingsShowPreviews').checked
+            chatShowPreviews: document.getElementById('settingsShowPreviews').checked,
+            avatarUrl: document.getElementById('settingsAvatarUrl').value.trim()
         });
         _meProfile = data.profile || _meProfile;
+        document.getElementById('settingsAvatarUrl').value = _meProfile?.settings?.avatarUrl || '';
+        rememberChatProfiles([{ username: _me?.username, avatar_url: _meProfile?.settings?.avatarUrl || '' }]);
+        refreshChatAvatarPreview();
         applyChatPreferences();
         status.textContent = '✓ Gespeichert';
         toast('Einstellungen gespeichert.', 'ok');
@@ -3008,9 +3019,10 @@ async function openMembersModal() {
     openModal('membersModal');
     try {
         const { members } = await api('/chat/groups/' + _activeGroupId + '/members');
+        _activeMembers = members || [];
         const g = _groups.find(x => x.id === _activeGroupId);
         document.getElementById('membersList').innerHTML = members.map(m =>
-            `<li><div class="member-av">${esc(m.username.substring(0,2).toUpperCase())}</div><span>${esc(m.username)}</span>${g?.created_by === m.username ? '<span class="creator-badge">Ersteller</span>' : ''}</li>`
+            `<li>${renderPersonAvatar(m.username, 'member-av')}<span>${esc(m.username)}</span>${g?.created_by === m.username ? '<span class="creator-badge">Ersteller</span>' : ''}</li>`
         ).join('') || '<li style="color:var(--muted)">Keine Mitglieder</li>';
     } catch { document.getElementById('membersList').innerHTML = '<li style="color:#c05050">Fehler</li>'; }
 }
@@ -3060,6 +3072,123 @@ function viewImg(src) {
     img.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.8)';
     ov.appendChild(img);
     document.body.appendChild(ov);
+}
+
+// ─── Profile pictures ───────────────────────────────────────────────────────
+function profileKey(username) {
+    return String(username || '').trim().toLowerCase();
+}
+
+function rememberChatProfiles(profiles) {
+    for (const profile of profiles || []) {
+        const username = String(profile?.username || '').trim();
+        if (!username) continue;
+        _chatProfiles.set(profileKey(username), {
+            avatarUrl: safeChatAvatarUrl(profile.avatar_url || profile.avatarUrl || ''),
+            displayName: String(profile.display_name || profile.displayName || '').trim().slice(0, 40)
+        });
+    }
+}
+
+function safeChatAvatarUrl(value) {
+    try {
+        const url = new URL(String(value || '').trim());
+        return url.protocol === 'https:' ? url.toString() : '';
+    } catch {
+        return '';
+    }
+}
+
+function profileForChatUser(username, supplied = null) {
+    const key = profileKey(username);
+    if (supplied) {
+        const avatarUrl = safeChatAvatarUrl(supplied.avatar_url || supplied.avatarUrl || '');
+        const displayName = String(supplied.display_name || supplied.displayName || '').trim().slice(0, 40);
+        if (avatarUrl || displayName) return { avatarUrl, displayName };
+    }
+    if (key && key === profileKey(_me?.username)) {
+        return {
+            avatarUrl: safeChatAvatarUrl(_meProfile?.settings?.avatarUrl || ''),
+            displayName: String(_meProfile?.settings?.displayName || '').trim().slice(0, 40)
+        };
+    }
+    return _chatProfiles.get(key) || { avatarUrl: '', displayName: '' };
+}
+
+function avatarInitials(username) {
+    const clean = String(username || '?').trim();
+    const words = clean.split(/[\s_-]+/).filter(Boolean);
+    return (words.length > 1 ? words.slice(0, 2).map((word) => word[0]).join('') : clean.slice(0, 2)).toUpperCase();
+}
+
+function renderPersonAvatar(username, className, suppliedProfile = null) {
+    const profile = profileForChatUser(username, suppliedProfile);
+    const image = profile.avatarUrl
+        ? '<img class="chat-avatar-image" src="' + esc(profile.avatarUrl) + '" alt="" loading="lazy" onerror="this.remove();this.parentElement.classList.remove(\'has-avatar-image\')">'
+        : '';
+    return '<span class="' + className + (image ? ' has-avatar-image' : '') + '" title="' + esc(profile.displayName || username) + '">' + image + '<span class="chat-avatar-fallback">' + esc(avatarInitials(username)) + '</span></span>';
+}
+
+function renderConversationAvatar(group, className) {
+    if (group?.type === 'private') return renderPersonAvatar(group.peer_username || group.name, className);
+    const photoUrl = safeChatAvatarUrl(group?.photo_url || '');
+    const image = photoUrl
+        ? '<img class="chat-avatar-image" src="' + esc(photoUrl) + '" alt="" loading="lazy" onerror="this.remove();this.parentElement.classList.remove(\'has-avatar-image\')">'
+        : '';
+    return '<span class="' + className + (image ? ' has-avatar-image' : '') + '">' + image + '<span class="chat-avatar-fallback">👥</span></span>';
+}
+
+function replaceAvatarElement(element, markup) {
+    if (!element) return;
+    const holder = document.createElement('div');
+    holder.innerHTML = markup;
+    const replacement = holder.firstElementChild;
+    if (!replacement) return;
+    replacement.id = element.id;
+    element.replaceWith(replacement);
+}
+
+function setConversationAvatar(element, group) {
+    replaceAvatarElement(element, renderConversationAvatar(group, 'topbar-group-icon'));
+}
+
+function refreshChatAvatarPreview() {
+    const preview = document.getElementById('settingsAvatar');
+    if (!preview) return;
+    const username = _me?.username || 'Nutzer';
+    replaceAvatarElement(preview, renderPersonAvatar(username, 'settings-avatar', {
+        avatar_url: document.getElementById('settingsAvatarUrl')?.value || ''
+    }));
+}
+
+async function uploadChatAvatar() {
+    const input = document.getElementById('settingsAvatarFile');
+    const hint = document.getElementById('settingsAvatarHint');
+    const file = input?.files?.[0];
+    if (!file) return;
+    const supportedTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+    if (!supportedTypes.has(file.type) || file.size > 8 * 1024 * 1024) {
+        hint.textContent = 'Bitte JPG, PNG, GIF oder WebP bis maximal 8 MB auswählen.';
+        input.value = '';
+        return;
+    }
+    hint.textContent = 'Profilbild wird hochgeladen…';
+    try {
+        const result = await uploadFile(file);
+        document.getElementById('settingsAvatarUrl').value = result.url || '';
+        refreshChatAvatarPreview();
+        hint.textContent = 'Bild bereit – zum Übernehmen unten speichern.';
+    } catch (error) {
+        hint.textContent = error?.message || 'Bild konnte nicht hochgeladen werden.';
+    } finally {
+        input.value = '';
+    }
+}
+
+function clearChatAvatar() {
+    document.getElementById('settingsAvatarUrl').value = '';
+    document.getElementById('settingsAvatarHint').textContent = 'Profilbild wird beim Speichern entfernt.';
+    refreshChatAvatarPreview();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
