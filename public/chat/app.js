@@ -117,6 +117,9 @@ let _pendingLocalIce = [];
 let _lastCallSignalId = 0;
 let _callTimerTick = null;
 let _callStartedAt = null;
+let _callRecoveryTimer = null;
+let _callRecoveryAttempts = 0;
+let _callRecoveryBusy = false;
 let _ringTimer = null;
 let _ringAudioContext = null;
 let _notifiedIncomingCallId = null;
@@ -2258,6 +2261,56 @@ function resumeRemoteCallPlayback() {
     media.forEach((element) => element?.play?.().catch(() => {}));
 }
 
+function clearCallRecovery() {
+    clearTimeout(_callRecoveryTimer);
+    _callRecoveryTimer = null;
+    _callRecoveryAttempts = 0;
+    _callRecoveryBusy = false;
+}
+
+function scheduleCallRecovery() {
+    if (!_currentCall?.id || !_peerConnection || _finishingCall || _callRecoveryTimer || _callRecoveryBusy) return;
+    // Only the caller starts a new offer, avoiding a collision when both
+    // devices notice a short Wi-Fi/mobile-network interruption together.
+    if (_currentCall.role !== 'caller') {
+        setCallStatus('Verbindung wird wiederhergestellt…');
+        return;
+    }
+    if (_callRecoveryAttempts >= 3) {
+        setCallStatus('Verbindung unterbrochen. Warte auf das Netzwerk oder lege auf.');
+        return;
+    }
+    setCallStatus('Verbindung wird wiederhergestellt…');
+    _callRecoveryTimer = setTimeout(restartCallIce, 1200);
+}
+
+async function restartCallIce() {
+    _callRecoveryTimer = null;
+    const peer = _peerConnection;
+    if (!_currentCall?.id || !peer || _finishingCall || _callRecoveryBusy) return;
+    if (peer.signalingState !== 'stable') {
+        scheduleCallRecovery();
+        return;
+    }
+    _callRecoveryBusy = true;
+    _callRecoveryAttempts += 1;
+    let retry = false;
+    try {
+        peer.restartIce?.();
+        const offer = await peer.createOffer({ iceRestart: true });
+        if (peer !== _peerConnection || _finishingCall) return;
+        await peer.setLocalDescription(offer);
+        await postCallSignal('offer', peer.localDescription.toJSON ? peer.localDescription.toJSON() : peer.localDescription);
+        setCallStatus('Verbindung wird wiederhergestellt…');
+    } catch {
+        if (_callRecoveryAttempts >= 3) setCallStatus('Verbindung unterbrochen. Prüfe dein Internet.');
+        else retry = true;
+    } finally {
+        _callRecoveryBusy = false;
+        if (retry) scheduleCallRecovery();
+    }
+}
+
 function createPeerConnection() {
     if (_peerConnection) {
         try { _peerConnection.close(); } catch {}
@@ -2308,19 +2361,19 @@ function createPeerConnection() {
     _peerConnection.onconnectionstatechange = () => {
         if (!_peerConnection || _finishingCall) return;
         if (_peerConnection.connectionState === 'connected') {
+            clearCallRecovery();
             setCallStatus('Verbunden');
             startCallTimer();
         } else if (_peerConnection.connectionState === 'failed') {
-            hangUpCall('Anruf fehlgeschlagen.');
+            scheduleCallRecovery();
         } else if (_peerConnection.connectionState === 'disconnected') {
-            setCallStatus('Verbindung wird wiederhergestellt…');
+            scheduleCallRecovery();
         }
     };
     _peerConnection.oniceconnectionstatechange = () => {
         if (!_peerConnection || _finishingCall) return;
-        if (_peerConnection.iceConnectionState === 'failed') {
-            setCallStatus('Verbindung fehlgeschlagen. Prüfe Internet oder TURN-Einstellung.');
-        }
+        if (['connected', 'completed'].includes(_peerConnection.iceConnectionState)) clearCallRecovery();
+        else if (['disconnected', 'failed'].includes(_peerConnection.iceConnectionState)) scheduleCallRecovery();
     };
     return _peerConnection;
 }
@@ -2645,6 +2698,7 @@ async function endCallLocally(message = 'Anruf beendet.') {
     if (_finishingCall) return;
     _finishingCall = true;
     stopRingtone();
+    clearCallRecovery();
     clearInterval(_callTimerTick);
     _callTimerTick = null;
     _callStartedAt = null;
@@ -2702,6 +2756,10 @@ document.addEventListener('keydown', (event) => {
 
 navigator.mediaDevices?.addEventListener?.('devicechange', () => {
     if (_currentCall) refreshCallDevices();
+});
+
+window.addEventListener('online', () => {
+    if (_currentCall) scheduleCallRecovery();
 });
 
 async function fetchProBadges(usernames) {
