@@ -3676,6 +3676,7 @@ function rebuildGroupCallRooms(events) {
         participants: Array.isArray(event.participants) ? event.participants : [],
         status: 'active',
         created_at: event.createdAt || event.stored_at,
+        latest_invite_at: event.createdAt || event.stored_at,
         joined: new Set([event.host]),
         left: new Set()
       });
@@ -3686,6 +3687,13 @@ function rebuildGroupCallRooms(events) {
     if (event.kind === 'join') {
       room.joined.add(event.username);
       room.left.delete(event.username);
+    } else if (event.kind === 'invite') {
+      const username = String(event.username || '').trim();
+      if (username && !room.participants.includes(username) && room.participants.length < 8) {
+        room.participants.push(username);
+      }
+      room.latest_invite_at = event.at || event.stored_at || room.latest_invite_at;
+      room.left.delete(username);
     } else if (event.kind === 'leave') {
       room.joined.delete(event.username);
       room.left.add(event.username);
@@ -4617,7 +4625,7 @@ app.get('/api/chat/group-calls/pending', async (req, res) => {
         && room.participants.includes(user.username)
         && !room.joined.has(user.username)
         && !room.left.has(user.username)
-        && Date.now() - new Date(room.created_at).getTime() < 120000)
+        && Date.now() - new Date(room.latest_invite_at || room.created_at).getTime() < 120000)
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     return res.json({ room: publicGroupCallRoom(rooms[0] || null) });
   } catch (error) {
@@ -4665,6 +4673,54 @@ app.post('/api/chat/group-calls/:id/join', async (req, res) => {
     return res.json({ room: publicGroupCallRoom(room) });
   } catch (error) {
     return res.status(503).json({ error: 'Beitreten fehlgeschlagen' });
+  }
+});
+
+// The call host can invite further ehoser users while the room is active.
+// Each invite is stored as a normal call event, so it also reaches a second
+// device and never creates a visible chat conversation.
+app.post('/api/chat/group-calls/:id/invite', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const username = String(req.body?.username || '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,32}$/.test(username)) return res.status(400).json({ error: 'Ungültiger Nutzername' });
+  try {
+    const { room } = await getGroupCallRoom(req.params.id, user.username);
+    if (!room) return res.status(404).json({ error: 'Gruppenanruf nicht gefunden' });
+    if (room.status !== 'active') return res.status(409).json({ error: 'Gruppenanruf ist beendet' });
+    if (room.host !== user.username) return res.status(403).json({ error: 'Nur der Anrufleiter kann weitere Personen einladen' });
+    if (room.participants.includes(username)) return res.status(409).json({ error: 'Diese Person ist bereits eingeladen' });
+    if (room.participants.length >= 8) return res.status(400).json({ error: 'Ein Gruppenanruf kann höchstens 8 Personen haben' });
+
+    const { data: target } = await supabase.from('users').select('username').eq('username', username).maybeSingle();
+    if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+    const { data: existingMember } = await supabaseAdmin
+      .from('chat_group_members')
+      .select('username')
+      .eq('group_id', room.group_id)
+      .eq('username', username)
+      .maybeSingle();
+    let addedMember = false;
+    if (!existingMember) {
+      const { error: memberError } = await insertChatGroupMembers([{ group_id: room.group_id, username }]);
+      if (memberError) return res.status(500).json({ error: 'Einladung konnte nicht vorbereitet werden' });
+      addedMember = true;
+    }
+
+    try {
+      await appendGroupCallEvent(room.group_id, {
+        kind: 'invite', roomId: room.id, username, invitedBy: user.username, at: new Date().toISOString()
+      });
+    } catch (eventError) {
+      if (addedMember) await supabaseAdmin.from('chat_group_members').delete().eq('group_id', room.group_id).eq('username', username);
+      throw eventError;
+    }
+
+    room.participants.push(username);
+    return res.status(201).json({ room: publicGroupCallRoom(room) });
+  } catch (error) {
+    console.error('Invite to group call failed:', error.message);
+    return res.status(503).json({ error: 'Einladung konnte nicht gesendet werden' });
   }
 });
 
