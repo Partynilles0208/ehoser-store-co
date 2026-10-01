@@ -2368,7 +2368,7 @@ app.get('/api/online-users', async (req, res) => {
   const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from('users')
-    .select('username')
+    .select('username,last_seen')
     .gte('last_seen', since)
     .order('last_seen', { ascending: false });
 
@@ -2380,7 +2380,7 @@ app.get('/api/online-users', async (req, res) => {
   const users = [];
   if (authUser) {
     for (const row of (data || [])) {
-      users.push({ username: row.username, kind: 'user' });
+      users.push({ username: row.username, kind: 'user', last_seen: row.last_seen || null });
     }
   }
   for (let i = 0; i < guestCount; i += 1) {
@@ -3822,6 +3822,42 @@ async function listGroupAdmins(groupId, createdBy) {
   return admins;
 }
 
+function privateChatIdForUsers(firstUsername, secondUsername) {
+  const pair = [String(firstUsername || ''), String(secondUsername || '')].sort().join(':');
+  const hash = crypto.createHash('sha256').update('ehoser-private-chat-v1:' + pair).digest('hex');
+  const variant = ((Number.parseInt(hash[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-${variant}${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
+async function findPrivateChatId(username, peerUsername) {
+  const { data: memberships, error: membershipsError } = await supabaseAdmin
+    .from('chat_group_members')
+    .select('group_id')
+    .eq('username', username);
+  if (membershipsError) return { id: null, error: membershipsError };
+  const ids = [...new Set((memberships || []).map((membership) => membership.group_id).filter(Boolean))];
+  if (!ids.length) return { id: null, error: null };
+
+  const [{ data: groups, error: groupsError }, { data: members, error: membersError }] = await Promise.all([
+    supabaseAdmin.from('chat_groups').select('id,created_by').in('id', ids),
+    supabaseAdmin.from('chat_group_members').select('group_id,username').in('group_id', ids)
+  ]);
+  if (groupsError || membersError) return { id: null, error: groupsError || membersError };
+
+  const membersByGroup = new Map();
+  for (const member of (members || [])) {
+    if (!membersByGroup.has(member.group_id)) membersByGroup.set(member.group_id, new Set());
+    membersByGroup.get(member.group_id).add(member.username);
+  }
+  for (const group of (groups || [])) {
+    const names = membersByGroup.get(group.id) || new Set();
+    if (names.size !== 2 || !names.has(username) || !names.has(peerUsername)) continue;
+    const meta = await getGroupMeta(group.id, { type: 'private' });
+    if ((meta.type || 'private') === 'private') return { id: group.id, error: null };
+  }
+  return { id: null, error: null };
+}
+
 async function isGroupAdmin(groupId, username, createdBy) {
   if (username === createdBy) return true;
   const admins = await listGroupAdmins(groupId, createdBy);
@@ -3892,6 +3928,70 @@ app.get('/api/chat/users/search', async (req, res) => {
   res.json({ users });
 });
 
+// GET /api/chat/contacts — alle registrierten Nutzer als direkte Chat-Kontakte
+app.get('/api/chat/contacts', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('username,last_seen')
+    .neq('username', user.username)
+    .order('username', { ascending: true })
+    .limit(1000);
+  if (error) return res.status(500).json({ error: 'Kontakte konnten nicht geladen werden: ' + error.message });
+  const contacts = (data || [])
+    .filter((contact) => contact?.username)
+    .map((contact) => ({ username: contact.username, last_seen: contact.last_seen || null }));
+  res.json({ contacts });
+});
+
+// POST /api/chat/private — vorhandenen direkten Chat öffnen oder genau einmal anlegen
+app.post('/api/chat/private', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const peerUsername = String(req.body?.username || '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,32}$/.test(peerUsername)) {
+    return res.status(400).json({ error: 'Ungültiger Nutzername' });
+  }
+  if (peerUsername === user.username) return res.status(400).json({ error: 'Du kannst keinen Chat mit dir selbst öffnen' });
+
+  const { data: peer, error: peerError } = await supabaseAdmin
+    .from('users')
+    .select('username')
+    .eq('username', peerUsername)
+    .maybeSingle();
+  if (peerError) return res.status(500).json({ error: 'Kontakt konnte nicht geprüft werden: ' + peerError.message });
+  if (!peer) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+
+  let existing = await findPrivateChatId(user.username, peer.username);
+  if (existing.error) return res.status(500).json({ error: 'Privater Chat konnte nicht geprüft werden: ' + existing.error.message });
+  if (existing.id) return res.json({ id: existing.id, name: peer.username, peer_username: peer.username, type: 'private', created: false });
+
+  const id = privateChatIdForUsers(user.username, peer.username);
+  const { error: groupError } = await supabaseAdmin
+    .from('chat_groups')
+    .insert({ id, name: peer.username, created_by: user.username });
+  if (groupError && String(groupError.code || '') !== '23505') {
+    return res.status(500).json({ error: 'Privater Chat konnte nicht erstellt werden: ' + groupError.message });
+  }
+  if (groupError) {
+    existing = await findPrivateChatId(user.username, peer.username);
+    if (existing.error) return res.status(500).json({ error: 'Privater Chat konnte nicht geöffnet werden: ' + existing.error.message });
+    if (existing.id) return res.json({ id: existing.id, name: peer.username, peer_username: peer.username, type: 'private', created: false });
+    return res.status(409).json({ error: 'Privater Chat wird gerade erstellt. Bitte erneut öffnen.' });
+  }
+
+  const { error: membersError } = await insertChatGroupMembers([
+    { group_id: id, username: user.username },
+    { group_id: id, username: peer.username }
+  ]);
+  if (membersError) {
+    await supabaseAdmin.from('chat_groups').delete().eq('id', id);
+    return res.status(500).json({ error: 'Mitglieder konnten nicht zum privaten Chat hinzugefügt werden: ' + membersError.message });
+  }
+  await ensureGroupAdmin(id, user.username);
+  await setGroupMeta(id, { type: 'private', description: '', photoUrl: '' });
+  res.json({ id, name: peer.username, peer_username: peer.username, type: 'private', created: true });
+});
+
 // POST /api/chat/groups — neue Gruppe erstellen
 // Body: { name, members: string[], description?, photoUrl? }
 app.post('/api/chat/groups', async (req, res) => {
@@ -3910,8 +4010,12 @@ app.post('/api/chat/groups', async (req, res) => {
     return res.status(400).json({ error: 'Mindestens ein weiterer Nutzer ist erforderlich' });
   }
 
-  const type = normalizedMembers.length === 1 ? 'private' : 'group';
-  const name = (rawName || (type === 'private' ? normalizedMembers[0] : `Gruppe (${normalizedMembers.length + 1})`)).slice(0, 50);
+  if (normalizedMembers.length < 2) {
+    return res.status(400).json({ error: 'Eine Gruppe braucht mindestens zwei weitere Kontakte. Für einen einzelnen Kontakt nutze den direkten Chat.' });
+  }
+
+  const type = 'group';
+  const name = (rawName || `Gruppe (${normalizedMembers.length + 1})`).slice(0, 50);
 
   const id = crypto.randomUUID();
   const { error: gErr } = await supabaseAdmin.from('chat_groups').insert({ id, name, created_by: user.username });
@@ -3959,9 +4063,15 @@ app.get('/api/chat/groups', async (req, res) => {
     const fallbackType = groupMembers.length <= 2 ? 'private' : 'group';
     const meta = await getGroupMeta(group.id, { type: fallbackType });
     const admins = await listGroupAdmins(group.id, group.created_by);
+    const type = meta.type || fallbackType;
+    const peerUsername = type === 'private'
+      ? groupMembers.find((username) => username !== user.username) || null
+      : null;
     enriched.push({
       ...group,
-      type: meta.type || fallbackType,
+      name: peerUsername || group.name,
+      peer_username: peerUsername,
+      type,
       description: meta.description || '',
       photo_url: meta.photoUrl || '',
       member_count: groupMembers.length,
