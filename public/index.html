@@ -10,11 +10,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=17">
+    <link rel="stylesheet" href="/styles.css?v=17">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="vendor/qrcode-generator.js"></script>
-    <script src="vendor/qrcode-compat.js"></script>
+    <script src="/vendor/qrcode-generator.js"></script>
+    <script src="/vendor/qrcode-compat.js"></script>
     <style>
         html { background: #000; }
         body.captcha-active { overflow: hidden !important; }
@@ -360,7 +360,7 @@
                     <h1>ehoser</h1>
                 </div>
                 <div class="nav-links" id="navLinks">
-                    <a href="/" class="nav-link">Dashboard</a>
+                    <a href="/control-center/" class="nav-link">Dashboard</a>
                     <button type="button" class="nav-chat-button" onclick="window.location.href = (location.hostname.includes('localhost') || location.hostname.includes('127.0.0.1')) ? location.origin + '/chat' : 'https://ehoser.de/chat'" aria-label="Chat öffnen"><img src="/chat.png" alt="Chat" /></button>
                     <a href="/learning/" class="nav-pill">Learning</a>
                     <a href="#" onclick="showSection('auth')" class="nav-link">Anmelden</a>
@@ -1151,8 +1151,16 @@
                             <button class="ki-model-btn premium" id="kiModelPremium" onclick="setKIModel('premium')">Premium Ehoser</button>
                         </div>
                         <button class="ki-clear-btn" onclick="clearKIChat()">Verlauf leeren</button>
+                        <button class="ki-clear-btn ki-export-btn" onclick="exportKIChat()" title="Verlauf als Textdatei speichern">Export</button>
                     </div>
                     <div id="kiMessages" class="ki-messages"></div>
+                    <div class="ki-quick-actions" aria-label="KI Schnellaktionen">
+                        <span>Schnell starten:</span>
+                        <button type="button" onclick="useKIQuickPrompt('Erkläre mir dieses Thema einfach:\n\n')">📚 Erklären</button>
+                        <button type="button" onclick="useKIQuickPrompt('Fasse diesen Text kurz zusammen:\n\n')">📝 Zusammenfassen</button>
+                        <button type="button" onclick="useKIQuickPrompt('Erstelle eine klare To-do-Liste für:\n\n')">✅ Planen</button>
+                        <button type="button" onclick="useKIQuickPrompt('Hilf mir beim Programmieren. Mein Code oder Problem:\n\n')">🛠️ Code</button>
+                    </div>
                     <div class="ki-attach-preview" id="kiAttachPreview" style="display:none">
                         <span id="kiAttachName"></span>
                         <button class="ki-attach-remove" onclick="kiClearAttachment()" title="Entfernen">✕</button>
@@ -1166,6 +1174,7 @@
                             onclick="document.getElementById('kiFileInput').click()"
                             title="Datei anhängen (PRO)"
                             style="display:none">📎</button>
+                        <button class="ki-voice-btn" id="kiVoiceBtn" type="button" onclick="toggleKIVoiceInput()" title="Spracheingabe starten" aria-label="Spracheingabe starten">🎙️</button>
                         <textarea
                             id="kiInput"
                             class="ki-input"
@@ -2970,7 +2979,7 @@ Ramen</textarea>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-    <script src="app.js?v=21"></script>
-    <script src="tools.js?v=3"></script>
+    <script src="/app.js?v=21"></script>
+    <script src="/tools.js?v=3"></script>
 </body>
 </html>
