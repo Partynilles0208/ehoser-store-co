@@ -396,6 +396,17 @@
       <div><strong>Benachrichtigungen</strong><small id="settingsNotificationState">Status wird geprüft…</small></div>
     </section>
 
+    <section class="settings-section settings-online-section" aria-labelledby="settingsOnlineTitle">
+      <div class="settings-section-title">
+        <span aria-hidden="true">🟢</span>
+        <div><strong id="settingsOnlineTitle">Online</strong><small id="settingsOnlineCount">Online-Liste wird geladen…</small></div>
+        <button class="settings-online-refresh" type="button" onclick="loadSettingsOnlineList()" aria-label="Online-Liste aktualisieren" title="Aktualisieren">↻</button>
+      </div>
+      <ul id="settingsOnlineList" class="settings-online-list">
+        <li class="settings-online-loading">Online-Liste wird geladen…</li>
+      </ul>
+    </section>
+
     <div class="modal-actions settings-actions">
       <span id="settingsSaveStatus" class="status-msg" aria-live="polite"></span>
       <button class="btn-secondary" type="button" onclick="closeModal('chatSettingsModal')">Schließen</button>

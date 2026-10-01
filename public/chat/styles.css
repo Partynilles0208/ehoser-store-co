@@ -887,6 +887,17 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .settings-notification-row { display: flex; align-items: center; gap: 11px; margin-top: 10px; padding: 12px 14px; border: 1px solid #2a3942; border-radius: 15px; background: #182229; }
 .settings-notification-row > span { font-size: 1.15rem; }
 .settings-notification-row > div { display: flex; flex-direction: column; }
+.settings-online-section { margin-top: 10px; }
+.settings-online-refresh { width: 34px; height: 34px; margin-left: auto; border: 1px solid #3b4a54; border-radius: 10px; background: #202c33; color: #aebac1; font: 700 1.05rem/1 var(--font); cursor: pointer; }
+.settings-online-refresh:hover { border-color: #00a884; color: #e9edef; }
+.settings-online-list { max-height: 238px; overflow-y: auto; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px; }
+.settings-online-list li { min-width: 0; min-height: 54px; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid #2a3942; border-radius: 12px; background: #202c33; color: #e9edef; font-size: .79rem; font-weight: 650; }
+.settings-online-list li.is-me { border-color: rgba(37,211,102,.42); background: rgba(0,92,75,.34); }
+.settings-online-list li > span:nth-child(2) { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-online-list li small { display: block; margin-top: 2px; color: #8696a0; font-size: .64rem; font-weight: 500; }
+.settings-online-avatar { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 50%; background: #6a7175; color: #f2f5f6; font-size: .66rem; font-weight: 800; }
+.settings-online-list li > i { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #25d366; box-shadow: 0 0 10px rgba(37,211,102,.55); }
+.settings-online-list .settings-online-loading, .settings-online-list .settings-online-empty { grid-column: 1 / -1; justify-content: center; color: #8696a0; text-align: center; font-weight: 500; background: transparent; border-style: dashed; }
 .settings-actions { align-items: center; flex-wrap: wrap; }
 .settings-actions .status-msg { min-width: 0; flex: 1; margin: 0; }
 
@@ -1082,6 +1093,7 @@ body.chat-compact .msg-row { margin: 0; }
     .chat-settings-modal { width: 100%; max-height: 100svh; border-radius: 0; }
     .settings-code-row { flex-wrap: wrap; }
     .settings-code-row code { flex-basis: 100%; }
+    .settings-online-list { grid-template-columns: 1fr; max-height: 32svh; }
     .settings-actions .status-msg { flex-basis: 100%; }
 }
 
