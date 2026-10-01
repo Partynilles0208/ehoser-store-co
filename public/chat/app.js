@@ -39,6 +39,33 @@ function parseServerDate(s) {
     return date;
 }
 
+function presenceDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.valueOf()) ? null : date;
+}
+
+function isUserOnline(lastSeen) {
+    const date = presenceDate(lastSeen);
+    return Boolean(date && Date.now() - date.valueOf() >= -60_000 && Date.now() - date.valueOf() < 5 * 60 * 1000);
+}
+
+function lastSeenLabel(lastSeen) {
+    const date = presenceDate(lastSeen);
+    if (!date) return 'Zuletzt online unbekannt';
+    const elapsed = Math.max(0, Date.now() - date.valueOf());
+    if (elapsed < 5 * 60 * 1000) return 'online';
+    if (elapsed < 60 * 60 * 1000) return 'zuletzt online vor ' + Math.max(1, Math.floor(elapsed / 60_000)) + ' Min.';
+    const time = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    const today = new Date();
+    const sameDay = date.toDateString() === today.toDateString();
+    if (sameDay) return 'zuletzt online um ' + time;
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return 'zuletzt online gestern um ' + time;
+    return 'zuletzt online am ' + date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric' }) + ' um ' + time;
+}
+
 function safeJsonParse(value, fallback = null) {
     if (typeof value !== 'string') {
         return value && typeof value === 'object' ? value : fallback;
@@ -56,6 +83,8 @@ function safeJsonParse(value, fallback = null) {
 let _token = null, _me = null;
 let _meProfile = null;
 let _groups = [], _activeGroupId = null;
+let _contacts = [];
+let _openingPrivateChats = new Set();
 let _lastMsgId = {};
 let _lastMessageSyncAt = {};
 let _proBadgeCache = {};
@@ -860,7 +889,10 @@ function applyChatPreferences() {
     if (input) input.placeholder = chatText('messagePlaceholder');
     renderGroupList();
     if (_activeMembers.length) {
-        _topbarMemberText = _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
+        const activeGroup = _groups.find((group) => group.id === _activeGroupId);
+        _topbarMemberText = activeGroup?.type === 'private'
+            ? lastSeenLabel(activeGroup.last_seen)
+            : _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
         updateTypingIndicator([]);
     }
 }
@@ -868,11 +900,55 @@ function applyChatPreferences() {
 // ─── Groups ───────────────────────────────────────────────────────────────────
 async function loadGroups() {
     try {
-        const { groups } = await api('/chat/groups');
-        _groups = groups || [];
-        writeChatCache('groups', _groups);
+        const [groupsResult, contactsResult] = await Promise.allSettled([
+            api('/chat/groups'),
+            api('/chat/contacts')
+        ]);
+        if (groupsResult.status !== 'fulfilled') throw groupsResult.reason;
+        const groups = groupsResult.value.groups || [];
+        _contacts = contactsResult.status === 'fulfilled' ? (contactsResult.value.contacts || []) : _contacts;
+        _groups = mergeGroupsWithContacts(groups, _contacts);
+        writeChatCache('groups', groups);
         renderGroupList();
     } catch (e) { toast('Fehler: ' + e.message, 'err'); }
+}
+
+function contactKey(username) {
+    return String(username || '').trim().toLowerCase();
+}
+
+function mergeGroupsWithContacts(groups, contacts) {
+    const realGroups = Array.isArray(groups) ? groups.map((group) => ({ ...group, is_contact: false })) : [];
+    const privateChats = new Map();
+    for (const group of realGroups) {
+        if (group.type !== 'private') continue;
+        const peer = group.peer_username || group.name;
+        if (peer) privateChats.set(contactKey(peer), group);
+    }
+    const presenceByContact = new Map((contacts || []).map((contact) => [contactKey(contact?.username), contact]));
+    for (const group of realGroups) {
+        if (group.type !== 'private') continue;
+        const contact = presenceByContact.get(contactKey(group.peer_username || group.name));
+        if (contact) {
+            group.name = contact.username;
+            group.peer_username = contact.username;
+            group.last_seen = contact.last_seen || null;
+        }
+    }
+    const missingContacts = (contacts || [])
+        .filter((contact) => contact?.username && contactKey(contact.username) !== contactKey(_me?.username))
+        .filter((contact) => !privateChats.has(contactKey(contact.username)))
+        .sort((a, b) => String(a.username).localeCompare(String(b.username), 'de'))
+        .map((contact) => ({
+            id: 'contact:' + contact.username,
+            name: contact.username,
+            peer_username: contact.username,
+            last_seen: contact.last_seen || null,
+            type: 'private',
+            member_count: 2,
+            is_contact: true
+        }));
+    return [...realGroups, ...missingContacts];
 }
 
 function renderGroupList() {
@@ -888,13 +964,13 @@ function renderGroupList() {
         const cached = getCachedMessages(g.id).filter((message) => !String(message?.id || '').startsWith('tmp-'));
         const lastMessage = cached[cached.length - 1] || null;
         const listPreview = _meProfile?.settings?.chatShowPreviews === false
-            ? (g.type === 'private' ? chatText('privateChat') : (Number(g.member_count) || 0) + ' ' + chatText('members'))
+            ? (g.type === 'private' ? lastSeenLabel(g.last_seen) : (Number(g.member_count) || 0) + ' ' + chatText('members'))
             : getChatListPreview(lastMessage, g);
         const listTime = lastMessage
             ? parseServerDate(lastMessage.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
             : '';
         return `
-        <div class="group-item${_activeGroupId === g.id ? ' active' : ''}" onclick="selectGroup('${g.id}')">
+        <div class="group-item${_activeGroupId === g.id ? ' active' : ''}${g.is_contact ? ' contact-item' : ''}" onclick="selectGroup('${g.id}')">
             <div class="gi-avatar">${g.type === 'private' ? '👤' : '👥'}</div>
             <div class="gi-info">
                 <div class="gi-head"><div class="gi-name">${esc(g.name)}</div><time>${esc(listTime)}</time></div>
@@ -905,7 +981,13 @@ function renderGroupList() {
 }
 
 function getChatListPreview(message, group) {
-    if (!message) return group.type === 'private' ? chatText('privateChat') : (Number(group.member_count) || 0) + ' ' + chatText('members');
+    if (!message) {
+        if (group.type === 'private') {
+            const status = lastSeenLabel(group.last_seen);
+            return group.is_contact ? status + ' · Tippe, um zu schreiben' : status;
+        }
+        return (Number(group.member_count) || 0) + ' ' + chatText('members');
+    }
     if (message.deleted_at) return chatText('deletedMessage');
     const stored = readStoredMessage(message.content);
     if (stored === null) return chatText('oldMessage');
@@ -969,6 +1051,11 @@ function isMessageSeen(gid, id) {
 }
 
 async function selectGroup(gid) {
+    const requestedGroup = _groups.find(x => x.id === gid);
+    if (requestedGroup?.is_contact) {
+        await openDirectChat(requestedGroup.peer_username || requestedGroup.name);
+        return;
+    }
     const previousGroupId = _activeGroupId;
     if (previousGroupId && previousGroupId !== gid) stopChatTyping(previousGroupId);
     _activeGroupId = gid;
@@ -996,7 +1083,9 @@ async function selectGroup(gid) {
         const { members } = await api('/chat/groups/' + gid + '/members');
         if (gid !== _activeGroupId) return;
         _activeMembers = members || [];
-        _topbarMemberText = _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
+        _topbarMemberText = g.type === 'private'
+            ? lastSeenLabel(g.last_seen)
+            : _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
         updateTypingIndicator([]);
     } catch {}
     updateCallButtons();
@@ -1004,6 +1093,42 @@ async function selectGroup(gid) {
     await loadMessages(gid, true);
     document.getElementById('msgInput').focus();
     updateAiSummaryToggle();
+}
+
+async function openDirectChat(username) {
+    const peerUsername = String(username || '').trim();
+    if (!peerUsername || contactKey(peerUsername) === contactKey(_me?.username)) return;
+    const existing = _groups.find((group) => group.type === 'private' && !group.is_contact
+        && contactKey(group.peer_username || group.name) === contactKey(peerUsername));
+    if (existing) {
+        await selectGroup(existing.id);
+        return;
+    }
+    const key = contactKey(peerUsername);
+    if (_openingPrivateChats.has(key)) return;
+    _openingPrivateChats.add(key);
+    try {
+        const chat = await api('/chat/private', 'POST', { username: peerUsername });
+        const group = {
+            id: chat.id,
+            name: chat.name || peerUsername,
+            peer_username: chat.peer_username || peerUsername,
+            last_seen: _contacts.find((contact) => contactKey(contact.username) === key)?.last_seen || null,
+            type: 'private',
+            member_count: 2,
+            is_contact: false
+        };
+        _groups = _groups.filter((item) => !(item.is_contact && contactKey(item.peer_username || item.name) === key));
+        if (!_groups.some((item) => item.id === group.id)) _groups.unshift(group);
+        writeChatCache('groups', _groups.filter((item) => !item.is_contact));
+        renderGroupList();
+        await selectGroup(group.id);
+        loadGroups();
+    } catch (error) {
+        toast('Chat mit ' + peerUsername + ' konnte nicht geöffnet werden: ' + (error?.message || 'Unbekannter Fehler'), 'err');
+    } finally {
+        _openingPrivateChats.delete(key);
+    }
 }
 
 function closeMobileChat() {
@@ -2630,26 +2755,27 @@ async function loadSettingsOnlineList() {
     const count = document.getElementById('settingsOnlineCount');
     if (!list || !count) return;
     const requestId = ++_settingsOnlineRequestId;
-    count.textContent = 'Online-Liste wird geladen…';
+    count.textContent = 'Kontakte werden geladen…';
     list.innerHTML = '<li class="settings-online-loading">Online-Liste wird geladen…</li>';
     try {
         await sendChatHeartbeat();
-        const data = await api('/online-users');
+        const data = await api('/chat/contacts');
         if (requestId !== _settingsOnlineRequestId) return;
-        const users = Array.isArray(data) ? data : (data.users || []);
-        count.textContent = users.length === 1 ? '1 Person ist online' : `${users.length} Personen sind online`;
+        const users = data.contacts || [];
+        const onlineCount = users.filter((user) => isUserOnline(user?.last_seen)).length;
+        count.textContent = `${onlineCount} online · ${users.length} Kontakte`;
         if (!users.length) {
-            list.innerHTML = '<li class="settings-online-empty">Gerade ist niemand online.</li>';
+            list.innerHTML = '<li class="settings-online-empty">Noch keine anderen Nutzer vorhanden.</li>';
             return;
         }
         list.innerHTML = users.map((user) => {
             const username = String(user?.username || 'Gast');
-            const isMe = username.toLowerCase() === String(_me?.username || '').toLowerCase();
             const initials = user?.kind === 'guest' ? 'G' : username.slice(0, 2).toUpperCase();
-            return `<li${isMe ? ' class="is-me"' : ''}>
+            const online = isUserOnline(user?.last_seen);
+            return `<li>
                 <span class="settings-online-avatar">${esc(initials)}</span>
-                <span>${esc(username)}${isMe ? '<small>Du</small>' : ''}</span>
-                <i aria-label="online"></i>
+                <span class="settings-online-user">${esc(username)}<small>${esc(lastSeenLabel(user?.last_seen))}</small></span>
+                <i class="${online ? '' : 'offline'}" aria-label="${online ? 'online' : 'zuletzt online'}"></i>
             </li>`;
         }).join('');
     } catch (error) {
@@ -2758,6 +2884,10 @@ async function createGroup() {
     if (!name) { toast('Bitte einen Namen eingeben', 'err'); return; }
     try {
         const members = Object.keys(_ngMembers);
+        if (members.length < 2) {
+            toast('Wähle mindestens zwei weitere Kontakte für eine Gruppe. Für einen einzelnen Kontakt tippst du ihn direkt in der Chatliste an.', 'err');
+            return;
+        }
         const { id, name: gname } = await api('/chat/groups', 'POST', { name, members });
         closeModal('newGroupModal');
         toast('Gruppe "' + gname + '" erstellt', 'ok');
