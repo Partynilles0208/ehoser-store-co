@@ -225,6 +225,24 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
     overflow: hidden;
 }
 
+.control-center-return {
+    display: flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 14px;
+    background: #111b21;
+    border-bottom: 1px solid var(--card-border);
+    color: #b9d4ca;
+    font-size: .76rem;
+    font-weight: 700;
+    text-decoration: none;
+    letter-spacing: .01em;
+    flex-shrink: 0;
+}
+
+.control-center-return:hover { color: #fff; background: #1b2a31; }
+.mobile-control-center-return { display: none; }
+
 .sidebar-brand {
     display: flex;
     align-items: center;
@@ -1043,6 +1061,17 @@ body.chat-compact .msg-row { margin: 0; }
     .mobile-back-btn {
         width: 32px; height: 40px; display: grid; place-items: center; flex-shrink: 0;
         border: 0; background: transparent; color: #aebac1; font: 400 2rem/1 var(--font); cursor: pointer;
+    }
+
+    .mobile-control-center-return {
+        display: inline-flex;
+        align-items: center;
+        color: #b9d4ca;
+        font-size: .72rem;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 
     .chat-topbar-right .ai-summary-toggle { display: none; }
