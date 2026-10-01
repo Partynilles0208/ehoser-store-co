@@ -41,7 +41,15 @@ function parseServerDate(s) {
 
 function presenceDate(value) {
     if (!value) return null;
-    const date = new Date(value);
+    if (typeof value === 'number') return new Date(value);
+    let raw = String(value).trim();
+    // Supabase stores last_seen as a UTC value. Older databases return a
+    // timestamp without an offset, which browsers would otherwise read as
+    // local time (for example 07:22 instead of 09:22 in Germany).
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(raw)) {
+        raw = raw.replace(' ', 'T') + 'Z';
+    }
+    const date = new Date(raw);
     return Number.isNaN(date.valueOf()) ? null : date;
 }
 
