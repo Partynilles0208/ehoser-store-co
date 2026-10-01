@@ -145,3 +145,84 @@
   .call-sticker-panel { top: 56px; right: 10px; gap: 4px; padding: 6px; }
   .call-sticker-panel button { width: 32px; height: 32px; font-size: 1rem; }
 }
+
+/* Invite people while a group call is already running */
+.call-header-actions { display: flex; align-items: center; gap: 8px; }
+.call-header .call-invite-btn {
+  border-color: rgba(37, 211, 102, .4);
+  background: rgba(0, 168, 132, .16);
+  color: #7df1b1;
+  font-weight: 800;
+}
+.call-header .call-invite-btn:disabled { opacity: .42; cursor: not-allowed; }
+
+.call-invite-panel {
+  position: absolute;
+  z-index: 24;
+  top: 80px;
+  right: 18px;
+  width: min(390px, calc(100% - 32px));
+  padding: 16px;
+  border: 1px solid rgba(233, 237, 239, .16);
+  border-radius: 18px;
+  background: rgba(17, 27, 33, .98);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+  backdrop-filter: blur(18px);
+}
+.call-invite-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.call-invite-head div { display: grid; gap: 2px; }
+.call-invite-head span { color: var(--bright); font-size: .68rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.call-invite-head strong { font: 800 1.02rem "Space Grotesk", sans-serif; }
+.call-invite-head button { width: 30px; height: 30px; border: 0; border-radius: 50%; background: #2a3942; color: var(--text); cursor: pointer; }
+.call-invite-panel input { width: 100%; height: 43px; padding: 0 12px; border: 1px solid var(--line); border-radius: 11px; background: #202c33; color: var(--text); font: 600 .9rem Outfit, sans-serif; outline: none; }
+.call-invite-panel input:focus { border-color: var(--bright); }
+.call-invite-results { max-height: 235px; margin: 10px 0; overflow: auto; border-top: 1px solid rgba(233, 237, 239, .1); }
+.call-invite-results > p { padding: 14px 2px; color: var(--muted); font-size: .82rem; text-align: center; }
+.call-invite-user { width: 100%; display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 9px; padding: 9px 2px; border: 0; border-bottom: 1px solid rgba(233, 237, 239, .08); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.call-invite-user:hover { background: rgba(0, 168, 132, .12); }
+.call-invite-user:disabled { opacity: .56; cursor: wait; }
+.call-invite-user span { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #2a3942; font-size: .7rem; font-weight: 800; }
+.call-invite-user strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88rem; }
+.call-invite-user small { color: #7df1b1; font-size: .72rem; font-weight: 800; }
+.call-invite-panel > small { display: block; color: var(--muted); font-size: .72rem; text-align: center; }
+
+/* Optional, contained horror easter egg: no browser pop-ups and always escapable. */
+.archive-overlay { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 20px; overflow: hidden; background: rgba(2, 5, 7, .94); }
+.archive-overlay::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .35; background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(115, 255, 179, .1) 4px 5px); }
+.archive-console { position: relative; z-index: 3; width: min(500px, 100%); padding: 30px; border: 1px solid rgba(106, 255, 169, .34); border-radius: 20px; background: rgba(8, 19, 16, .96); box-shadow: 0 0 70px rgba(0, 168, 132, .18); color: #d9ffe8; }
+.archive-kicker { display: block; margin-bottom: 8px; color: #73f7a6; font-size: .7rem; font-weight: 900; letter-spacing: .16em; }
+.archive-console h2 { margin-bottom: 16px; font: 800 1.7rem "Space Grotesk", sans-serif; }
+.archive-console p { color: #b7d8c1; line-height: 1.55; }
+.archive-console form { display: grid; grid-template-columns: 1fr auto; gap: 9px; margin-top: 18px; }
+.archive-console input { min-width: 0; height: 46px; padding: 0 12px; border: 1px solid rgba(115, 247, 166, .34); border-radius: 10px; background: #07120d; color: #e7fff0; font: 700 .9rem Outfit, sans-serif; outline: none; }
+.archive-console input:focus { border-color: #73f7a6; }
+.archive-console button { min-height: 42px; padding: 0 13px; border: 1px solid rgba(115, 247, 166, .32); border-radius: 10px; background: transparent; color: #d9ffe8; font: 800 .8rem Outfit, sans-serif; cursor: pointer; }
+.archive-console .archive-primary { border-color: #73f7a6; background: #1d9f5d; color: #02150a; }
+.archive-actions { display: flex; gap: 9px; margin-top: 20px; }
+.archive-close { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; padding: 0 !important; border-radius: 50% !important; }
+.archive-fragment { grid-column: 1 / -1; color: #73f7a6; font: 800 1rem "Space Grotesk", sans-serif; letter-spacing: .16em; }
+.archive-feedback { margin-top: 12px; color: #ffbc85 !important; font-size: .84rem; }
+.archive-exit-hint { margin-top: 22px; color: #7f9b89 !important; font-size: .72rem; text-align: center; }
+.archive-alert { color: #ff8d8d !important; font: 900 1.1rem "Space Grotesk", sans-serif; letter-spacing: .13em; animation: archiveBlink .55s steps(2) infinite; }
+.archive-windows { position: absolute; z-index: 2; inset: 0; pointer-events: none; }
+.archive-faux-window { position: absolute; left: var(--archive-x); top: var(--archive-y); width: min(220px, 42vw); display: grid; gap: 5px; padding: 11px; border: 1px solid rgba(255, 117, 117, .58); border-radius: 9px; background: rgba(28, 8, 10, .92); box-shadow: 0 14px 45px rgba(0, 0, 0, .48); animation: archiveWindowDrift 2.8s ease-in-out infinite alternate; }
+.archive-faux-window span { color: #ffbbbb; font-size: .58rem; font-weight: 900; letter-spacing: .1em; }
+.archive-faux-window strong { color: #fff0f0; font: 800 .8rem "Space Grotesk", sans-serif; }
+.archive-faux-window small { color: #ffb0b0; font-size: .65rem; }
+body.archive-glitching .archive-console { animation: archiveJitter .18s steps(2) infinite; }
+body.archive-glitching .archive-overlay::before { opacity: .62; animation: archiveScan 1.1s linear infinite; }
+@keyframes archiveBlink { 50% { opacity: .25; } }
+@keyframes archiveJitter { 25% { transform: translate(2px, -1px); } 55% { transform: translate(-2px, 1px); } }
+@keyframes archiveScan { to { transform: translateY(8px); } }
+@keyframes archiveWindowDrift { from { transform: translate(-4px, -3px); } to { transform: translate(6px, 5px); } }
+
+@media (max-width: 760px) {
+  .call-header { padding: 0 12px; }
+  .call-header .call-invite-btn { display: inline-flex; align-items: center; }
+  .call-header .room-id-button { display: none; }
+  .call-invite-panel { top: 70px; right: 10px; width: calc(100% - 20px); }
+  .archive-console { padding: 25px 18px; }
+  .archive-console form { grid-template-columns: 1fr; }
+  .archive-console form button { min-height: 44px; }
+  .archive-faux-window { width: min(190px, 60vw); }
+}

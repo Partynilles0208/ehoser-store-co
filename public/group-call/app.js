@@ -29,6 +29,12 @@ let devicePanelOpen = false;
 let focusedParticipant = null;
 let callControlsHidden = false;
 let callStickerPanelOpen = false;
+let callInviteSearchTimer = null;
+let callInvitePanelOpen = false;
+let escapePresses = [];
+let archiveEasterEggOpen = false;
+let archiveStep = 0;
+let archiveTimers = [];
 let preferredCameraId = localStorage.getItem('ehoserGroupCallCameraId') || '';
 let preferredMicId = localStorage.getItem('ehoserGroupCallMicId') || '';
 let preferredSpeakerId = localStorage.getItem('ehoserGroupCallSpeakerId') || '';
@@ -176,6 +182,7 @@ async function enterRoom(room) {
   document.getElementById('lobby').style.display = 'none';
   document.getElementById('callRoom').style.display = 'flex';
   exitParticipantFocus();
+  updateCallInviteUi();
   try {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: groupAudioConstraints(preferredMicId), video: false });
@@ -200,6 +207,205 @@ async function enterRoom(room) {
 function setRoomStatus(text) {
   const element = document.getElementById('roomStatus');
   if (element) element.textContent = text;
+}
+
+function canInviteToCurrentCall() {
+  return Boolean(currentRoom
+    && currentRoom.status === 'active'
+    && currentRoom.host === me?.username
+    && (currentRoom.participants || []).length < 8);
+}
+
+function updateCallInviteUi() {
+  const button = document.getElementById('callInviteButton');
+  const hint = document.getElementById('callInviteHint');
+  const isHost = currentRoom?.host === me?.username;
+  const atLimit = (currentRoom?.participants || []).length >= 8;
+  if (button) {
+    button.disabled = !canInviteToCurrentCall();
+    button.title = !isHost
+      ? 'Nur der Anrufleiter kann weitere Personen einladen'
+      : atLimit
+        ? 'Dieser Gruppenanruf hat bereits 8 Personen'
+        : 'Weitere Person einladen';
+  }
+  if (hint) hint.textContent = !isHost
+    ? 'Nur der Anrufleiter kann weitere Personen einladen.'
+    : atLimit
+      ? 'Dieser Gruppenanruf hat bereits 8 Personen.'
+      : `${Math.max(0, 8 - (currentRoom?.participants || []).length)} Plätze frei.`;
+  if (!canInviteToCurrentCall() && callInvitePanelOpen) closeCallInvitePanel();
+}
+
+function closeCallInvitePanel() {
+  callInvitePanelOpen = false;
+  clearTimeout(callInviteSearchTimer);
+  const panel = document.getElementById('callInvitePanel');
+  if (panel) panel.style.display = 'none';
+}
+
+async function openCallInvitePanel() {
+  if (!currentRoom) return;
+  if (!canInviteToCurrentCall()) {
+    setRoomStatus(currentRoom.host === me?.username
+      ? 'Dieser Gruppenanruf hat bereits 8 Personen.'
+      : 'Nur der Anrufleiter kann weitere Personen einladen.');
+    return;
+  }
+  callInvitePanelOpen = true;
+  const panel = document.getElementById('callInvitePanel');
+  const input = document.getElementById('callInviteSearch');
+  if (panel) panel.style.display = 'block';
+  if (input) input.value = '';
+  await searchCallInviteUsers('');
+  input?.focus();
+}
+
+function scheduleCallInviteSearch(value) {
+  clearTimeout(callInviteSearchTimer);
+  callInviteSearchTimer = setTimeout(() => searchCallInviteUsers(value), 200);
+}
+
+async function searchCallInviteUsers(value) {
+  const results = document.getElementById('callInviteResults');
+  if (!results || !currentRoom || !callInvitePanelOpen) return;
+  if (!canInviteToCurrentCall()) {
+    results.innerHTML = '<p>Weitere Einladungen sind gerade nicht möglich.</p>';
+    return;
+  }
+  try {
+    const query = String(value || '').trim();
+    const data = await api('/chat/users/search?limit=50' + (query ? '&q=' + encodeURIComponent(query) : ''));
+    const currentParticipants = new Set(currentRoom.participants || []);
+    const users = (data.users || []).filter((username) => username && !currentParticipants.has(username));
+    results.innerHTML = users.length
+      ? users.map((username) => `<button type="button" class="call-invite-user" onclick="inviteUserToCurrentCall('${esc(username)}')"><span>${esc(username.slice(0, 2).toUpperCase())}</span><strong>${esc(username)}</strong><small>Einladen</small></button>`).join('')
+      : '<p>Kein weiterer Nutzer gefunden.</p>';
+  } catch (error) {
+    results.innerHTML = `<p>${esc(error.message || 'Suche fehlgeschlagen.')}</p>`;
+  }
+}
+
+async function inviteUserToCurrentCall(username) {
+  if (!currentRoom || !canInviteToCurrentCall()) return;
+  const buttons = [...document.querySelectorAll('.call-invite-user')];
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const { room } = await api('/chat/group-calls/' + currentRoom.id + '/invite', 'POST', { username });
+    currentRoom = room;
+    syncRoomParticipants(currentRoom);
+    updateCallInviteUi();
+    closeCallInvitePanel();
+    setRoomStatus(`${username} wurde eingeladen.`);
+  } catch (error) {
+    buttons.forEach((button) => { button.disabled = false; });
+    setRoomStatus(error.message || 'Einladung konnte nicht gesendet werden.');
+  }
+}
+
+function normalizeArchiveAnswer(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+}
+
+function openArchiveEasterEgg() {
+  archiveEasterEggOpen = true;
+  archiveStep = 0;
+  const overlay = document.getElementById('archiveOverlay');
+  const windows = document.getElementById('archiveWindows');
+  if (overlay) overlay.style.display = 'grid';
+  if (windows) windows.replaceChildren();
+  document.body.classList.remove('archive-glitching');
+  renderArchiveStep();
+}
+
+function closeArchiveEasterEgg() {
+  archiveEasterEggOpen = false;
+  archiveStep = 0;
+  archiveTimers.forEach((timer) => clearTimeout(timer));
+  archiveTimers = [];
+  document.body.classList.remove('archive-glitching');
+  const overlay = document.getElementById('archiveOverlay');
+  const windows = document.getElementById('archiveWindows');
+  if (overlay) overlay.style.display = 'none';
+  if (windows) windows.replaceChildren();
+}
+
+function renderArchiveStep(feedback = '') {
+  const content = document.getElementById('archiveContent');
+  if (!content) return;
+  const screens = [
+    `<p>Du hast das versteckte Archiv geöffnet. Willst du wirklich fortfahren?</p><div class="archive-actions"><button type="button" class="archive-primary" onclick="startArchiveQuestions()">Fortfahren</button><button type="button" onclick="closeArchiveEasterEgg()">Abbrechen</button></div>`,
+    `<p>Frage 1 von 3 · Wann entstand ehoser?</p><form onsubmit="submitArchiveQuestion(event)"><input id="archiveAnswer" autocomplete="off" placeholder="TT. Monat JJJJ" autofocus><button class="archive-primary" type="submit">Prüfen</button></form>`,
+    `<p>Frage 2 von 3 · Wofür ist ehoser da?</p><form onsubmit="submitArchiveQuestion(event)"><input id="archiveAnswer" autocomplete="off" placeholder="Schreib deine Idee …" oninput="updateArchiveFragment(this.value, 'Gemeinschaft')" autofocus><span id="archiveFragment" class="archive-fragment">············</span><button class="archive-primary" type="submit">Weiter</button></form>`,
+    `<p>Frage 3 von 3 · Was soll im Archiv bleiben?</p><form onsubmit="submitArchiveQuestion(event)"><input id="archiveAnswer" autocomplete="off" placeholder="Ein Wort genügt …" oninput="updateArchiveFragment(this.value, 'Kreativität')" autofocus><span id="archiveFragment" class="archive-fragment">··········</span><button class="archive-primary" type="submit">Archiv öffnen</button></form>`
+  ];
+  content.innerHTML = `${screens[archiveStep] || screens[0]}${feedback ? `<p class="archive-feedback">${esc(feedback)}</p>` : ''}`;
+  document.getElementById('archiveAnswer')?.focus();
+}
+
+function startArchiveQuestions() {
+  archiveStep = 1;
+  renderArchiveStep();
+}
+
+function updateArchiveFragment(value, target) {
+  const label = document.getElementById('archiveFragment');
+  if (!label) return;
+  const typed = Math.min(String(value || '').trim().length, target.length);
+  label.textContent = target.slice(0, typed) + '·'.repeat(Math.max(0, target.length - typed));
+}
+
+function submitArchiveQuestion(event) {
+  event.preventDefault();
+  const value = document.getElementById('archiveAnswer')?.value.trim() || '';
+  if (archiveStep === 1) {
+    if (normalizeArchiveAnswer(value) !== '22april2026') {
+      renderArchiveStep('Nicht ganz. Tipp: 22. April 2026.');
+      return;
+    }
+    archiveStep = 2;
+    renderArchiveStep();
+    return;
+  }
+  if (!value) {
+    renderArchiveStep('Schreib erst eine Antwort, damit das Archiv reagiert.');
+    return;
+  }
+  if (archiveStep === 2) {
+    archiveStep = 3;
+    renderArchiveStep();
+    return;
+  }
+  startArchiveGlitch();
+}
+
+function startArchiveGlitch() {
+  const content = document.getElementById('archiveContent');
+  const windows = document.getElementById('archiveWindows');
+  if (!content || !windows) return;
+  content.innerHTML = '<p class="archive-alert">SIGNAL INSTABIL</p><p>Archivfragmente wurden gefunden …</p><button type="button" class="archive-primary" onclick="closeArchiveEasterEgg()">Signal schließen</button>';
+  document.body.classList.add('archive-glitching');
+  const labels = ['ARCHIVFEHLER', 'SIGNAL VERLOREN', 'FRAGMENT GEFUNDEN', 'VERBINDUNG WACKELT', 'ZUGRIFF UNVOLLSTÄNDIG', 'ECHO GESPEICHERT'];
+  archiveTimers.forEach((timer) => clearTimeout(timer));
+  archiveTimers = labels.concat(labels.slice(0, 3)).map((label, index) => setTimeout(() => {
+    if (!archiveEasterEggOpen) return;
+    const item = document.createElement('div');
+    item.className = 'archive-faux-window';
+    item.style.setProperty('--archive-x', `${8 + ((index * 19) % 70)}%`);
+    item.style.setProperty('--archive-y', `${10 + ((index * 23) % 62)}%`);
+    item.innerHTML = `<span>EHOSER ARCHIV</span><strong>${label}</strong><small>Esc zum Schließen</small>`;
+    windows.appendChild(item);
+  }, index * 170));
+}
+
+function recordArchiveEscape() {
+  const now = Date.now();
+  escapePresses = escapePresses.filter((time) => now - time < 5000);
+  escapePresses.push(now);
+  if (escapePresses.length >= 10) {
+    escapePresses = [];
+    openArchiveEasterEgg();
+  }
 }
 
 function updateParticipantFocusUi() {
@@ -287,6 +493,7 @@ async function pollRoom() {
     }
     for (const signal of data.signals || []) await handleSignal(signal);
     syncRoomParticipants(currentRoom);
+    updateCallInviteUi();
     setRoomStatus(`${currentRoom.joined.length} von ${currentRoom.participants.length} Teilnehmern verbunden`);
   } catch (error) {
     setRoomStatus(error.message);
@@ -706,23 +913,38 @@ async function endLocally(message) {
   focusedParticipant = null;
   callControlsHidden = false;
   callStickerPanelOpen = false;
+  closeCallInvitePanel();
   document.getElementById('groupDevicePanel').style.display = 'none';
   document.getElementById('groupDeviceBtn')?.classList.remove('active');
   document.getElementById('videoGrid').innerHTML = '';
   updateParticipantFocusUi();
   document.getElementById('callRoom').style.display = 'none';
   document.getElementById('lobby').style.display = 'block';
+  updateCallInviteUi();
   setLobbyStatus(message);
   invitePoll = setInterval(pollInvite, 2200);
 }
 
 document.addEventListener('keydown', (event) => {
   if (!currentRoom || document.getElementById('callRoom')?.style.display === 'none') return;
+  if (archiveEasterEggOpen) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeArchiveEasterEgg();
+    }
+    return;
+  }
   const target = event.target;
   if (target?.matches?.('input, textarea, select') || target?.isContentEditable) return;
   if (event.key === 'Escape' && devicePanelOpen) {
     event.preventDefault();
     toggleDevicePanel(false);
+  } else if (event.key === 'Escape' && callInvitePanelOpen) {
+    event.preventDefault();
+    closeCallInvitePanel();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    recordArchiveEscape();
   } else if (event.key.toLowerCase() === 'm') {
     event.preventDefault();
     toggleMute();
