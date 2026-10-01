@@ -26,6 +26,9 @@ let cameraFacingMode = 'user';
 let cameraSwitchBusy = false;
 let videoInputCount = 0;
 let devicePanelOpen = false;
+let focusedParticipant = null;
+let callControlsHidden = false;
+let callStickerPanelOpen = false;
 let preferredCameraId = localStorage.getItem('ehoserGroupCallCameraId') || '';
 let preferredMicId = localStorage.getItem('ehoserGroupCallMicId') || '';
 let preferredSpeakerId = localStorage.getItem('ehoserGroupCallSpeakerId') || '';
@@ -170,6 +173,7 @@ async function enterRoom(room) {
   document.getElementById('incomingInvite').style.display = 'none';
   document.getElementById('lobby').style.display = 'none';
   document.getElementById('callRoom').style.display = 'flex';
+  exitParticipantFocus();
   try {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: groupAudioConstraints(preferredMicId), video: false });
@@ -194,6 +198,79 @@ async function enterRoom(room) {
 function setRoomStatus(text) {
   const element = document.getElementById('roomStatus');
   if (element) element.textContent = text;
+}
+
+function updateParticipantFocusUi() {
+  const room = document.getElementById('callRoom');
+  const grid = document.getElementById('videoGrid');
+  const toolbar = document.getElementById('focusToolbar');
+  const controlsButton = document.getElementById('focusControlsButton');
+  const stickerPanel = document.getElementById('callStickerPanel');
+  const active = Boolean(focusedParticipant);
+  room?.classList.toggle('focus-active', active);
+  room?.classList.toggle('controls-hidden', active && callControlsHidden);
+  grid?.classList.toggle('focus-mode', active);
+  if (toolbar) toolbar.style.display = active ? 'flex' : 'none';
+  if (!active) {
+    callControlsHidden = false;
+    callStickerPanelOpen = false;
+  }
+  if (controlsButton) {
+    controlsButton.textContent = callControlsHidden ? 'Leiste anzeigen' : 'Leiste ausblenden';
+    controlsButton.setAttribute('aria-pressed', String(callControlsHidden));
+  }
+  if (stickerPanel) stickerPanel.style.display = active && callStickerPanelOpen ? 'flex' : 'none';
+}
+
+function focusParticipant(username) {
+  if (!currentRoom || !username) return;
+  focusedParticipant = username;
+  document.querySelectorAll('.participant-tile').forEach((tile) => {
+    tile.classList.toggle('focused', tile.id === tileId(username));
+  });
+  updateParticipantFocusUi();
+}
+
+function exitParticipantFocus() {
+  focusedParticipant = null;
+  document.querySelectorAll('.participant-tile.focused').forEach((tile) => tile.classList.remove('focused'));
+  updateParticipantFocusUi();
+}
+
+function toggleCallControls() {
+  if (!focusedParticipant) return;
+  callControlsHidden = !callControlsHidden;
+  updateParticipantFocusUi();
+}
+
+function toggleCallStickerPanel() {
+  if (!focusedParticipant) return;
+  callStickerPanelOpen = !callStickerPanelOpen;
+  updateParticipantFocusUi();
+}
+
+function validCallSticker(sticker) {
+  return ['🔥', '😂', '❤️', '👍', '👏', '😮'].includes(sticker);
+}
+
+function showCallSticker(sticker, username) {
+  if (!validCallSticker(sticker)) return;
+  const layer = document.getElementById('callStickerLayer');
+  if (!layer) return;
+  const item = document.createElement('div');
+  item.className = 'call-sticker-pop';
+  item.innerHTML = `<span>${sticker}</span><small>${esc(username || '')}</small>`;
+  layer.appendChild(item);
+  setTimeout(() => item.remove(), 2600);
+}
+
+async function sendCallSticker(sticker) {
+  if (!currentRoom || !validCallSticker(sticker)) return;
+  showCallSticker(sticker, me?.username || 'Du');
+  callStickerPanelOpen = false;
+  updateParticipantFocusUi();
+  const recipients = (currentRoom.joined || []).filter((username) => username && username !== me?.username);
+  await Promise.all(recipients.map((username) => sendSignal(username, 'sticker', { sticker }).catch(() => {})));
 }
 
 async function pollRoom() {
@@ -228,6 +305,7 @@ function syncRoomParticipants(room) {
   }
   for (const [username, peer] of peers) {
     if (!joined.has(username)) {
+      if (focusedParticipant === username) exitParticipantFocus();
       peer.pc.close();
       peers.delete(username);
       document.getElementById(tileId(username))?.remove();
@@ -244,7 +322,17 @@ function renderWaitingTile(username) {
   const tile = document.createElement('article');
   tile.id = tileId(username);
   tile.className = 'participant-tile no-video';
+  tile.tabIndex = 0;
+  tile.setAttribute('role', 'button');
+  tile.setAttribute('aria-label', username + ' groß anzeigen');
   tile.innerHTML = `<video autoplay playsinline></video><div class="participant-avatar">${esc(username.slice(0, 2).toUpperCase())}</div><div class="participant-info"><strong>${esc(username)}</strong><small>wartet …</small></div>`;
+  tile.addEventListener('click', () => focusParticipant(username));
+  tile.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      focusParticipant(username);
+    }
+  });
   document.getElementById('videoGrid').appendChild(tile);
 }
 
@@ -261,6 +349,7 @@ function renderParticipantTile(username, stream, own = false) {
   tile.querySelector('.participant-info small').textContent = own ? 'Du' : 'verbunden';
   const hasVideo = Boolean(stream?.getVideoTracks().some((track) => track.enabled && track.readyState === 'live'));
   tile.classList.toggle('no-video', !hasVideo);
+  tile.classList.toggle('focused', focusedParticipant === username);
 }
 
 function ensurePeer(username) {
@@ -323,6 +412,8 @@ async function handleSignal(signal) {
   } else if (signal.kind === 'media') {
     const tile = document.getElementById(tileId(username));
     if (tile) tile.classList.toggle('no-video', !signal.payload?.video);
+  } else if (signal.kind === 'sticker') {
+    showCallSticker(signal.payload?.sticker, username);
   }
 }
 
@@ -610,9 +701,13 @@ async function endLocally(message) {
   cameraFacingMode = 'user';
   cameraSwitchBusy = false;
   devicePanelOpen = false;
+  focusedParticipant = null;
+  callControlsHidden = false;
+  callStickerPanelOpen = false;
   document.getElementById('groupDevicePanel').style.display = 'none';
   document.getElementById('groupDeviceBtn')?.classList.remove('active');
   document.getElementById('videoGrid').innerHTML = '';
+  updateParticipantFocusUi();
   document.getElementById('callRoom').style.display = 'none';
   document.getElementById('lobby').style.display = 'block';
   setLobbyStatus(message);

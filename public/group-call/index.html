@@ -45,6 +45,22 @@
 
   <section id="callRoom" class="call-room" style="display:none">
     <header class="call-header"><div><span class="live-dot"></span><strong>Gruppenanruf</strong><small id="roomStatus">Verbindung wird aufgebaut …</small></div><button onclick="copyRoomId()">Raum-ID kopieren</button></header>
+    <div id="focusToolbar" class="focus-toolbar" style="display:none" aria-label="Fokusansicht">
+      <button type="button" onclick="exitParticipantFocus()">← Übersicht</button>
+      <div>
+        <button id="focusControlsButton" type="button" onclick="toggleCallControls()" aria-pressed="false">Leiste ausblenden</button>
+        <button type="button" onclick="toggleCallStickerPanel()">✨ Sticker</button>
+      </div>
+    </div>
+    <div id="callStickerPanel" class="call-sticker-panel" style="display:none" aria-label="Sticker senden">
+      <button type="button" onclick="sendCallSticker('🔥')">🔥</button>
+      <button type="button" onclick="sendCallSticker('😂')">😂</button>
+      <button type="button" onclick="sendCallSticker('❤️')">❤️</button>
+      <button type="button" onclick="sendCallSticker('👍')">👍</button>
+      <button type="button" onclick="sendCallSticker('👏')">👏</button>
+      <button type="button" onclick="sendCallSticker('😮')">😮</button>
+    </div>
+    <div id="callStickerLayer" class="call-sticker-layer" aria-live="polite"></div>
     <div id="videoGrid" class="video-grid"></div>
     <div id="groupDevicePanel" class="device-panel" style="display:none" aria-label="Anrufgeräte auswählen">
       <div class="device-panel-head"><strong>Laptop-Geräte</strong><button type="button" onclick="toggleDevicePanel(false)" aria-label="Gerätemenü schließen">✕</button></div>

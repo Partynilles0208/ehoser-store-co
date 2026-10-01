@@ -4647,7 +4647,7 @@ app.post('/api/chat/group-calls/:id/leave', async (req, res) => {
 app.post('/api/chat/group-calls/:id/signals', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { to, kind, payload } = req.body || {};
-  if (!['ice', 'offer', 'answer', 'media'].includes(kind) || !payloadWithinLimit(payload, 100000)) {
+  if (!['ice', 'offer', 'answer', 'media', 'sticker'].includes(kind) || !payloadWithinLimit(payload, 100000)) {
     return res.status(400).json({ error: 'Ungültiges Anrufsignal' });
   }
   try {
@@ -4660,6 +4660,9 @@ app.post('/api/chat/group-calls/:id/signals', async (req, res) => {
     if (kind === 'ice' && (!payload || typeof payload.candidate !== 'string')) return res.status(400).json({ error: 'Ungültiger ICE-Kandidat' });
     if (kind === 'media' && (!payload || typeof payload.video !== 'boolean' || typeof payload.audio !== 'boolean')) {
       return res.status(400).json({ error: 'Ungültiger Medienstatus' });
+    }
+    if (kind === 'sticker' && !['🔥', '😂', '❤️', '👍', '👏', '😮'].includes(String(payload?.sticker || ''))) {
+      return res.status(400).json({ error: 'Ungültiger Sticker' });
     }
     const event = await appendGroupCallEvent(room.group_id, {
       kind: 'signal', roomId: room.id, from: user.username, to,
