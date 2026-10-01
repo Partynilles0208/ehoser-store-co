@@ -106,6 +106,7 @@ let _typingGroupId = null;
 let _typingLastSentAt = 0;
 let _typingStopTimer = null;
 let _chatSettingsLoginCode = null;
+let _settingsOnlineRequestId = 0;
 
 const FALLBACK_RTC_CONFIG = {
     iceServers: [
@@ -739,12 +740,25 @@ function show(id) {
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function api(path, method = 'GET', body = null) {
-    const opts = { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _token } };
+    const opts = { method, headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Authorization': 'Bearer ' + _token } };
     if (body) opts.body = JSON.stringify(body);
     const r = await fetch(API + path, opts);
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
-    return d;
+    const raw = await r.text();
+    let data = {};
+    if (raw) {
+        try {
+            data = JSON.parse(raw);
+        } catch {
+            // Vercel and reverse proxies sometimes return a plain-text 5xx page.
+            // Never expose a JSON parser error to the person using the chat.
+            if (!r.ok || r.status >= 500 || /server error/i.test(raw)) {
+                throw new Error('Serverfehler (HTTP ' + r.status + '). Bitte Seite neu laden und später erneut versuchen.');
+            }
+            throw new Error('Der Server hat eine ungültige Antwort gesendet. Bitte Seite neu laden.');
+        }
+    }
+    if (!r.ok) throw new Error(data?.error || 'HTTP ' + r.status);
+    return data;
 }
 
 async function uploadFile(file, onLabel) {
@@ -759,8 +773,17 @@ async function uploadFile(file, onLabel) {
         body: fd
     });
     ov.style.display = 'none';
-    if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Upload fehlgeschlagen'); }
-    return r.json();
+    const raw = await r.text();
+    let data = {};
+    try {
+        data = raw ? JSON.parse(raw) : {};
+    } catch {
+        throw new Error(!r.ok || r.status >= 500
+            ? 'Serverfehler beim Upload (HTTP ' + r.status + '). Bitte später erneut versuchen.'
+            : 'Der Server hat beim Upload keine gültige Antwort gesendet.');
+    }
+    if (!r.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
+    return data;
 }
 
 // New chat messages are stored as ordinary JSON text. Older encrypted records
@@ -2582,6 +2605,7 @@ async function openChatSettings() {
     document.getElementById('settingsSaveStatus').textContent = '';
     _chatSettingsLoginCode = null;
     openModal('chatSettingsModal');
+    loadSettingsOnlineList();
 
     const [accountResult, codeResult] = await Promise.allSettled([
         api('/me'),
@@ -2598,6 +2622,40 @@ async function openChatSettings() {
     }
     if (codeResult.status === 'fulfilled') {
         _chatSettingsLoginCode = codeResult.value.loginCode || null;
+    }
+}
+
+async function loadSettingsOnlineList() {
+    const list = document.getElementById('settingsOnlineList');
+    const count = document.getElementById('settingsOnlineCount');
+    if (!list || !count) return;
+    const requestId = ++_settingsOnlineRequestId;
+    count.textContent = 'Online-Liste wird geladen…';
+    list.innerHTML = '<li class="settings-online-loading">Online-Liste wird geladen…</li>';
+    try {
+        await sendChatHeartbeat();
+        const data = await api('/online-users');
+        if (requestId !== _settingsOnlineRequestId) return;
+        const users = Array.isArray(data) ? data : (data.users || []);
+        count.textContent = users.length === 1 ? '1 Person ist online' : `${users.length} Personen sind online`;
+        if (!users.length) {
+            list.innerHTML = '<li class="settings-online-empty">Gerade ist niemand online.</li>';
+            return;
+        }
+        list.innerHTML = users.map((user) => {
+            const username = String(user?.username || 'Gast');
+            const isMe = username.toLowerCase() === String(_me?.username || '').toLowerCase();
+            const initials = user?.kind === 'guest' ? 'G' : username.slice(0, 2).toUpperCase();
+            return `<li${isMe ? ' class="is-me"' : ''}>
+                <span class="settings-online-avatar">${esc(initials)}</span>
+                <span>${esc(username)}${isMe ? '<small>Du</small>' : ''}</span>
+                <i aria-label="online"></i>
+            </li>`;
+        }).join('');
+    } catch (error) {
+        if (requestId !== _settingsOnlineRequestId) return;
+        count.textContent = 'Online-Liste nicht verfügbar';
+        list.innerHTML = '<li class="settings-online-empty">' + esc(error?.message || 'Die Online-Liste konnte nicht geladen werden.') + '</li>';
     }
 }
 

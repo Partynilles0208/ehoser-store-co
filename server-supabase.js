@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 60098)
-Total output lines: 6104
+Warning: truncated output (original token count: 60196)
+Total output lines: 6114
 
 ﻿const express = require('express');
 const cors = require('cors');
@@ -1957,45 +1957,55 @@ app.get('/api/me/login-code', async (req, res) => {
 app.get('/api/me', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
-  const profile = await ensurePlanCredits(auth.username);
-  // email aus users-Tabelle lesen
-  let email = null;
-  let userRow = null;
   try {
-    const { data } = await supabase.from('users').select('email,banned_until,ban_reason').eq('id', auth.id).single();
-    email = data?.email || null;
-    userRow = data || null;
-  } catch {}
-  res.json({
-    user: {
-      id: auth.id,
-      username: auth.username,
-      isAdmin: Boolean(auth.isAdmin),
-      email
-    },
-    profile,
-    moderation: toModerationPayload(getActiveModerationState(userRow, profile))
-  });
+    const profile = await ensurePlanCredits(auth.username);
+    // email aus users-Tabelle lesen
+    let email = null;
+    let userRow = null;
+    try {
+      const { data } = await supabase.from('users').select('email,banned_until,ban_reason').eq('id', auth.id).single();
+      email = data?.email || null;
+      userRow = data || null;
+    } catch {}
+    res.json({
+      user: {
+        id: auth.id,
+        username: auth.username,
+        isAdmin: Boolean(auth.isAdmin),
+        email
+      },
+      profile,
+      moderation: toModerationPayload(getActiveModerationState(userRow, profile))
+    });
+  } catch (error) {
+    console.error('Load own profile failed:', error.message);
+    res.status(500).json({ error: 'Kontodaten konnten nicht geladen werden' });
+  }
 });
 
 // Einstellungen speichern
 app.put('/api/me/settings', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
-  const current = await getProfile(auth.username);
-  const settings = normalizeSettings({
-    ...(current.settings || {}),
-    ...(req.body || {}),
-    personalization: current.settings?.personalization,
-    moderation: current.settings?.moderation,
-    credits: current.settings?.credits,
-    planRequests: current.settings?.planRequests,
-    oasisUsage: current.settings?.oasisUsage,
-    passwordHash: current.settings?.passwordHash,
-    _emailPending: current.settings?._emailPending
-  });
-  const profile = await upsertProfile(auth.username, { settings });
-  res.json({ ok: true, profile });
+  try {
+    const current = await getProfile(auth.username);
+    const settings = normalizeSettings({
+      ...(current.settings || {}),
+      ...(req.body || {}),
+      personalization: current.settings?.personalization,
+      moderation: current.settings?.moderation,
+      credits: current.settings?.credits,
+      planRequests: current.settings?.planRequests,
+      oasisUsage: current.settings?.oasisUsage,
+      passwordHash: current.settings?.passwordHash,
+      _emailPending: current.settings?._emailPending
+    });
+    const profile = await upsertProfile(auth.username, { settings });
+    res.json({ ok: true, profile });
+  } catch (error) {
+    console.error('Save own settings failed:', error.message);
+    res.status(500).json({ error: 'Einstellungen konnten nicht gespeichert werden' });
+  }
 });
 
 app.get('/api/oasis/usage', async (req, res) => {
@@ -3297,14 +3307,7 @@ app.post('/api/screenshare/respond', async (req, res) => {
   if (!authHeader) return res.status(401).json({ error: 'Nicht angemeldet' });
   try {
     await ensureScreenSessionsTableExists();
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const { sessionId, answer, accept } = req.body;
-    if (!sessionId) return res.status(400).json({ error: 'sessionId fehlt' });
-
-    const { data: session } = await supabaseAdmin
-      .from('screen_sessions').select('username').eq('id', sessionId).single();
-    if (!session || session.…98 tokens truncated…eq('id', sessionId);
+ …196 tokens truncated…eq('id', sessionId);
     res.json({ ok: true });
   } catch {
     return res.status(401).json({ error: 'Fehler' });
