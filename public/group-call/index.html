@@ -44,7 +44,13 @@
   </main>
 
   <section id="callRoom" class="call-room" style="display:none">
-    <header class="call-header"><div><span class="live-dot"></span><strong>Gruppenanruf</strong><small id="roomStatus">Verbindung wird aufgebaut …</small></div><button onclick="copyRoomId()">Raum-ID kopieren</button></header>
+    <header class="call-header"><div><span class="live-dot"></span><strong>Gruppenanruf</strong><small id="roomStatus">Verbindung wird aufgebaut …</small></div><div class="call-header-actions"><button id="callInviteButton" class="call-invite-btn" type="button" onclick="openCallInvitePanel()">＋ Einladen</button><button class="room-id-button" type="button" onclick="copyRoomId()">Raum-ID kopieren</button></div></header>
+    <section id="callInvitePanel" class="call-invite-panel" style="display:none" aria-label="Weitere Personen einladen">
+      <div class="call-invite-head"><div><span>Gruppenanruf</span><strong>Person einladen</strong></div><button type="button" onclick="closeCallInvitePanel()" aria-label="Einladen schließen">✕</button></div>
+      <input id="callInviteSearch" type="search" placeholder="Nutzername suchen …" autocomplete="off" oninput="scheduleCallInviteSearch(this.value)">
+      <div id="callInviteResults" class="call-invite-results"><p>Suche nach einem Nutzer.</p></div>
+      <small id="callInviteHint">Nur der Anrufleiter kann weitere Personen einladen.</small>
+    </section>
     <div id="focusToolbar" class="focus-toolbar" style="display:none" aria-label="Fokusansicht">
       <button type="button" onclick="exitParticipantFocus()">← Übersicht</button>
       <div>
@@ -78,6 +84,17 @@
       <button class="hangup" onclick="leaveRoom()"><span>☎</span><small>Auflegen</small></button>
     </div>
   </section>
+
+  <div id="archiveOverlay" class="archive-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="archiveTitle">
+    <section class="archive-console">
+      <button class="archive-close" type="button" onclick="closeArchiveEasterEgg()" aria-label="Easter Egg schließen">✕</button>
+      <span class="archive-kicker">EHOSER ARCHIV</span>
+      <h2 id="archiveTitle">Verstecktes Signal</h2>
+      <div id="archiveContent"></div>
+      <p class="archive-exit-hint">Esc oder ✕ beendet das Easter Egg jederzeit.</p>
+    </section>
+    <div id="archiveWindows" class="archive-windows" aria-hidden="true"></div>
+  </div>
 
   <script src="app.js"></script>
 </body>
