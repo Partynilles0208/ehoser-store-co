@@ -4318,7 +4318,9 @@ function isSilentChatEditor(username) {
 
 function isMissingChatMessageMetadata(error) {
   const text = String(error?.message || error?.details || '').toLowerCase();
-  return /chat_messages\.(deleted_at|edited_at|edited_by|hide_edit_mark|pinned_at|pinned_by|updated_at)|column.*(deleted_at|edited_at|edited_by|hide_edit_mark|pinned_at|pinned_by|updated_at).*does not exist/.test(text);
+  const fields = ['deleted_at', 'edited_at', 'edited_by', 'hide_edit_mark', 'pinned_at', 'pinned_by', 'updated_at'];
+  return fields.some((field) => text.includes('chat_messages.' + field)
+    || (text.includes(field) && /does not exist|could not find|schema cache|column/.test(text)));
 }
 
 function createChatMessageQuery(groupId, fields) {
@@ -4329,6 +4331,24 @@ function createChatMessageQuery(groupId, fields) {
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%');
+}
+
+async function readChatMessageForAction(id) {
+  let hasMetadata = true;
+  let result = await supabaseAdmin
+    .from('chat_messages')
+    .select(CHAT_MESSAGE_FIELDS)
+    .eq('id', id)
+    .maybeSingle();
+  if (result.error && isMissingChatMessageMetadata(result.error)) {
+    hasMetadata = false;
+    result = await supabaseAdmin
+      .from('chat_messages')
+      .select(LEGACY_CHAT_MESSAGE_FIELDS)
+      .eq('id', id)
+      .maybeSingle();
+  }
+  return { data: result.data, error: result.error, hasMetadata };
 }
 
 // POST /api/chat/messages — Nachricht als JSON-Text senden
@@ -4907,7 +4927,7 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
   }
 
   // Existierende Nachricht holen
-  const { data: msgRow, error: selErr } = await supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('id', id).maybeSingle();
+  const { data: msgRow, error: selErr, hasMetadata } = await readChatMessageForAction(id);
   if (selErr) return res.status(500).json({ error: 'DB Fehler' });
   if (!msgRow) return res.status(404).json({ error: 'Nachricht nicht gefunden' });
   if (msgRow.deleted_at) return res.status(409).json({ error: 'Gelöschte Nachrichten können nicht bearbeitet werden' });
@@ -4922,19 +4942,31 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
   }
 
   const now = new Date().toISOString();
-  const { data: updated, error } = await supabaseAdmin
+  const silentEdit = isSilentChatEditor(user.username);
+  let updatedResult = await supabaseAdmin
     .from('chat_messages')
     .update({
       encrypted_content: content,
       edited_at: now,
       edited_by: user.username,
       // meisterlool_707's existing moderation edit remains deliberately silent.
-      hide_edit_mark: isSilentChatEditor(user.username),
+      hide_edit_mark: silentEdit,
       updated_at: now
     })
     .eq('id', id)
     .select(CHAT_MESSAGE_FIELDS)
     .single();
+
+  if (updatedResult.error && (!hasMetadata || isMissingChatMessageMetadata(updatedResult.error))) {
+    const compatibleContent = JSON.stringify({ ...payload, edited: !silentEdit });
+    updatedResult = await supabaseAdmin
+      .from('chat_messages')
+      .update({ encrypted_content: compatibleContent })
+      .eq('id', id)
+      .select(LEGACY_CHAT_MESSAGE_FIELDS)
+      .single();
+  }
+  const { data: updated, error } = updatedResult;
   if (error) return res.status(500).json({ error: 'Fehler beim Aktualisieren' });
   res.json({ ok: true, message: publicChatMessage(updated) });
 });
