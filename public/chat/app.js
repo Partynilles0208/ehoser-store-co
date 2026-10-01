@@ -41,7 +41,15 @@ function parseServerDate(s) {
 
 function presenceDate(value) {
     if (!value) return null;
-    const date = new Date(value);
+    if (typeof value === 'number') return new Date(value);
+    let raw = String(value).trim();
+    // Supabase stores last_seen as a UTC value. Older databases return a
+    // timestamp without an offset, which browsers would otherwise read as
+    // local time (for example 07:22 instead of 09:22 in Germany).
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(raw)) {
+        raw = raw.replace(' ', 'T') + 'Z';
+    }
+    const date = new Date(raw);
     return Number.isNaN(date.valueOf()) ? null : date;
 }
 
@@ -565,18 +573,23 @@ async function sendChatHeartbeat() {
 function initHoldOnlineList() {
     if (window._ehoserOnlineHoldReady) return;
     window._ehoserOnlineHoldReady = true;
-    const isF8 = (event) => event.key === 'F8' || event.code === 'F8';
-    window.addEventListener('keydown', (event) => {
+    const isF8 = (event) => event.key === 'F8' || event.code === 'F8' || Number(event.keyCode) === 119;
+    const onKeyDown = (event) => {
         if (!isF8(event)) return;
         event.preventDefault();
+        event.stopPropagation();
         if (!_chatStarted || event.repeat || _onlineListOpen) return;
         showOnlineHoldList();
-    });
-    window.addEventListener('keyup', (event) => {
+    };
+    const onKeyUp = (event) => {
         if (!isF8(event)) return;
         event.preventDefault();
+        event.stopPropagation();
         hideOnlineHoldList();
-    });
+    };
+    // Capture catches F8 before focused inputs or browser UI handlers can stop it.
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('blur', () => {
         hideOnlineHoldList();
         stopChatTyping();
@@ -590,6 +603,11 @@ function initHoldOnlineList() {
             markActiveGroupRead(_activeGroupId);
         }
     });
+}
+
+function toggleOnlineList() {
+    if (_onlineListOpen) hideOnlineHoldList();
+    else showOnlineHoldList();
 }
 
 async function showOnlineHoldList() {
