@@ -83,6 +83,7 @@
         <span class="brand-sub">Chat</span>
       </div>
       <div class="sidebar-head-actions">
+        <button id="onlineListButton" type="button" onclick="toggleOnlineList()" aria-label="Online-Liste öffnen" title="Online-Liste">●</button>
         <button id="chatSettingsButton" type="button" onclick="openChatSettings()" aria-label="Einstellungen öffnen" title="Einstellungen">⚙</button>
         <button type="button" onclick="openNewGroupModal()" aria-label="Neuen Chat erstellen" title="Neuer Chat">＋</button>
       </div>
@@ -213,13 +214,16 @@
         <span class="online-hold-kicker">ehoser Chat</span>
         <h2 id="onlineHoldTitle"><span aria-hidden="true">●</span> Online</h2>
       </div>
-      <span class="online-hold-key">F8 gedrückt halten</span>
+      <div class="online-hold-actions">
+        <span class="online-hold-key">F8 gedrückt halten</span>
+        <button type="button" class="online-hold-close" onclick="hideOnlineHoldList()" aria-label="Online-Liste schließen">✕</button>
+      </div>
     </div>
     <div id="onlineHoldCount" class="online-hold-count">Online-Liste wird geladen…</div>
     <ul id="onlineHoldList" class="online-hold-list">
       <li class="online-hold-loading">Online-Liste wird geladen…</li>
     </ul>
-    <p class="online-hold-help">F8 loslassen, um zum Chat zurückzukehren</p>
+    <p class="online-hold-help">F8 loslassen oder ✕ drücken, um zum Chat zurückzukehren</p>
   </section>
 </div>
 

@@ -196,6 +196,9 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .online-hold-head h2 { display: flex; align-items: center; gap: 9px; margin-top: 3px; color: #e9edef; font: 800 clamp(1.5rem, 4vw, 2.1rem) "Space Grotesk", sans-serif; }
 .online-hold-head h2 span { color: #25d366; font-size: .75em; text-shadow: 0 0 18px rgba(37,211,102,.65); }
 .online-hold-key { flex-shrink: 0; padding: 8px 12px; border: 1px solid #3b4a54; border-radius: 9px; background: #202c33; color: #aebac1; font-size: .72rem; font-weight: 700; }
+.online-hold-actions { display: flex; align-items: center; gap: 8px; }
+.online-hold-close { width: 34px; height: 34px; border: 1px solid #3b4a54; border-radius: 9px; background: #202c33; color: #aebac1; font: 700 1rem/1 var(--font); cursor: pointer; }
+.online-hold-close:hover { border-color: #00a884; color: #e9edef; }
 .online-hold-count { padding: 16px 2px 10px; color: #8696a0; font-size: .82rem; }
 .online-hold-list { list-style: none; min-height: 110px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 2px; }
 .online-hold-list li {

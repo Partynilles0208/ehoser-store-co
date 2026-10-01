@@ -573,18 +573,23 @@ async function sendChatHeartbeat() {
 function initHoldOnlineList() {
     if (window._ehoserOnlineHoldReady) return;
     window._ehoserOnlineHoldReady = true;
-    const isF8 = (event) => event.key === 'F8' || event.code === 'F8';
-    window.addEventListener('keydown', (event) => {
+    const isF8 = (event) => event.key === 'F8' || event.code === 'F8' || Number(event.keyCode) === 119;
+    const onKeyDown = (event) => {
         if (!isF8(event)) return;
         event.preventDefault();
+        event.stopPropagation();
         if (!_chatStarted || event.repeat || _onlineListOpen) return;
         showOnlineHoldList();
-    });
-    window.addEventListener('keyup', (event) => {
+    };
+    const onKeyUp = (event) => {
         if (!isF8(event)) return;
         event.preventDefault();
+        event.stopPropagation();
         hideOnlineHoldList();
-    });
+    };
+    // Capture catches F8 before focused inputs or browser UI handlers can stop it.
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('blur', () => {
         hideOnlineHoldList();
         stopChatTyping();
@@ -598,6 +603,11 @@ function initHoldOnlineList() {
             markActiveGroupRead(_activeGroupId);
         }
     });
+}
+
+function toggleOnlineList() {
+    if (_onlineListOpen) hideOnlineHoldList();
+    else showOnlineHoldList();
 }
 
 async function showOnlineHoldList() {
