@@ -762,7 +762,9 @@ async function ensurePlanCredits(username, profile = null) {
   if (!Number.isFinite(balance)) balance = 0;
 
   if (plan === 'free') {
-    if (!credits.freeGranted) {
+    // Gratis-Credits werden nicht nur einmal vergeben: Jeder neue Kalendermonat
+    // bringt dem Free-Plan automatisch das kostenlose Kontingent zurück.
+    if (credits.plan !== 'free' || credits.period !== period) {
       balance += PLAN_CREDIT_GRANTS.free;
       settings.credits = { ...credits, balance, freeGranted: true, plan, period };
       return upsertProfile(username, { settings });
@@ -1277,10 +1279,13 @@ app.use('/api', (req, res, next) => {
     return res.status(401).json({ error: 'Ungueltiger Token' });
   }
 });
-const chatOnlyRedirectPaths = [
-  '/', '/index.html', '/dreamcoring', '/dreamcoring/', '/earthdrive', '/earthdrive/',
-  '/facewarp', '/facewarp/', '/learning', '/learning/', '/skybreak', '/skybreak/', '/skybreak-auth.html'
-];
+// Der Chat ist der Standard-Einstieg. Das bisherige Control Center bleibt
+// bewusst unter einer eigenen, stabilen Adresse erreichbar.
+app.get(['/control-center', '/control-center/'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+const chatOnlyRedirectPaths = ['/', '/index.html'];
 app.get(chatOnlyRedirectPaths, (req, res) => res.redirect(302, '/chat/'));
 
 require('./lib/earthdrive').mountEarthDrive(app, { readAuthUser, getProfile });
