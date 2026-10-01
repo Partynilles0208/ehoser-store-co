@@ -107,7 +107,7 @@ let _typingLastSentAt = 0;
 let _typingStopTimer = null;
 let _chatSettingsLoginCode = null;
 
-const RTC_CONFIG = {
+const FALLBACK_RTC_CONFIG = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
@@ -129,6 +129,8 @@ const RTC_CONFIG = {
     ],
     iceCandidatePoolSize: 4
 };
+let _callRtcConfig = FALLBACK_RTC_CONFIG;
+let _callRtcConfigPromise = null;
 
 function chatCacheKey(kind) {
     return `ehoserChat:${CHAT_CACHE_VERSION}:${_me?.username || localStorage.getItem('ehoserChatLastUser') || 'unknown'}:${kind}`;
@@ -508,7 +510,9 @@ async function finishChatBoot() {
         _groups = cachedGroups;
         renderGroupList();
     }
-    loadGroups();
+    // Always refresh from the server before showing the chat list. Local storage is
+    // only a fast preview, never the source of truth for chats on another device.
+    await loadGroups();
     await pollMessageNotifications(true);
     _poll = setInterval(pollMessages, 3000);
     _callPoll = setInterval(pollCalls, 1500);
@@ -2061,12 +2065,33 @@ async function selectCallSpeaker(deviceId) {
     }
 }
 
+async function ensureCallRtcConfig() {
+    if (_callRtcConfigPromise) return _callRtcConfigPromise;
+    _callRtcConfigPromise = (async () => {
+        try {
+            const data = await api('/chat/calls/config');
+            if (Array.isArray(data?.iceServers) && data.iceServers.length) {
+                _callRtcConfig = { ...FALLBACK_RTC_CONFIG, iceServers: data.iceServers };
+            }
+        } catch {
+            // The built-in relay remains available when no custom TURN server is configured.
+        }
+        return _callRtcConfig;
+    })();
+    return _callRtcConfigPromise;
+}
+
+function resumeRemoteCallPlayback() {
+    const media = [document.getElementById('remoteAudio'), document.getElementById('remoteVideo')];
+    media.forEach((element) => element?.play?.().catch(() => {}));
+}
+
 function createPeerConnection() {
     if (_peerConnection) {
         try { _peerConnection.close(); } catch {}
     }
     _remoteCallStream = new MediaStream();
-    _peerConnection = new RTCPeerConnection(RTC_CONFIG);
+    _peerConnection = new RTCPeerConnection(_callRtcConfig);
     _peerConnection.onicecandidate = (event) => {
         if (!event.candidate) return;
         const payload = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
@@ -2085,18 +2110,27 @@ function createPeerConnection() {
                     updateRemoteVideoState();
                 };
             }
+            if (track.kind === 'audio') {
+                track.onunmute = () => {
+                    resumeRemoteCallPlayback();
+                    if (_peerConnection?.connectionState === 'connected') setCallStatus('Verbunden');
+                };
+            }
         }
         const remoteVideo = document.getElementById('remoteVideo');
         const remoteAudio = document.getElementById('remoteAudio');
         remoteVideo.muted = true;
+        remoteVideo.autoplay = true;
         remoteVideo.srcObject = _remoteCallStream;
+        remoteAudio.muted = false;
+        remoteAudio.autoplay = true;
+        remoteAudio.volume = 1;
         remoteAudio.srcObject = _remoteCallStream;
         if (_preferredCallSpeakerId) {
             remoteAudio.setSinkId?.(_preferredCallSpeakerId).catch(() => {});
             remoteVideo.setSinkId?.(_preferredCallSpeakerId).catch(() => {});
         }
-        remoteVideo.play().catch(() => {});
-        remoteAudio.play().catch(() => {});
+        resumeRemoteCallPlayback();
         updateRemoteVideoState();
     };
     _peerConnection.onconnectionstatechange = () => {
@@ -2108,6 +2142,12 @@ function createPeerConnection() {
             hangUpCall('Anruf fehlgeschlagen.');
         } else if (_peerConnection.connectionState === 'disconnected') {
             setCallStatus('Verbindung wird wiederhergestellt…');
+        }
+    };
+    _peerConnection.oniceconnectionstatechange = () => {
+        if (!_peerConnection || _finishingCall) return;
+        if (_peerConnection.iceConnectionState === 'failed') {
+            setCallStatus('Verbindung fehlgeschlagen. Prüfe Internet oder TURN-Einstellung.');
         }
     };
     return _peerConnection;
@@ -2144,6 +2184,7 @@ async function startCall(mediaType = 'audio') {
     updateCallButtons();
     openCallUi(peerName, mediaType === 'video' ? 'Kamera und Mikrofon werden gestartet…' : 'Mikrofon wird gestartet…', mediaType === 'video');
     try {
+        await ensureCallRtcConfig();
         _localCallStream = await getCallMedia(mediaType === 'video');
         document.getElementById('localVideo').srcObject = _localCallStream;
         refreshCallDevices();
@@ -2235,6 +2276,7 @@ async function acceptIncomingCall() {
     _callFacingMode = 'user';
     openCallUi(call.caller, withVideo ? 'Kamera und Mikrofon werden gestartet…' : 'Mikrofon wird gestartet…', withVideo);
     try {
+        await ensureCallRtcConfig();
         _localCallStream = await getCallMedia(withVideo);
         document.getElementById('localVideo').srcObject = _localCallStream;
         refreshCallDevices();
@@ -2460,6 +2502,12 @@ async function endCallLocally(message = 'Anruf beendet.') {
     updateCallControlState();
     updateCallButtons();
 }
+
+// Some mobile browsers defer unmuted playback even after a call was accepted.
+// Any tap inside the active-call UI retries playback without changing the call.
+document.getElementById('callOverlay')?.addEventListener('click', () => {
+    if (_currentCall) resumeRemoteCallPlayback();
+});
 
 document.addEventListener('keydown', (event) => {
     if (!_currentCall || document.getElementById('callOverlay')?.style.display === 'none') return;

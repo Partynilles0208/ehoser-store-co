@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 60098)
+Total output lines: 6104
+
 ﻿const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -3301,15 +3304,7 @@ app.post('/api/screenshare/respond', async (req, res) => {
 
     const { data: session } = await supabaseAdmin
       .from('screen_sessions').select('username').eq('id', sessionId).single();
-    if (!session || session.username !== decoded.username)
-      return res.status(403).json({ error: 'Session nicht gefunden' });
-
-    if (!accept) {
-      await supabaseAdmin.from('screen_sessions').update({ status: 'declined' }).eq('id', sessionId);
-      return res.json({ ok: true });
-    }
-    await supabaseAdmin.from('screen_sessions')
-      .update({ status: 'active', answer: JSON.stringify(answer) }).eq('id', sessionId);
+    if (!session || session.…98 tokens truncated…eq('id', sessionId);
     res.json({ ok: true });
   } catch {
     return res.status(401).json({ error: 'Fehler' });
@@ -4183,6 +4178,7 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
 });
 
 const CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at,deleted_at,deleted_by,edited_at,edited_by,hide_edit_mark,pinned_at,pinned_by,updated_at';
+const LEGACY_CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at';
 const DELETED_CHAT_MESSAGE_CONTENT = JSON.stringify({ t: 'deleted' });
 
 function publicChatMessage(row) {
@@ -4193,6 +4189,21 @@ function publicChatMessage(row) {
 
 function isSilentChatEditor(username) {
   return String(username || '').toLowerCase() === 'meisterlool_707';
+}
+
+function isMissingChatMessageMetadata(error) {
+  const text = String(error?.message || error?.details || '').toLowerCase();
+  return /chat_messages\.(deleted_at|edited_at|edited_by|hide_edit_mark|pinned_at|pinned_by|updated_at)|column.*(deleted_at|edited_at|edited_by|hide_edit_mark|pinned_at|pinned_by|updated_at).*does not exist/.test(text);
+}
+
+function createChatMessageQuery(groupId, fields) {
+  return supabaseAdmin
+    .from('chat_messages')
+    .select(fields)
+    .eq('group_id', groupId)
+    .neq('sender', CHAT_CALL_EVENT_SENDER)
+    .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%');
 }
 
 // POST /api/chat/messages — Nachricht als JSON-Text senden
@@ -4222,26 +4233,55 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   // Muss Mitglied sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
-  let query = supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER).not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%').order('id', { ascending: true }).limit(50);
-  if (after) query = query.gt('id', after);
-  const changedQuery = changedAfter
-    ? supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('group_id', groupId).neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER).not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%').gt('updated_at', changedAfter).order('updated_at', { ascending: true }).limit(50)
-    : null;
-  const [{ data, error }, changedResult] = await Promise.all([query, changedQuery]);
-  if (error || changedResult?.error) return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
+  let hasMessageMetadata = true;
+  let query = createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS);
+  query = after
+    ? query.gt('id', after).order('id', { ascending: true }).limit(50)
+    // A fresh browser has no local cache yet. Return the same useful history
+    // window that the client keeps locally, instead of only the oldest rows.
+    : query.order('id', { ascending: false }).limit(180);
+  let { data, error } = await query;
+  if (error && isMissingChatMessageMetadata(error)) {
+    // Existing installations can still load all chats while the optional message-action
+    // migration has not run yet.
+    hasMessageMetadata = false;
+    let legacyQuery = createChatMessageQuery(groupId, LEGACY_CHAT_MESSAGE_FIELDS);
+    legacyQuery = after
+      ? legacyQuery.gt('id', after).order('id', { ascending: true }).limit(50)
+      : legacyQuery.order('id', { ascending: false }).limit(180);
+    ({ data, error } = await legacyQuery);
+  }
+  if (error) return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
+
+  const initialRows = after ? (data || []) : (data || []).slice().reverse();
+  let changedRows = [];
+  if (hasMessageMetadata && changedAfter) {
+    const changedResult = await createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS)
+      .gt('updated_at', changedAfter)
+      .order('updated_at', { ascending: true })
+      .limit(50);
+    if (changedResult.error && !isMissingChatMessageMetadata(changedResult.error)) {
+      return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
+    }
+    changedRows = changedResult.data || [];
+  }
   const merged = new Map();
-  for (const message of [...(data || []), ...(changedResult?.data || [])]) merged.set(String(message.id), message);
+  for (const message of [...initialRows, ...changedRows]) merged.set(String(message.id), message);
   const messages = [...merged.values()].sort((a, b) => Number(a.id) - Number(b.id)).map(publicChatMessage);
-  const { data: pinnedRow, error: pinnedError } = await supabaseAdmin
-    .from('chat_messages')
-    .select(CHAT_MESSAGE_FIELDS)
-    .eq('group_id', groupId)
-    .is('deleted_at', null)
-    .not('pinned_at', 'is', null)
-    .order('pinned_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (pinnedError) console.warn('Angepinnte Chat-Nachricht konnte nicht geladen werden:', pinnedError.message);
+  let pinnedRow = null;
+  if (hasMessageMetadata) {
+    const { data: pinned, error: pinnedError } = await supabaseAdmin
+      .from('chat_messages')
+      .select(CHAT_MESSAGE_FIELDS)
+      .eq('group_id', groupId)
+      .is('deleted_at', null)
+      .not('pinned_at', 'is', null)
+      .order('pinned_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (pinnedError) console.warn('Angepinnte Chat-Nachricht konnte nicht geladen werden:', pinnedError.message);
+    else pinnedRow = pinned;
+  }
   const deliveredMessageId = messages.reduce((max, message) => Math.max(max, Number(message.id) || 0), 0);
   try {
     if (deliveredMessageId) await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
@@ -4489,6 +4529,41 @@ app.post('/api/chat/group-calls/:id/signals', async (req, res) => {
 // ─── One-to-one WebRTC call signalling ──────────────────────────────────────
 // Audio/video flows peer-to-peer. Signalling events are stored as hidden rows
 // in chat_messages so calls do not depend on extra database tables.
+function configuredChatCallIceServers() {
+  const configuredUrls = String(process.env.CHAT_TURN_URLS || process.env.CHAT_TURN_URL || '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+  const username = String(process.env.CHAT_TURN_USERNAME || '').trim();
+  const credential = String(process.env.CHAT_TURN_CREDENTIAL || '').trim();
+
+  // STUN is enough on many networks. A real, private TURN service can be set
+  // in the deployment to relay media when mobile providers, school Wi-Fi, or
+  // strict routers block a direct peer-to-peer connection.
+  const servers = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ];
+  if (configuredUrls.length && username && credential) {
+    servers.unshift({ urls: configuredUrls, username, credential });
+  }
+  return servers;
+}
+
+app.get('/api/chat/calls/config', (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({ iceServers: configuredChatCallIceServers() });
+});
+
 app.post('/api/chat/calls', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { groupId, callee, mediaType = 'audio', offer } = req.body || {};
