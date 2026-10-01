@@ -4344,6 +4344,64 @@ textarea:focus {
     color: #c4b5fd;
 }
 
+.ki-quick-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    padding: 2px 2px 0;
+}
+
+.ki-quick-actions span {
+    color: #8aa8c0;
+    font-size: .78rem;
+    font-weight: 700;
+}
+
+.ki-quick-actions button,
+.ki-bubble-actions button,
+.ki-voice-btn {
+    border: 1px solid rgba(148, 163, 184, .24);
+    border-radius: 10px;
+    padding: 6px 9px;
+    background: rgba(15, 27, 38, .8);
+    color: #cce7ff;
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ki-quick-actions button:hover,
+.ki-bubble-actions button:hover,
+.ki-voice-btn:hover {
+    border-color: #60a5fa;
+    background: rgba(37, 99, 235, .16);
+    color: #fff;
+}
+
+.ki-voice-btn {
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    font-size: 1rem;
+}
+
+.ki-voice-btn.is-recording {
+    color: #fff;
+    background: #dc2626;
+    border-color: #f87171;
+    animation: ki-recording-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes ki-recording-pulse {
+    from { box-shadow: 0 0 0 0 rgba(248, 113, 113, .35); }
+    to { box-shadow: 0 0 0 8px rgba(248, 113, 113, 0); }
+}
+
 .ki-messages {
     flex: 1;
     overflow-y: auto;
@@ -4381,6 +4439,19 @@ textarea:focus {
     border: 1px solid #1e3a5a;
     align-self: flex-start;
     border-bottom-left-radius: 4px;
+}
+
+.ki-bubble-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(148, 163, 184, .14);
+}
+
+.ki-bubble-actions button {
+    padding: 4px 7px;
+    font-size: .7rem;
 }
 
 .ki-bubble-error {
@@ -4464,6 +4535,8 @@ textarea:focus {
 
 @media (max-width: 520px) {
     .ki-bubble { max-width: 95%; }
+    .ki-quick-actions { gap: 5px; }
+    .ki-quick-actions span { width: 100%; }
 }
 
 /* ── ehoser KI Name-Modal ────────────────────────────────────────────────────── */
