@@ -2695,10 +2695,8 @@ async function handleGoogleCredentialResponse(response) {
         showLoggedInUI();
         await loadApps();
         if (redirectToReturnToIfNeeded()) return;
-        showSection('mode-select');
-        restoreReloadSnapshot();
-        startOnlinePolling();
-        showAlert(`Erfolgreich mit Google angemeldet: ${data.username}`, 'success');
+        window.location.href = '/chat/';
+        return;
     } catch (error) {
         showAlert(error.message || 'Google-Anmeldung fehlgeschlagen', 'error');
     }
@@ -2974,9 +2972,7 @@ async function finishDesktopWebLogin(data) {
     showLoggedInUI();
     await loadApps();
     if (redirectToReturnToIfNeeded()) return;
-    showSection('mode-select');
-    startOnlinePolling();
-    showAlert('Desktop-App wurde mit deinem Web-Account angemeldet.', 'success');
+    window.location.href = '/chat/';
 }
 
 async function pollDesktopWebLoginStatus() {
@@ -3277,17 +3273,11 @@ async function handleLogin(event) {
         showAlert('Erfolgreich angemeldet!', 'success');
 
         if (data.redirectToAdmin) {
-            window.location.href = 'admin.html';
+            window.location.href = '/admin.html';
             return;
         }
 
         if (redirectToReturnToIfNeeded()) return;
-
-        showLoggedInUI();
-        await loadApps();
-        showSection('mode-select');
-        restoreReloadSnapshot();
-        startOnlinePolling();
         if (data.moderationWarning?.type === 'warn') {
             showAlert(`Admin-Warnung: ${data.moderationWarning.reason || 'Bitte halte dich an die Regeln.'}`, 'error');
             fetch(`${API_BASE}/me/moderation/ack`, {
@@ -3296,6 +3286,7 @@ async function handleLogin(event) {
             }).catch(() => {});
         }
         document.getElementById('loginForm').reset();
+        window.location.href = '/chat/';
     } catch (err) {
         showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
     }
@@ -3654,18 +3645,13 @@ async function handleRegister(event) {
         showAlert('Willkommen bei ehoser.', 'success');
 
         if (data.redirectToAdmin) {
-            window.location.href = 'admin.html';
+            window.location.href = '/admin.html';
             return;
         }
 
         if (redirectToReturnToIfNeeded()) return;
-
-        showLoggedInUI();
-        await loadApps();
-        showSection('mode-select');
-        restoreReloadSnapshot();
-        startOnlinePolling();
         document.getElementById('registerForm').reset();
+        window.location.href = '/chat/';
     } catch (err) {
         showAlert('Verbindungsfehler. Prüfe ob der Server läuft.', 'error');
     }
@@ -5273,12 +5259,137 @@ function setKIModel(model) {
     if (messages) messages.style.display = 'flex';
 }
 
+let _kiSpeechRecognition = null;
+
+function useKIQuickPrompt(prompt) {
+    const input = document.getElementById('kiInput');
+    if (!input) return;
+    input.value = prompt;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+}
+
+async function copyKIText(text) {
+    const value = String(text || '');
+    if (!value) return;
+    let copied = false;
+    try {
+        await navigator.clipboard.writeText(value);
+        copied = true;
+    } catch {
+        const helper = document.createElement('textarea');
+        helper.value = value;
+        helper.setAttribute('readonly', '');
+        helper.style.position = 'fixed';
+        helper.style.opacity = '0';
+        document.body.appendChild(helper);
+        helper.select();
+        copied = document.execCommand('copy');
+        helper.remove();
+    }
+    showAlert(copied ? 'Antwort kopiert.' : 'Kopieren war nicht möglich.', copied ? 'success' : 'error');
+}
+
+function speakKIText(text) {
+    if (!('speechSynthesis' in window)) {
+        showAlert('Vorlesen wird von diesem Browser nicht unterstützt.', 'error');
+        return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(String(text || ''));
+    utterance.lang = 'de-DE';
+    utterance.rate = 1;
+    window.speechSynthesis.speak(utterance);
+}
+
+function setKIVoiceButtonState(active) {
+    const button = document.getElementById('kiVoiceBtn');
+    if (!button) return;
+    button.classList.toggle('is-recording', active);
+    button.textContent = active ? '■' : '🎙️';
+    button.title = active ? 'Spracheingabe beenden' : 'Spracheingabe starten';
+    button.setAttribute('aria-label', button.title);
+}
+
+function toggleKIVoiceInput() {
+    if (_kiSpeechRecognition) {
+        _kiSpeechRecognition.stop();
+        return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        showAlert('Spracheingabe wird von diesem Browser nicht unterstützt.', 'error');
+        return;
+    }
+    const input = document.getElementById('kiInput');
+    if (!input) return;
+    const prefix = input.value.trim();
+    const recognition = new SpeechRecognition();
+    recognition.lang = document.documentElement.lang || 'de-DE';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i += 1) transcript += event.results[i][0].transcript;
+        input.value = [prefix, transcript.trim()].filter(Boolean).join(prefix && transcript ? ' ' : '');
+    };
+    recognition.onend = () => {
+        _kiSpeechRecognition = null;
+        setKIVoiceButtonState(false);
+        input.focus();
+    };
+    recognition.onerror = (event) => {
+        if (event.error !== 'aborted' && event.error !== 'no-speech') showAlert('Spracheingabe konnte nicht gestartet werden.', 'error');
+    };
+    _kiSpeechRecognition = recognition;
+    setKIVoiceButtonState(true);
+    recognition.start();
+}
+
+function exportKIChat() {
+    const rows = _kiHistory
+        .filter((entry) => entry.role !== 'system' && typeof entry.content === 'string')
+        .map((entry) => `${entry.role === 'assistant' ? 'ehoser KI' : 'Du'}:\n${entry.content}`);
+    if (!rows.length) {
+        showAlert('Es gibt noch keinen Verlauf zum Exportieren.', 'error');
+        return;
+    }
+    const blob = new Blob([`ehoser KI – Verlauf\n\n${rows.join('\n\n────────────────────\n\n')}\n`], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ehoser-ki-verlauf.txt';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function appendKIBubble(type, text) {
     const messages = document.getElementById('kiMessages');
     if (!messages) return null;
     const div = document.createElement('div');
     div.className = `ki-bubble ki-bubble-${type}`;
-    div.textContent = text;
+    if (type === 'ai') {
+        const content = document.createElement('div');
+        content.className = 'ki-bubble-content';
+        content.textContent = text;
+        div.appendChild(content);
+        const actions = document.createElement('div');
+        actions.className = 'ki-bubble-actions';
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.textContent = 'Kopieren';
+        copy.onclick = () => copyKIText(text);
+        const speak = document.createElement('button');
+        speak.type = 'button';
+        speak.textContent = 'Vorlesen';
+        speak.onclick = () => speakKIText(text);
+        actions.append(copy, speak);
+        div.appendChild(actions);
+    } else {
+        div.textContent = text;
+    }
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
     return div;
