@@ -258,6 +258,8 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
     color: #aebac1; font: 400 1.65rem/1 var(--font); cursor: pointer;
 }
 .sidebar-head-actions button:hover { background: #2a3942; color: #e9edef; }
+.sidebar-head-actions #onlineListButton { color: #25d366; font-size: 1.15rem; }
+.sidebar-head-actions #onlineListButton:hover { color: #7bf2a2; }
 .chat-search {
     display: flex; align-items: center; gap: 10px; margin: 7px 12px; padding: 0 13px;
     min-height: 38px; border-radius: 9px; background: #202c33; color: #8696a0;
