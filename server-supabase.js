@@ -4361,10 +4361,6 @@ function publicChatMessage(row) {
   return { ...message, content };
 }
 
-function isSilentChatEditor(username) {
-  return String(username || '').toLowerCase() === 'meisterlool_707';
-}
-
 function isMissingChatMessageMetadata(error) {
   const text = String(error?.message || error?.details || '').toLowerCase();
   const fields = ['deleted_at', 'edited_at', 'edited_by', 'hide_edit_mark', 'pinned_at', 'pinned_by', 'updated_at'];
@@ -5036,21 +5032,18 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', msgRow.group_id).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
 
-  // Erlaubt wenn Absender selbst ist oder der spezielle Benutzer meisterlool_707
-  if (msgRow.sender !== user.username && !isSilentChatEditor(user.username)) {
+  // Nur der ursprüngliche Absender darf seine Nachricht bearbeiten.
+  if (msgRow.sender !== user.username) {
     return res.status(403).json({ error: 'Nicht berechtigt zu bearbeiten' });
   }
 
   const now = new Date().toISOString();
-  const silentEdit = isSilentChatEditor(user.username);
   let updatedResult = await supabaseAdmin
     .from('chat_messages')
     .update({
       encrypted_content: content,
       edited_at: now,
       edited_by: user.username,
-      // meisterlool_707's existing moderation edit remains deliberately silent.
-      hide_edit_mark: silentEdit,
       updated_at: now
     })
     .eq('id', id)
@@ -5058,7 +5051,7 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
     .single();
 
   if (updatedResult.error && (!hasMetadata || isMissingChatMessageMetadata(updatedResult.error))) {
-    const compatibleContent = JSON.stringify({ ...payload, edited: !silentEdit });
+    const compatibleContent = JSON.stringify(payload);
     updatedResult = await supabaseAdmin
       .from('chat_messages')
       .update({ encrypted_content: compatibleContent })

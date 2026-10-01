@@ -627,7 +627,6 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 }
 .msg-content { min-width: 0; }
 .msg-meta { display: flex; align-items: center; justify-content: flex-end; gap: 3px; min-height: 14px; margin: 1px 0 0 14px; white-space: nowrap; }
-.msg-edited { color: #8696a0; font-size: .62rem; font-style: italic; }
 .message-deleted { color: #9aa8ae; font-size: .84rem; font-style: italic; }
 .msg-row.deleted .msg-bubble { min-width: 188px; background: rgba(42,57,64,.86); }
 .msg-row.deleted .msg-bubble::before { border-top-color: rgba(42,57,64,.86); }

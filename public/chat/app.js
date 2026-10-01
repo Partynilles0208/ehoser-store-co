@@ -852,7 +852,7 @@ const CHAT_TRANSLATIONS = {
         emptyNote: 'Nachrichten, Bilder und Anrufe', messagePlaceholder: 'Nachricht…',
         noChats: 'Noch keine Chats.<br>Tippe oben auf ＋.', noResult: 'Kein Chat gefunden.',
         privateChat: 'Privater Chat', members: 'Mitglieder', member: 'Mitglied',
-        oldMessage: 'Alte Nachricht', deletedMessage: 'Nachricht wurde gelöscht', edited: 'bearbeitet', message: 'Nachricht', you: 'Du',
+        oldMessage: 'Alte Nachricht', deletedMessage: 'Nachricht wurde gelöscht', message: 'Nachricht', you: 'Du',
         photo: '📷 Foto', video: '🎥 Video', audio: '🎤 Sprachnachricht',
         file: '📎 Datei', sticker: '✨ Sticker', summary: '🤖 Zusammenfassung',
         loadingMembers: 'Mitglieder werden geladen…', typingOne: 'schreibt gerade…',
@@ -865,7 +865,7 @@ const CHAT_TRANSLATIONS = {
         emptyNote: 'Messages, media and calls', messagePlaceholder: 'Message…',
         noChats: 'No chats yet.<br>Tap ＋ above.', noResult: 'No chat found.',
         privateChat: 'Private chat', members: 'members', member: 'member',
-        oldMessage: 'Old message', deletedMessage: 'Message deleted', edited: 'edited', message: 'Message', you: 'You',
+        oldMessage: 'Old message', deletedMessage: 'Message deleted', message: 'Message', you: 'You',
         photo: '📷 Photo', video: '🎥 Video', audio: '🎤 Voice message',
         file: '📎 File', sticker: '✨ Sticker', summary: '🤖 Summary',
         loadingMembers: 'Loading members…', typingOne: 'is typing…',
@@ -1370,16 +1370,6 @@ function renderMessageBody(plainJson) {
     return renderContent(parsed);
 }
 
-function shouldShowEditedMark(message) {
-    if (Boolean(message?.hide_edit_mark) || Boolean(message?.deleted_at)) return false;
-    if (Boolean(message?.edited_at)) return true;
-    // Compatibility for installations where the optional edited_at database
-    // column has not been created yet. The server keeps the marker with the
-    // message content in that case, so it also survives another device login.
-    const stored = readStoredMessage(message?.content);
-    return Boolean(safeJsonParse(stored, null)?.edited);
-}
-
 function updateRenderedMessageRow(row, message, plainJson = readStoredMessage(message?.content)) {
     if (!row || !message) return;
     const deleted = isDeletedMessage(message, plainJson);
@@ -1389,7 +1379,7 @@ function updateRenderedMessageRow(row, message, plainJson = readStoredMessage(me
     row.dataset.sender = String(message.sender || '');
     row.dataset.deleted = deleted ? 'true' : 'false';
     row.dataset.pinned = pinned ? 'true' : 'false';
-    row.dataset.edited = shouldShowEditedMark(message) ? 'true' : 'false';
+    row.dataset.edited = 'false';
     row.classList.toggle('deleted', deleted);
     row.classList.toggle('pinned', pinned);
 
@@ -1398,19 +1388,7 @@ function updateRenderedMessageRow(row, message, plainJson = readStoredMessage(me
 
     const meta = row.querySelector('.msg-meta');
     if (!meta) return;
-    let edited = meta.querySelector('.msg-edited');
-    if (shouldShowEditedMark(message)) {
-        if (!edited) {
-            edited = document.createElement('span');
-            edited.className = 'msg-edited';
-            const ticks = meta.querySelector('.msg-ticks');
-            meta.insertBefore(edited, ticks || null);
-        }
-        edited.textContent = chatText('edited');
-        edited.title = chatText('edited');
-    } else if (edited) {
-        edited.remove();
-    }
+    meta.querySelectorAll('.msg-edited').forEach((edited) => edited.remove());
 }
 
 function messagePreviewText(message) {
@@ -1473,7 +1451,7 @@ function appendMessage(m, plainJson) {
         ${avatar}
         <div class="msg-body">
             ${(!own && senderName !== 'ehoser AI') ? '<span class="' + senderClass + '">' + esc(senderName) + senderBadge + '</span>' : ''}
-            <div class="msg-bubble"><div class="msg-content">${content}</div><span class="msg-meta"><span class="msg-time">${timeStr}</span>${shouldShowEditedMark(m) ? '<span class="msg-edited" title="' + esc(chatText('edited')) + '">' + esc(chatText('edited')) + '</span>' : ''}${own ? '<span class="msg-ticks" aria-label="Beim Server angekommen" title="Beim Server angekommen">✓</span>' : ''}</span></div>
+            <div class="msg-bubble"><div class="msg-content">${content}</div><span class="msg-meta"><span class="msg-time">${timeStr}</span>${own ? '<span class="msg-ticks" aria-label="Beim Server angekommen" title="Beim Server angekommen">✓</span>' : ''}</span></div>
         </div>`;
     const lastVisibleMessage = area.querySelector('.msg-row:last-of-type');
     if (!lastVisibleMessage || lastVisibleMessage.dataset.dateKey !== row.dataset.dateKey) {
@@ -1593,13 +1571,9 @@ function renderFile(p) {
     </div>`;
 }
 
-function isSilentChatEditor() {
-    return String(_me?.username || '').toLowerCase() === 'meisterlool_707';
-}
-
 function canEditMessage(row) {
     if (!row?.dataset?.msgid || row.dataset.deleted === 'true') return false;
-    return row.dataset.sender === String(_me?.username || '') || isSilentChatEditor();
+    return row.dataset.sender === String(_me?.username || '');
 }
 
 function canDeleteMessage(row) {
