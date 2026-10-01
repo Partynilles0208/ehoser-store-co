@@ -559,6 +559,14 @@ function normalizeModerationSettings(raw) {
 
 function normalizeSettings(raw) {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const rawAvatarUrl = typeof src.avatarUrl === 'string' ? src.avatarUrl.trim().slice(0, 2048) : '';
+  let avatarUrl = '';
+  try {
+    const parsed = new URL(rawAvatarUrl);
+    // Profilbilder werden auch für andere Nutzer gerendert. HTTPS verhindert
+    // Mixed Content und ungültige Bildquellen in allen Chat-Clients.
+    if (parsed.protocol === 'https:') avatarUrl = parsed.toString();
+  } catch {}
   return {
     language: typeof src.language === 'string' ? src.language : 'de',
     design: typeof src.design === 'string' ? src.design : 'standard',
@@ -567,7 +575,7 @@ function normalizeSettings(raw) {
     chatCompactMode: Boolean(src.chatCompactMode),
     chatShowPreviews: src.chatShowPreviews !== false,
     displayName: typeof src.displayName === 'string' ? src.displayName.trim().slice(0, 40) : '',
-    avatarUrl: typeof src.avatarUrl === 'string' ? src.avatarUrl.trim().slice(0, 2048) : '',
+    avatarUrl,
     premiumUntil: typeof src.premiumUntil === 'string' ? src.premiumUntil : null,
     personalizationEnabled: false,
     personalization: normalizePersonalization({}),
@@ -3938,9 +3946,31 @@ app.get('/api/chat/contacts', async (req, res) => {
     .order('username', { ascending: true })
     .limit(1000);
   if (error) return res.status(500).json({ error: 'Kontakte konnten nicht geladen werden: ' + error.message });
-  const contacts = (data || [])
-    .filter((contact) => contact?.username)
-    .map((contact) => ({ username: contact.username, last_seen: contact.last_seen || null }));
+  const sourceContacts = (data || []).filter((contact) => contact?.username);
+  const usernames = sourceContacts.map((contact) => contact.username);
+  const profilesByUsername = new Map();
+  if (usernames.length) {
+    try {
+      const { data: profiles, error: profilesError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('username,settings')
+        .in('username', usernames);
+      if (!profilesError) {
+        for (const profile of (profiles || [])) {
+          const settings = normalizeSettings(profile?.settings || {});
+          profilesByUsername.set(profile.username, {
+            display_name: settings.displayName || '',
+            avatar_url: settings.avatarUrl || ''
+          });
+        }
+      }
+    } catch {}
+  }
+  const contacts = sourceContacts.map((contact) => ({
+    username: contact.username,
+    last_seen: contact.last_seen || null,
+    ...(profilesByUsername.get(contact.username) || { display_name: '', avatar_url: '' })
+  }));
   res.json({ contacts });
 });
 

@@ -206,7 +206,7 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
     border: 1px solid #2a3942; border-radius: 14px; background: #202c33;
 }
 .online-hold-list li.is-me { border-color: rgba(37,211,102,.38); background: rgba(0,92,75,.34); }
-.online-hold-avatar { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; background: #6a7175; color: #f2f5f6; font-weight: 800; font-size: .78rem; }
+.online-hold-avatar { width: 44px; height: 44px; flex-shrink: 0; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: #6a7175; color: #f2f5f6; font-weight: 800; font-size: .78rem; }
 .online-hold-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e9edef; font-size: .92rem; font-weight: 600; }
 .online-hold-name small { display: block; color: #8696a0; font-size: .68rem; font-weight: 500; }
 .online-hold-status { flex-shrink: 0; display: flex; align-items: center; gap: 5px; color: #8696a0; font-size: .69rem; }
@@ -298,8 +298,10 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
     width: 49px; height: 49px; border-radius: 50%;
     background: #6a7175;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.1rem; flex-shrink: 0;
+    font-size: 1.1rem; flex-shrink: 0; overflow: hidden;
 }
+.chat-avatar-image { width: 100%; height: 100%; display: block; border-radius: inherit; object-fit: cover; }
+.has-avatar-image .chat-avatar-fallback { display: none; }
 .gi-info { flex: 1; min-width: 0; }
 .gi-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .gi-name { font-weight: 600; font-size: .95rem; color: #e9edef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -385,7 +387,7 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 }
 .chat-topbar-left { display: flex; align-items: center; gap: 12px; }
 .mobile-back-btn { display: none; }
-.topbar-group-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: #6a7175; font-size: 1.12rem; }
+.topbar-group-icon { width: 40px; height: 40px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: #6a7175; font-size: 1.12rem; }
 .topbar-name { font-family: var(--font); font-weight: 600; font-size: .98rem; color: #e9edef; }
 .topbar-meta { font-size: .75rem; color: var(--muted); }
 .topbar-meta.typing { color: #25d366; font-weight: 600; }
@@ -570,7 +572,7 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
     background: #6a7175;
     display: flex; align-items: center; justify-content: center;
     font-size: .68rem; font-weight: 700; color: #f1f3f4;
-    flex-shrink: 0; margin-top: 4px;
+    flex-shrink: 0; margin-top: 4px; overflow: hidden;
 }
 .msg-avatar.pro-av { box-shadow: 0 0 0 2px rgba(200, 150, 0, 0.6); }
 
@@ -852,7 +854,7 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .status-msg.error { color: #c05050; }
 .members-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .members-list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #091820; border: 1px solid var(--card-border); border-radius: 10px; font-size: .88rem; color: var(--text); }
-.member-av { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg,#1a3050,#2a5080); display: flex; align-items: center; justify-content: center; font-size: .72rem; font-weight: 700; color: #90c8e8; flex-shrink: 0; }
+.member-av { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg,#1a3050,#2a5080); display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: .72rem; font-weight: 700; color: #90c8e8; flex-shrink: 0; }
 .creator-badge { margin-left: auto; font-size: .68rem; background: rgba(124,58,237,.2); border: 1px solid rgba(124,58,237,.4); color: var(--accent2); border-radius: 20px; padding: 2px 8px; }
 
 /* ── Chat settings ──────────────────────────────────────────────────────── */
@@ -862,7 +864,16 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
     display: flex; align-items: center; gap: 13px; margin-bottom: 14px; padding: 14px;
     border: 1px solid #2a3942; border-radius: 15px; background: #202c33;
 }
-.settings-avatar { width: 48px; height: 48px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg,#00a884,#25d366); color: #071511; font-weight: 900; }
+.settings-avatar { width: 48px; height: 48px; flex-shrink: 0; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: linear-gradient(135deg,#00a884,#25d366); color: #071511; font-weight: 900; }
+.settings-avatar-editor { display: grid; gap: 9px; padding: 13px 14px; }
+.settings-avatar-url { width: 100%; min-height: 40px; padding: 0 11px; border: 1px solid #3b4a54; border-radius: 10px; outline: 0; background: #202c33; color: #e9edef; font: 500 .82rem var(--font); }
+.settings-avatar-url:focus { border-color: #00a884; box-shadow: 0 0 0 3px rgba(0,168,132,.14); }
+.settings-avatar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.settings-avatar-actions button, .settings-avatar-file-btn { min-height: 34px; padding: 0 11px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #3b4a54; border-radius: 9px; background: #202c33; color: #aebac1; font: 700 .72rem var(--font); cursor: pointer; }
+.settings-avatar-file-btn { border-color: rgba(37,211,102,.42); color: #7ee4cc; }
+.settings-avatar-actions button:hover, .settings-avatar-file-btn:hover { border-color: #00a884; color: #e9edef; }
+.settings-avatar-actions input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.settings-avatar-editor small { color: #8696a0; font-size: .68rem; }
 .settings-profile-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .settings-profile-copy strong { overflow: hidden; color: #e9edef; text-overflow: ellipsis; white-space: nowrap; }
 .settings-profile-copy span { overflow: hidden; color: #8696a0; font-size: .73rem; text-overflow: ellipsis; white-space: nowrap; }
@@ -902,7 +913,7 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .settings-online-list li.is-me { border-color: rgba(37,211,102,.42); background: rgba(0,92,75,.34); }
 .settings-online-list li > .settings-online-user { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-online-list li small { display: block; margin-top: 2px; color: #8696a0; font-size: .64rem; font-weight: 500; }
-.settings-online-avatar { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 50%; background: #6a7175; color: #f2f5f6; font-size: .66rem; font-weight: 800; }
+.settings-online-avatar { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: #6a7175; color: #f2f5f6; font-size: .66rem; font-weight: 800; }
 .settings-online-list li > i { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #25d366; box-shadow: 0 0 10px rgba(37,211,102,.55); }
 .settings-online-list li > i.offline { background: #667781; box-shadow: none; }
 .settings-online-list .settings-online-loading, .settings-online-list .settings-online-empty { grid-column: 1 / -1; justify-content: center; color: #8696a0; text-align: center; font-weight: 500; background: transparent; border-style: dashed; }
