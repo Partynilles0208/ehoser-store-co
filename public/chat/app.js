@@ -2,7 +2,6 @@
 const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : window.location.origin;
 const API = API_ORIGIN + '/api';
 const CHAT_CACHE_VERSION = 'v3';
-const CHAT_UPDATE_VERSION = '2026-10-message-integrity-fix';
 const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
 const IS_EHOSER_ANDROID_APP = Boolean(window.EhoserAndroid && typeof window.EhoserAndroid.isNativeApp === 'function');
 let _chatGoogleClientId = '';
@@ -250,53 +249,6 @@ function setMessageSyncAt(groupId, value) {
     writeChatCache('messageSync', saved);
 }
 
-function prepareChatUpdateSplash() {
-    const splash = document.getElementById('chatUpdateSplash');
-    if (splash) splash.style.display = 'none';
-}
-
-async function runChatEntrySequence() {
-    const splash = document.getElementById('chatUpdateSplash');
-    const username = _me?.username || 'unknown';
-    localStorage.setItem('ehoserChatLastUser', username);
-    const seenKey = `ehoserChatUpdateSeen:${CHAT_UPDATE_VERSION}:${username}`;
-    if (localStorage.getItem(seenKey) !== '1') {
-        if (splash) splash.style.display = 'flex';
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        localStorage.setItem(seenKey, '1');
-    }
-    if (splash) splash.style.display = 'none';
-}
-
-function runChatBrandIntro() {
-    const intro = document.getElementById('chatBrandIntro');
-    if (!intro || sessionStorage.getItem('ehoserChatIntroShown') === '1') {
-        intro?.remove();
-        return Promise.resolve();
-    }
-    return new Promise((resolve) => {
-        let finished = false;
-        let timer = null;
-        const onKeydown = (event) => {
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
-            finish();
-        };
-        const finish = () => {
-            if (finished) return;
-            finished = true;
-            clearTimeout(timer);
-            window.removeEventListener('keydown', onKeydown);
-            sessionStorage.setItem('ehoserChatIntroShown', '1');
-            intro.classList.add('finished');
-            setTimeout(() => intro.remove(), 380);
-            resolve();
-        };
-        window.addEventListener('keydown', onKeydown);
-        timer = setTimeout(finish, 3200);
-    });
-}
-
 function setChatAuthMode(mode) {
     const register = mode === 'register';
     document.getElementById('chatLoginForm').style.display = register ? 'none' : 'grid';
@@ -316,7 +268,6 @@ function setChatAuthStatus(message = '', error = false) {
 function prepareChatAuthWall(message = '') {
     const accessCode = localStorage.getItem(CHAT_ACCESS_CODE_KEY) || '';
     const username = localStorage.getItem('ehoserChatLastUser') || '';
-    document.getElementById('chatUpdateSplash').style.display = 'none';
     document.getElementById('chatLoginUnlockCode').value = accessCode;
     document.getElementById('chatRegisterUnlockCode').value = accessCode;
     document.getElementById('chatLoginUsername').value = username;
@@ -469,8 +420,6 @@ function logoutChat() {
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 (async () => {
-    await runChatBrandIntro();
-    prepareChatUpdateSplash();
     _token = localStorage.getItem('token');
     if (!_token) { prepareChatAuthWall(); return; }
     try {
@@ -533,7 +482,6 @@ function logoutChat() {
 async function finishChatBoot() {
     if (_chatStarted) return;
     _chatStarted = true;
-    await runChatEntrySequence();
     show('chatApp');
     applyChatPreferences();
     document.getElementById('sidebarMe').textContent = '👤 ' + _me.username;
@@ -563,6 +511,7 @@ async function finishChatBoot() {
     clearInterval(_presenceHeartbeat);
     _presenceHeartbeat = setInterval(sendChatHeartbeat, 60000);
     initHoldOnlineList();
+    initSecretShortcut();
     pollCalls();
     pollGroupCallInvites();
     document.addEventListener('click', globalClickClose);
@@ -607,6 +556,83 @@ function initHoldOnlineList() {
             markActiveGroupRead(_activeGroupId);
         }
     });
+}
+
+const SECRET_ESCAPE_PRESSES = 10;
+let _secretEscapeCount = 0;
+
+function secretOverlayVisible(id) {
+    const element = document.getElementById(id);
+    return Boolean(element && element.style.display !== 'none');
+}
+
+function initSecretShortcut() {
+    if (window._ehoserSecretsShortcutReady) return;
+    window._ehoserSecretsShortcutReady = true;
+    window.addEventListener('keydown', (event) => {
+        if (!_chatStarted || _currentCall || event.repeat) return;
+        if (event.key !== 'Escape') {
+            _secretEscapeCount = 0;
+            return;
+        }
+        if (secretOverlayVisible('bugSecretModal')) {
+            event.preventDefault();
+            closeBugSecret();
+            return;
+        }
+        if (secretOverlayVisible('ehoserNilsSecrets')) {
+            event.preventDefault();
+            closeEhoserNilsSecrets();
+            return;
+        }
+        const target = event.target;
+        if (target?.matches?.('input, textarea, select') || target?.isContentEditable) return;
+
+        _secretEscapeCount += 1;
+        const remaining = SECRET_ESCAPE_PRESSES - _secretEscapeCount;
+        if (remaining <= 0) {
+            event.preventDefault();
+            _secretEscapeCount = 0;
+            openEhoserNilsSecrets();
+            return;
+        }
+        if (_secretEscapeCount >= 5) {
+            event.preventDefault();
+            toast(`Noch ${remaining}× Esc`, 'ok');
+        }
+    }, true);
+}
+
+function openEhoserNilsSecrets() {
+    const area = document.getElementById('ehoserNilsSecrets');
+    if (!area) return;
+    closeMessageContextMenu();
+    area.style.display = 'flex';
+}
+
+function closeEhoserNilsSecrets() {
+    const area = document.getElementById('ehoserNilsSecrets');
+    if (area) area.style.display = 'none';
+    closeBugSecret();
+}
+
+function openBugSecret() {
+    const modal = document.getElementById('bugSecretModal');
+    const video = document.getElementById('bugSecretVideo');
+    if (!modal || !video) return;
+    if (!video.src) video.src = video.dataset.src || '';
+    modal.style.display = 'flex';
+}
+
+function closeBugSecret() {
+    const modal = document.getElementById('bugSecretModal');
+    const video = document.getElementById('bugSecretVideo');
+    if (modal) modal.style.display = 'none';
+    if (video) video.removeAttribute('src');
+}
+
+function closeBugSecretIfOverlay(event) {
+    if (event.target === event.currentTarget) closeBugSecret();
 }
 
 function toggleOnlineList() {
@@ -782,10 +808,6 @@ function show(id) {
         const el = document.getElementById(i);
         if (el) el.style.display = i === id ? 'flex' : 'none';
     });
-    if (id !== 'chatApp') {
-        const splash = document.getElementById('chatUpdateSplash');
-        if (splash) splash.style.display = 'none';
-    }
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
