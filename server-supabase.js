@@ -4354,6 +4354,7 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
 const CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at,deleted_at,deleted_by,edited_at,edited_by,hide_edit_mark,pinned_at,pinned_by,updated_at';
 const LEGACY_CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at';
 const DELETED_CHAT_MESSAGE_CONTENT = JSON.stringify({ t: 'deleted' });
+const TICTACTOE_TEST_OWNER = 'meisterlool_707';
 
 function publicChatMessage(row) {
   if (!row) return null;
@@ -4376,6 +4377,16 @@ function createChatMessageQuery(groupId, fields) {
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%');
+}
+
+function isTicTacToeTestCommand(username, content) {
+  if (String(username || '').toLowerCase() !== TICTACTOE_TEST_OWNER) return false;
+  try {
+    const message = JSON.parse(String(content || ''));
+    return message?.t === 'txt' && String(message?.v || '').trim() === '/test';
+  } catch {
+    return false;
+  }
 }
 
 async function readChatMessageForAction(id) {
@@ -4406,6 +4417,35 @@ app.post('/api/chat/messages', async (req, res) => {
   // Muss Mitglied sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied dieser Gruppe' });
+
+  if (isTicTacToeTestCommand(user.username, content)) {
+    const { data: members, error: membersError } = await supabaseAdmin
+      .from('chat_group_members')
+      .select('username')
+      .eq('group_id', groupId);
+    if (membersError) return res.status(500).json({ error: 'Spiel konnte nicht vorbereitet werden' });
+    const participantNames = [...new Set((members || []).map((member) => String(member?.username || '')).filter(Boolean))];
+    if (participantNames.length !== 2) {
+      return res.status(400).json({ error: 'Dieser Befehl funktioniert nur in einem privaten 1-zu-1-Chat.' });
+    }
+    const target = participantNames.find((username) => username !== user.username);
+    if (!target) return res.status(400).json({ error: 'Kein anderer Nutzer im Chat gefunden.' });
+
+    const challengeContent = JSON.stringify({
+      t: 'tic_tac_toe',
+      target,
+      gameId: 'ttt_' + crypto.randomBytes(12).toString('hex'),
+      text: 'Wer gewinnt, ist mein bester Freund. Sonst war’s das mit der Freundschaft 😄'
+    });
+    const { data, error } = await supabaseAdmin
+      .from('chat_messages')
+      .insert({ group_id: groupId, sender: user.username, encrypted_content: challengeContent })
+      .select('id,created_at')
+      .single();
+    if (error) return res.status(500).json({ error: 'Spiel konnte nicht gesendet werden' });
+    return res.json({ id: data.id, created_at: data.created_at, command: 'tic_tac_toe' });
+  }
+
   // The database column keeps its legacy name so existing deployments need no destructive migration.
   const { data, error } = await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender: user.username, encrypted_content: content }).select('id,created_at').single();
   if (error) return res.status(500).json({ error: 'Fehler beim Senden' });
