@@ -201,6 +201,7 @@ function persistMessages(groupId, messages) {
     const byId = new Map();
     for (const message of [...(cache[groupId] || []), ...(messages || [])]) {
         if (!message) continue;
+        if (isHiddenTicTacToeChallenge(readStoredMessage(message.content))) continue;
         const key = String(message.id || `${message.sender}:${message.created_at}:${message.content || ''}`);
         byId.set(key, message);
     }
@@ -1397,6 +1398,17 @@ function renderMessageBody(plainJson) {
     return renderContent(parsed);
 }
 
+function ticTacToeChallengeFrom(plainJson) {
+    const parsed = safeJsonParse(plainJson, null);
+    return parsed?.t === 'tic_tac_toe' && typeof parsed === 'object' ? parsed : null;
+}
+
+function isHiddenTicTacToeChallenge(plainJson) {
+    const challenge = ticTacToeChallengeFrom(plainJson);
+    if (!challenge?.target) return false;
+    return String(challenge.target).toLowerCase() !== String(_me?.username || '').toLowerCase();
+}
+
 function updateRenderedMessageRow(row, message, plainJson = readStoredMessage(message?.content)) {
     if (!row || !message) return;
     const deleted = isDeletedMessage(message, plainJson);
@@ -1424,7 +1436,7 @@ function messagePreviewText(message) {
     if (plain === null) return chatText('oldMessage');
     const parsed = safeJsonParse(plain, { t: 'txt', v: String(plain || '') });
     if (parsed?.t === 'txt') return String(parsed.v || '').replace(/\s+/g, ' ').trim() || chatText('message');
-    const labels = { img: chatText('photo'), vid: chatText('video'), aud: chatText('audio'), file: chatText('file'), pro_sticker: chatText('sticker') };
+    const labels = { img: chatText('photo'), vid: chatText('video'), aud: chatText('audio'), file: chatText('file'), pro_sticker: chatText('sticker'), tic_tac_toe: '🎮 Tic-Tac-Toe' };
     return labels[parsed?.t] || chatText('message');
 }
 
@@ -1458,6 +1470,7 @@ function updatePinnedMessageBanner(message) {
 function appendMessage(m, plainJson) {
     const area = document.getElementById('messagesArea');
     if (!area) return;
+    if (isHiddenTicTacToeChallenge(plainJson)) return;
     if (m?.id && _activeGroupId && isMessageSeen(_activeGroupId, m.id)) return;
     const own = m.sender === _me?.username;
     const ts = parseServerDate(m.created_at || Date.now());
@@ -1559,6 +1572,7 @@ function renderContent(p) {
         case 'aud': return renderAudio(p);
         case 'fw':  return `<img class="msg-img" src="${esc(p.url)}" alt="Face Warp" loading="lazy" onclick="viewImg(this.src)"><div class="msg-fw-label">🎭 Face Warp</div>`;
         case 'pro_sticker': return renderProSticker(p);
+        case 'tic_tac_toe': return isHiddenTicTacToeChallenge(JSON.stringify(p)) ? '' : renderTicTacToeChallenge(p);
         case 'file': return renderFile(p);
         case 'ai_summary': return `<div class="ai-summary-card"><div class="ai-summary-header">🤖 ehoser AI</div><div>${esc(p.summary || '').replace(/\n/g, '<br>')}</div></div>`;
         default: return esc(JSON.stringify(p));
@@ -1568,6 +1582,127 @@ function renderContent(p) {
 function renderProSticker(p) {
     const label = p?.label || 'ehoser PRO';
     return `<div class="pro-sticker"><span class="pro-sticker-logo">E</span><span>${esc(label)}</span></div>`;
+}
+
+const TICTACTOE_WIN_LINES = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+];
+const _ticTacToeGames = new Map();
+
+function cleanTicTacToeGameId(value) {
+    return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) || ('ttt_' + Date.now());
+}
+
+function getTicTacToeWinner(board) {
+    for (const [a, b, c] of TICTACTOE_WIN_LINES) {
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+    }
+    return '';
+}
+
+function ticTacToeMinimax(board, computerTurn, depth = 0) {
+    const winner = getTicTacToeWinner(board);
+    if (winner === 'O') return 10 - depth;
+    if (winner === 'X') return depth - 10;
+    if (!board.includes('')) return 0;
+    const scores = [];
+    for (let index = 0; index < board.length; index += 1) {
+        if (board[index]) continue;
+        board[index] = computerTurn ? 'O' : 'X';
+        scores.push(ticTacToeMinimax(board, !computerTurn, depth + 1));
+        board[index] = '';
+    }
+    return computerTurn ? Math.max(...scores) : Math.min(...scores);
+}
+
+function bestTicTacToeMove(board) {
+    let bestScore = -Infinity;
+    let bestMove = -1;
+    for (let index = 0; index < board.length; index += 1) {
+        if (board[index]) continue;
+        board[index] = 'O';
+        const score = ticTacToeMinimax(board, false, 0);
+        board[index] = '';
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = index;
+        }
+    }
+    return bestMove;
+}
+
+function getTicTacToeGame(payload) {
+    const gameId = cleanTicTacToeGameId(payload?.gameId);
+    if (!_ticTacToeGames.has(gameId)) {
+        _ticTacToeGames.set(gameId, {
+            board: Array(9).fill(''),
+            finished: false,
+            status: 'Du bist X. Die KI spielt O.',
+            text: String(payload?.text || 'Wer gewinnt, ist mein bester Freund. Sonst war’s das mit der Freundschaft 😄')
+        });
+    }
+    return { gameId, game: _ticTacToeGames.get(gameId) };
+}
+
+function renderTicTacToeChallenge(payload) {
+    const { gameId, game } = getTicTacToeGame(payload);
+    const cells = game.board.map((mark, index) => `<button type="button" class="ttt-cell ${mark ? 'marked' : ''}" ${mark || game.finished ? 'disabled' : ''} onclick="playTicTacToeCell('${gameId}', ${index})">${mark || ''}</button>`).join('');
+    return `<section class="tic-tac-toe-card" data-tic-tac-toe="${gameId}">
+        <div class="ttt-head"><span aria-hidden="true">🎮</span><div><strong>Unmögliche Tic-Tac-Toe KI</strong><small>${esc(game.text)}</small></div></div>
+        <div class="ttt-board" role="grid" aria-label="Tic-Tac-Toe">${cells}</div>
+        <div class="ttt-foot"><span>${esc(game.status)}</span>${game.finished ? `<button type="button" onclick="restartTicTacToe('${gameId}')">Nochmal</button>` : ''}</div>
+    </section>`;
+}
+
+function repaintTicTacToeGame(gameId) {
+    const safeGameId = cleanTicTacToeGameId(gameId);
+    const card = document.querySelector(`.tic-tac-toe-card[data-tic-tac-toe="${safeGameId}"]`);
+    const game = _ticTacToeGames.get(safeGameId);
+    if (!card || !game) return;
+    card.outerHTML = renderTicTacToeChallenge({ gameId: safeGameId, text: game.text });
+}
+
+function playTicTacToeCell(gameId, index) {
+    const safeGameId = cleanTicTacToeGameId(gameId);
+    const game = _ticTacToeGames.get(safeGameId);
+    if (!game || game.finished || game.board[index]) return;
+    game.board[index] = 'X';
+    if (getTicTacToeWinner(game.board) === 'X') {
+        game.finished = true;
+        game.status = '🎉 Du gewinnst – du bist mein bester Freund!';
+        repaintTicTacToeGame(safeGameId);
+        return;
+    }
+    if (!game.board.includes('')) {
+        game.finished = true;
+        game.status = 'Unentschieden – die KI bleibt ungeschlagen.';
+        repaintTicTacToeGame(safeGameId);
+        return;
+    }
+    const aiMove = bestTicTacToeMove(game.board);
+    if (aiMove >= 0) game.board[aiMove] = 'O';
+    if (getTicTacToeWinner(game.board) === 'O') {
+        game.finished = true;
+        game.status = 'Die KI gewinnt – war’s das mit der Freundschaft 😄';
+    } else if (!game.board.includes('')) {
+        game.finished = true;
+        game.status = 'Unentschieden – die KI bleibt ungeschlagen.';
+    } else {
+        game.status = 'Die KI hat gezogen. Du bist wieder dran.';
+    }
+    repaintTicTacToeGame(safeGameId);
+}
+
+function restartTicTacToe(gameId) {
+    const safeGameId = cleanTicTacToeGameId(gameId);
+    const game = _ticTacToeGames.get(safeGameId);
+    if (!game) return;
+    game.board = Array(9).fill('');
+    game.finished = false;
+    game.status = 'Du bist X. Die KI spielt O.';
+    repaintTicTacToeGame(safeGameId);
 }
 
 function renderAudio(p) {
@@ -1776,13 +1911,21 @@ async function sendMessage() {
     if (!text || !_activeGroupId) return;
     stopChatTyping();
     inp.value = ''; inp.style.height = ''; inp.disabled = true;
+    const ticTacToeTest = String(_me?.username || '').toLowerCase() === 'meisterlool_707' && text === '/test';
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
     const storedContent = JSON.stringify({ t:'txt', v:text });
     const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
-    appendMessage(tempMessage, storedContent);
-    persistMessages(_activeGroupId, [tempMessage]);
+    if (!ticTacToeTest) {
+        appendMessage(tempMessage, storedContent);
+        persistMessages(_activeGroupId, [tempMessage]);
+    }
     try {
-        const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, content: storedContent });
+        const { id, created_at, command } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, content: storedContent });
+        if (command === 'tic_tac_toe') {
+            toast('Tic-Tac-Toe wurde an den anderen Nutzer gesendet.', 'ok');
+            _lastMsgId[_activeGroupId] = id;
+            return;
+        }
         const finalMessage = { id, sender: _me.username, created_at, content: storedContent };
         replaceCachedMessage(_activeGroupId, tempId, finalMessage);
         // finalize optimistic message (upgrade pending element or append if missing)
