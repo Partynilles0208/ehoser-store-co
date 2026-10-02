@@ -32,60 +32,10 @@ body.ehoser-android-app {
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
 }
-body.ehoser-android-app .chat-brand-intro small { display: none; }
 body.ehoser-android-app button,
 body.ehoser-android-app select,
 body.ehoser-android-app input,
 body.ehoser-android-app textarea { touch-action: manipulation; }
-
-.chat-brand-intro {
-    position: fixed; inset: 0; z-index: 1600; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 13px; overflow: hidden;
-    background: radial-gradient(circle at 50% 38%, rgba(0,168,132,.2), transparent 34%), #071015;
-    color: var(--text); transition: opacity .35s ease, visibility .35s ease;
-}
-.chat-brand-intro::before {
-    content: ''; position: absolute; width: 420px; height: 420px; border: 1px solid rgba(37,211,102,.15);
-    border-radius: 50%; animation: introPulse 2.2s ease-in-out infinite;
-}
-.chat-brand-intro > * { position: relative; z-index: 1; }
-.chat-brand-intro > span { color: var(--muted); font-size: .75rem; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
-.chat-brand-intro-logo {
-    width: 92px; height: 92px; display: grid; place-items: center; border-radius: 27px;
-    background: linear-gradient(145deg, var(--accent2), var(--accent)); color: #06120e;
-    box-shadow: 0 24px 80px rgba(0,168,132,.3); font: 900 3rem "Space Grotesk", sans-serif;
-    animation: introLogo .9s cubic-bezier(.2,1.4,.3,1) both;
-}
-.chat-brand-intro h1 { font: 800 clamp(1.8rem, 6vw, 2.7rem) "Space Grotesk", sans-serif; letter-spacing: -.04em; }
-.chat-brand-intro p { color: #9fb0b8; font-size: .9rem; }
-.chat-brand-intro small { position: absolute; bottom: 28px; color: #60737c; font-size: .72rem; }
-.chat-brand-intro.finished { opacity: 0; visibility: hidden; pointer-events: none; }
-@keyframes introLogo { from { opacity: 0; transform: translateY(30px) scale(.72); } to { opacity: 1; transform: none; } }
-@keyframes introPulse { 50% { transform: scale(1.12); opacity: .45; } }
-
-.chat-update-splash {
-    position: fixed; inset: 0; z-index: 1500;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
-    background: #0b141a; color: #e9edef;
-}
-.chat-update-logo {
-    width: 74px; height: 74px; border-radius: 22px; display: grid; place-items: center;
-    color: #071511; background: linear-gradient(145deg, #25d366, #00a884);
-    font: 900 2.4rem "Space Grotesk", sans-serif; box-shadow: 0 18px 54px rgba(0,168,132,.28);
-}
-.chat-update-splash h1 { font: 800 1.55rem "Space Grotesk", sans-serif; letter-spacing: -.02em; }
-.chat-update-note {
-    width: min(360px, calc(100% - 42px)); padding: 13px 16px; border-radius: 14px;
-    background: rgba(32,44,51,.92); border: 1px solid rgba(37,211,102,.28);
-    color: #aebdc4; font-size: .86rem; line-height: 1.48; text-align: center;
-}
-.chat-update-note strong { color: #e9edef; }
-.chat-update-spinner {
-    width: 34px; height: 34px; border-radius: 50%;
-    border: 3px solid rgba(134,150,160,.25); border-top-color: #25d366;
-    animation: chat-update-spin .75s linear infinite;
-}
-@keyframes chat-update-spin { to { transform: rotate(360deg); } }
 
 /* ── Required chat notifications ────────────────────────────────────────── */
 .notification-wall {
@@ -181,7 +131,6 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
     .login-wall { align-items: stretch; }
     .login-wall-box { width: 100%; max-height: 100svh; padding: 28px 20px; border: 0; border-radius: 0; }
     .lw-brand { margin-bottom: 14px; }
-    .chat-brand-intro::before { width: 300px; height: 300px; }
 }
 
 /* ── App Shell ───────────────────────────────────────────────────────────── */
@@ -987,6 +936,48 @@ body.chat-compact .msg-row { margin: 0; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.ok { border-color: #1a5030; color: #60d090; background: #081a10; }
 .toast.err { border-color: #5a2020; color: #ff9090; background: #1a0808; }
+
+/* ── Ehoser Nils Secrets ───────────────────────────────────────────────── */
+.secrets-area,
+.secret-video-overlay {
+    position: fixed; inset: 0; z-index: 1900; align-items: center; justify-content: center; padding: 24px;
+    background: radial-gradient(circle at 50% 12%, rgba(99,102,241,.2), transparent 42%), rgba(3,9,15,.94);
+    backdrop-filter: blur(16px);
+}
+.secret-video-overlay { z-index: 1910; background: rgba(3,9,15,.82); }
+.secrets-panel,
+.secret-video-panel {
+    width: min(780px, 100%); max-height: min(760px, calc(100svh - 48px)); overflow: auto;
+    padding: 26px; border: 1px solid rgba(129,140,248,.32); border-radius: 24px;
+    background: linear-gradient(145deg, #101a2c, #080e19); box-shadow: 0 34px 110px rgba(0,0,0,.7);
+}
+.secret-video-panel { width: min(880px, 100%); }
+.secrets-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.secrets-kicker { color: #a5b4fc; font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.secrets-head h2 { margin-top: 4px; color: #f2f5ff; font: 800 clamp(1.5rem, 5vw, 2.25rem) "Space Grotesk", sans-serif; letter-spacing: -.04em; }
+.secrets-intro { margin: 20px 0; color: #aeb9cb; line-height: 1.55; }
+.secrets-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.secret-card {
+    position: relative; min-height: 164px; padding: 18px; display: flex; flex-direction: column; align-items: flex-start;
+    border: 1px solid #293852; border-radius: 17px; background: rgba(20,32,54,.76); color: #ebf0ff; text-align: left;
+}
+button.secret-card { font: inherit; cursor: pointer; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+button.secret-card:hover { transform: translateY(-2px); border-color: #818cf8; background: rgba(40,51,91,.88); }
+.secret-card-active { box-shadow: inset 0 0 0 1px rgba(129,140,248,.13), 0 12px 30px rgba(36,47,95,.26); }
+.secret-card-locked { opacity: .6; }
+.secret-number { color: #8997b1; font: 800 .68rem "Space Grotesk", sans-serif; letter-spacing: .12em; }
+.secret-icon { margin: auto 0 9px; font-size: 1.72rem; }
+.secret-card strong { font-size: 1rem; }
+.secret-card small { margin-top: 4px; color: #9baac0; }
+.secret-video-frame { margin-top: 20px; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid #304465; border-radius: 15px; background: #03060c; }
+.secret-video-frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+@media (max-width: 520px) {
+    .secrets-area, .secret-video-overlay { padding: 12px; }
+    .secrets-panel, .secret-video-panel { padding: 20px; border-radius: 19px; }
+    .secrets-grid { grid-template-columns: 1fr; }
+    .secret-card { min-height: 130px; }
+}
 
 /* ── Scrollbars ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
