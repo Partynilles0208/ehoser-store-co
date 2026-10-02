@@ -12,21 +12,6 @@
 </head>
 <body>
 
-<div id="chatBrandIntro" class="chat-brand-intro" aria-label="ehoser Intro">
-  <span>ehoser präsentiert</span>
-  <div class="chat-brand-intro-logo">E</div>
-  <h1>ehoser Chat</h1>
-  <p>Nachrichten · Gruppen · Anrufe</p>
-  <small>Enter zum Überspringen</small>
-</div>
-
-<div id="chatUpdateSplash" class="chat-update-splash" aria-live="polite">
-  <div class="chat-update-logo">E</div>
-  <h1>Chat-Update</h1>
-  <div class="chat-update-spinner" aria-label="Chat-Update wird geladen"></div>
-  <p class="chat-update-note"><strong>Schwerwiegender Fehler behoben</strong><br>Ein Fehler konnte Nachrichten falsch verändern. Das wurde korrigiert.</p>
-</div>
-
 <!-- ── Notification permission wall ─────────────────────────────────────── -->
 <div id="notificationWall" class="notification-wall" style="display:none">
   <div class="notification-wall-box">
@@ -451,6 +436,49 @@
 
 <!-- ── Toast ──────────────────────────────────────────────────────────────── -->
 <div id="toast" class="toast"></div>
+
+<!-- ── Ehoser Nils Secrets ───────────────────────────────────────────────── -->
+<section id="ehoserNilsSecrets" class="secrets-area" style="display:none" role="dialog" aria-modal="true" aria-labelledby="secretsTitle">
+  <div class="secrets-panel">
+    <header class="secrets-head">
+      <div>
+        <span class="secrets-kicker">Versteckter Bereich</span>
+        <h2 id="secretsTitle">Ehoser Nils Secrets</h2>
+      </div>
+      <button class="modal-x" type="button" onclick="closeEhoserNilsSecrets()" aria-label="Secrets schließen">✕</button>
+    </header>
+    <p class="secrets-intro">Du hast einen geheimen Bereich gefunden. Manche Geheimnisse sind noch versiegelt.</p>
+    <div class="secrets-grid">
+      <button class="secret-card secret-card-active" type="button" onclick="openBugSecret()">
+        <span class="secret-number">01</span>
+        <span class="secret-icon" aria-hidden="true">🐞</span>
+        <strong>Bug-Geheimnis</strong>
+        <small>Video öffnen</small>
+      </button>
+      <div class="secret-card secret-card-locked" aria-label="Geheimnis 02 ist noch versiegelt">
+        <span class="secret-number">02</span><span class="secret-icon" aria-hidden="true">🔒</span><strong>Versiegelt</strong><small>Noch nicht entdeckt</small>
+      </div>
+      <div class="secret-card secret-card-locked" aria-label="Geheimnis 03 ist noch versiegelt">
+        <span class="secret-number">03</span><span class="secret-icon" aria-hidden="true">🔒</span><strong>Versiegelt</strong><small>Noch nicht entdeckt</small>
+      </div>
+      <div class="secret-card secret-card-locked" aria-label="Geheimnis 04 ist noch versiegelt">
+        <span class="secret-number">04</span><span class="secret-icon" aria-hidden="true">🔒</span><strong>Versiegelt</strong><small>Noch nicht entdeckt</small>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="bugSecretModal" class="secret-video-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="bugSecretTitle" onclick="closeBugSecretIfOverlay(event)">
+  <div class="secret-video-panel">
+    <header class="secrets-head">
+      <div><span class="secrets-kicker">Secret 01</span><h2 id="bugSecretTitle">Bug-Geheimnis</h2></div>
+      <button class="modal-x" type="button" onclick="closeBugSecret()" aria-label="Video schließen">✕</button>
+    </header>
+    <div class="secret-video-frame">
+      <iframe id="bugSecretVideo" title="Bug-Geheimnis Video" data-src="https://www.youtube-nocookie.com/embed/m_oXijikkoQ?si=u4v61s1Ax0GsSrEv" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+    </div>
+  </div>
+</section>
 
 <script src="app.js"></script>
 </body>
