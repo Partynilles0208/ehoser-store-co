@@ -396,6 +396,18 @@
       </label>
     </section>
 
+    <section id="settingsPresenceOverrideSection" class="settings-section" hidden>
+      <div class="settings-section-title"><span>●</span><div><strong>Sichtbarkeitsstatus</strong><small>Nur für den Ehoser-Besitzer</small></div></div>
+      <label class="settings-select-row" for="settingsPresenceOverride">
+        <span><strong>Als online anzeigen</strong><small>Übersteuert die Aktivitätsanzeige in Ehoser, auch ohne geöffneten Chat.</small></span>
+        <select id="settingsPresenceOverride">
+          <option value="automatic">Automatisch</option>
+          <option value="force_online">Immer online</option>
+          <option value="force_offline">Immer offline</option>
+        </select>
+      </label>
+    </section>
+
     <section class="settings-notification-row">
       <span aria-hidden="true">🔔</span>
       <div><strong>Benachrichtigungen</strong><small id="settingsNotificationState">Status wird geprüft…</small></div>

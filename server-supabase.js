@@ -557,6 +557,25 @@ function normalizeModerationSettings(raw) {
   };
 }
 
+const ADMIN_PRESENCE_USERNAME = 'meisterlool_707';
+
+function normalizePresenceOverride(value) {
+  const mode = String(value || '').trim().toLowerCase();
+  return ['automatic', 'force_online', 'force_offline'].includes(mode) ? mode : 'automatic';
+}
+
+function getPresenceOverride(username, settings) {
+  if (String(username || '').trim().toLowerCase() !== ADMIN_PRESENCE_USERNAME) return 'automatic';
+  return normalizePresenceOverride(settings?.presenceOverride);
+}
+
+function applyPresenceOverride(username, lastSeen, settings) {
+  const mode = getPresenceOverride(username, settings);
+  if (mode === 'force_online') return new Date().toISOString();
+  if (mode === 'force_offline') return null;
+  return lastSeen || null;
+}
+
 function normalizeSettings(raw) {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
   const rawAvatarUrl = typeof src.avatarUrl === 'string' ? src.avatarUrl.trim().slice(0, 2048) : '';
@@ -574,6 +593,7 @@ function normalizeSettings(raw) {
     chatEnterToSend: src.chatEnterToSend !== false,
     chatCompactMode: Boolean(src.chatCompactMode),
     chatShowPreviews: src.chatShowPreviews !== false,
+    presenceOverride: normalizePresenceOverride(src.presenceOverride),
     displayName: typeof src.displayName === 'string' ? src.displayName.trim().slice(0, 40) : '',
     avatarUrl,
     premiumUntil: typeof src.premiumUntil === 'string' ? src.premiumUntil : null,
@@ -1999,9 +2019,15 @@ app.put('/api/me/settings', async (req, res) => {
   if (!auth) return;
   try {
     const current = await getProfile(auth.username);
+    const canManagePresenceOverride = String(auth.username || '').trim().toLowerCase() === ADMIN_PRESENCE_USERNAME;
     const settings = normalizeSettings({
       ...(current.settings || {}),
       ...(req.body || {}),
+      // This setting is deliberately server-authorized. No other account can
+      // set a persistent online/offline override by sending a crafted request.
+      presenceOverride: canManagePresenceOverride
+        ? req.body?.presenceOverride
+        : current.settings?.presenceOverride,
       personalization: current.settings?.personalization,
       moderation: current.settings?.moderation,
       credits: current.settings?.credits,
@@ -2390,9 +2416,36 @@ app.get('/api/online-users', async (req, res) => {
   pruneGuestPresence();
   const guestCount = guestPresence.size;
 
+  const visibleRows = [...(data || [])];
+  // The ehoser owner may choose a visible status independently from the last
+  // heartbeat. It is read from the profile rather than changing last_seen.
+  try {
+    const { data: ownerProfile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('settings')
+      .eq('username', ADMIN_PRESENCE_USERNAME)
+      .maybeSingle();
+    const mode = getPresenceOverride(ADMIN_PRESENCE_USERNAME, normalizeSettings(ownerProfile?.settings || {}));
+    const ownerIndex = visibleRows.findIndex((row) => String(row?.username || '').toLowerCase() === ADMIN_PRESENCE_USERNAME);
+    if (mode === 'force_offline' && ownerIndex >= 0) {
+      visibleRows.splice(ownerIndex, 1);
+    } else if (mode === 'force_online') {
+      if (ownerIndex >= 0) {
+        visibleRows[ownerIndex] = { ...visibleRows[ownerIndex], last_seen: new Date().toISOString() };
+      } else {
+        const { data: owner } = await supabaseAdmin
+          .from('users')
+          .select('username,last_seen')
+          .eq('username', ADMIN_PRESENCE_USERNAME)
+          .maybeSingle();
+        if (owner?.username) visibleRows.unshift({ ...owner, last_seen: new Date().toISOString() });
+      }
+    }
+  } catch {}
+
   const users = [];
   if (authUser) {
-    for (const row of (data || [])) {
+    for (const row of visibleRows) {
       users.push({ username: row.username, kind: 'user', last_seen: row.last_seen || null });
     }
   }
@@ -3973,17 +4026,23 @@ app.get('/api/chat/contacts', async (req, res) => {
           const settings = normalizeSettings(profile?.settings || {});
           profilesByUsername.set(profile.username, {
             display_name: settings.displayName || '',
-            avatar_url: settings.avatarUrl || ''
+            avatar_url: settings.avatarUrl || '',
+            presenceOverride: getPresenceOverride(profile.username, settings)
           });
         }
       }
     } catch {}
   }
-  const contacts = sourceContacts.map((contact) => ({
-    username: contact.username,
-    last_seen: contact.last_seen || null,
-    ...(profilesByUsername.get(contact.username) || { display_name: '', avatar_url: '' })
-  }));
+  const contacts = sourceContacts.map((contact) => {
+    const profile = profilesByUsername.get(contact.username) || { display_name: '', avatar_url: '', presenceOverride: 'automatic' };
+    const { presenceOverride, ...profileDetails } = profile;
+    return {
+      username: contact.username,
+      last_seen: applyPresenceOverride(contact.username, contact.last_seen, profile),
+      ...profileDetails,
+      presence_override: presenceOverride
+    };
+  });
   res.json({ contacts });
 });
 
@@ -6425,3 +6484,4 @@ app.use((req, res) => {
 });
 
 module.exports = app;
+
