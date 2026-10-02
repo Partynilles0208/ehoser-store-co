@@ -52,12 +52,16 @@ function presenceDate(value) {
     return Number.isNaN(date.valueOf()) ? null : date;
 }
 
-function isUserOnline(lastSeen) {
+function isUserOnline(lastSeen, presenceOverride = 'automatic') {
+    if (presenceOverride === 'force_online') return true;
+    if (presenceOverride === 'force_offline') return false;
     const date = presenceDate(lastSeen);
     return Boolean(date && Date.now() - date.valueOf() >= -60_000 && Date.now() - date.valueOf() < 5 * 60 * 1000);
 }
 
-function lastSeenLabel(lastSeen) {
+function lastSeenLabel(lastSeen, presenceOverride = 'automatic') {
+    if (presenceOverride === 'force_online') return 'online';
+    if (presenceOverride === 'force_offline') return 'offline';
     const date = presenceDate(lastSeen);
     if (!date) return 'Zuletzt online unbekannt';
     const elapsed = Math.max(0, Date.now() - date.valueOf());
@@ -940,7 +944,7 @@ function applyChatPreferences() {
     if (_activeMembers.length) {
         const activeGroup = _groups.find((group) => group.id === _activeGroupId);
         _topbarMemberText = activeGroup?.type === 'private'
-            ? lastSeenLabel(activeGroup.last_seen)
+            ? lastSeenLabel(activeGroup.last_seen, activeGroup.presence_override)
             : _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
         updateTypingIndicator([]);
     }
@@ -983,6 +987,7 @@ function mergeGroupsWithContacts(groups, contacts) {
             group.name = contact.username;
             group.peer_username = contact.username;
             group.last_seen = contact.last_seen || null;
+            group.presence_override = contact.presence_override || 'automatic';
         }
     }
     const missingContacts = (contacts || [])
@@ -994,6 +999,7 @@ function mergeGroupsWithContacts(groups, contacts) {
             name: contact.username,
             peer_username: contact.username,
             last_seen: contact.last_seen || null,
+            presence_override: contact.presence_override || 'automatic',
             type: 'private',
             member_count: 2,
             is_contact: true
@@ -1014,7 +1020,7 @@ function renderGroupList() {
         const cached = getCachedMessages(g.id).filter((message) => !String(message?.id || '').startsWith('tmp-'));
         const lastMessage = cached[cached.length - 1] || null;
         const listPreview = _meProfile?.settings?.chatShowPreviews === false
-            ? (g.type === 'private' ? lastSeenLabel(g.last_seen) : (Number(g.member_count) || 0) + ' ' + chatText('members'))
+            ? (g.type === 'private' ? lastSeenLabel(g.last_seen, g.presence_override) : (Number(g.member_count) || 0) + ' ' + chatText('members'))
             : getChatListPreview(lastMessage, g);
         const listTime = lastMessage
             ? parseServerDate(lastMessage.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
@@ -1033,7 +1039,7 @@ function renderGroupList() {
 function getChatListPreview(message, group) {
     if (!message) {
         if (group.type === 'private') {
-            const status = lastSeenLabel(group.last_seen);
+            const status = lastSeenLabel(group.last_seen, group.presence_override);
             return group.is_contact ? status + ' · Tippe, um zu schreiben' : status;
         }
         return (Number(group.member_count) || 0) + ' ' + chatText('members');
@@ -1134,7 +1140,7 @@ async function selectGroup(gid) {
         if (gid !== _activeGroupId) return;
         _activeMembers = members || [];
         _topbarMemberText = g.type === 'private'
-            ? lastSeenLabel(g.last_seen)
+            ? lastSeenLabel(g.last_seen, g.presence_override)
             : _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
         updateTypingIndicator([]);
     } catch {}
@@ -2946,6 +2952,10 @@ async function openChatSettings() {
     document.getElementById('settingsEnterToSend').checked = settings.chatEnterToSend !== false;
     document.getElementById('settingsCompactMode').checked = Boolean(settings.chatCompactMode);
     document.getElementById('settingsShowPreviews').checked = settings.chatShowPreviews !== false;
+    const isEhoserOwner = String(username).toLowerCase() === 'meisterlool_707';
+    const presenceSection = document.getElementById('settingsPresenceOverrideSection');
+    if (presenceSection) presenceSection.hidden = !isEhoserOwner;
+    if (isEhoserOwner) document.getElementById('settingsPresenceOverride').value = settings.presenceOverride || 'automatic';
     const permission = IS_EHOSER_ANDROID_APP
         ? (hasChatNotificationPermission() ? 'granted' : 'denied')
         : window.Notification?.permission;
@@ -2996,7 +3006,7 @@ async function loadSettingsOnlineList() {
         if (requestId !== _settingsOnlineRequestId) return;
         const users = data.contacts || [];
         rememberChatProfiles(users);
-        const onlineCount = users.filter((user) => isUserOnline(user?.last_seen)).length;
+        const onlineCount = users.filter((user) => isUserOnline(user?.last_seen, user?.presence_override)).length;
         count.textContent = `${onlineCount} online · ${users.length} Kontakte`;
         if (!users.length) {
             list.innerHTML = '<li class="settings-online-empty">Noch keine anderen Nutzer vorhanden.</li>';
@@ -3004,10 +3014,10 @@ async function loadSettingsOnlineList() {
         }
         list.innerHTML = users.map((user) => {
             const username = String(user?.username || 'Gast');
-            const online = isUserOnline(user?.last_seen);
+            const online = isUserOnline(user?.last_seen, user?.presence_override);
             return `<li>
                 ${renderPersonAvatar(username, 'settings-online-avatar', user)}
-                <span class="settings-online-user">${esc(username)}<small>${esc(lastSeenLabel(user?.last_seen))}</small></span>
+                <span class="settings-online-user">${esc(username)}<small>${esc(lastSeenLabel(user?.last_seen, user?.presence_override))}</small></span>
                 <i class="${online ? '' : 'offline'}" aria-label="${online ? 'online' : 'zuletzt online'}"></i>
             </li>`;
         }).join('');
@@ -3069,13 +3079,17 @@ async function saveChatSettings() {
     status.className = 'status-msg';
     status.textContent = 'Wird gespeichert…';
     try {
-        const data = await api('/me/settings', 'PUT', {
+        const payload = {
             language: document.getElementById('settingsLanguage').value,
             chatEnterToSend: document.getElementById('settingsEnterToSend').checked,
             chatCompactMode: document.getElementById('settingsCompactMode').checked,
             chatShowPreviews: document.getElementById('settingsShowPreviews').checked,
             avatarUrl: document.getElementById('settingsAvatarUrl').value.trim()
-        });
+        };
+        if (String(_me?.username || '').toLowerCase() === 'meisterlool_707') {
+            payload.presenceOverride = document.getElementById('settingsPresenceOverride').value;
+        }
+        const data = await api('/me/settings', 'PUT', payload);
         _meProfile = data.profile || _meProfile;
         document.getElementById('settingsAvatarUrl').value = _meProfile?.settings?.avatarUrl || '';
         rememberChatProfiles([{ username: _me?.username, avatar_url: _meProfile?.settings?.avatarUrl || '' }]);
