@@ -571,7 +571,8 @@ function initSecretShortcut() {
     window._ehoserSecretsShortcutReady = true;
     window.addEventListener('keydown', (event) => {
         if (!_chatStarted || _currentCall || event.repeat) return;
-        if (event.key !== 'Escape') {
+        const isEscape = event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape' || Number(event.keyCode) === 27;
+        if (!isEscape) {
             _secretEscapeCount = 0;
             return;
         }
@@ -585,9 +586,8 @@ function initSecretShortcut() {
             closeEhoserNilsSecrets();
             return;
         }
-        const target = event.target;
-        if (target?.matches?.('input, textarea, select') || target?.isContentEditable) return;
-
+        // Der Nachrichteneditor hat im Chat häufig automatisch den Fokus.
+        // Esc zählt daher bewusst auch dort mit.
         _secretEscapeCount += 1;
         const remaining = SECRET_ESCAPE_PRESSES - _secretEscapeCount;
         if (remaining <= 0) {
