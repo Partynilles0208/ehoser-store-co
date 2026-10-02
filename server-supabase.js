@@ -4585,7 +4585,7 @@ app.get('/api/chat/notifications', async (req, res) => {
   if (!groupIds.length) return res.json({ messages: [], cursor: after });
 
   if (!after) {
-    const { data: latest, error } = await supabaseAdmin
+    let latestResult = await supabaseAdmin
       .from('chat_messages')
       .select('id')
       .in('group_id', groupIds)
@@ -4595,11 +4595,25 @@ app.get('/api/chat/notifications', async (req, res) => {
       .is('deleted_at', null)
       .order('id', { ascending: false })
       .limit(1);
+    // Older ehoser databases can still be missing message metadata such as
+    // deleted_at. A notification cursor must keep working in that case.
+    if (latestResult.error && isMissingChatMessageMetadata(latestResult.error)) {
+      latestResult = await supabaseAdmin
+        .from('chat_messages')
+        .select('id')
+        .in('group_id', groupIds)
+        .neq('sender', CHAT_CALL_EVENT_SENDER)
+        .neq('sender', GROUP_CALL_EVENT_SENDER)
+        .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+        .order('id', { ascending: false })
+        .limit(1);
+    }
+    const { data: latest, error } = latestResult;
     if (error) return res.status(500).json({ error: 'Benachrichtigungen konnten nicht gestartet werden' });
     return res.json({ messages: [], cursor: Number(latest?.[0]?.id) || 0 });
   }
 
-  const { data, error } = await supabaseAdmin
+  let notificationResult = await supabaseAdmin
     .from('chat_messages')
     .select('id,group_id,sender,created_at')
     .in('group_id', groupIds)
@@ -4610,6 +4624,19 @@ app.get('/api/chat/notifications', async (req, res) => {
     .gt('id', after)
     .order('id', { ascending: true })
     .limit(50);
+  if (notificationResult.error && isMissingChatMessageMetadata(notificationResult.error)) {
+    notificationResult = await supabaseAdmin
+      .from('chat_messages')
+      .select('id,group_id,sender,created_at')
+      .in('group_id', groupIds)
+      .neq('sender', CHAT_CALL_EVENT_SENDER)
+      .neq('sender', GROUP_CALL_EVENT_SENDER)
+      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+      .gt('id', after)
+      .order('id', { ascending: true })
+      .limit(50);
+  }
+  const { data, error } = notificationResult;
   if (error) return res.status(500).json({ error: 'Benachrichtigungen konnten nicht geladen werden' });
   const messages = data || [];
   const cursor = messages.reduce((max, message) => Math.max(max, Number(message.id) || 0), after);
