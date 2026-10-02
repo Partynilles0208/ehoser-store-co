@@ -6412,5 +6412,16 @@ app.get('/api/ki/image', async (req, res) => {
   }
 });
 
-module.exports = app;
+// Web links that do not exist get a helpful page instead of an Express error.
+// API clients still receive JSON so integrations can reliably handle 404s.
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API-Endpunkt nicht gefunden' });
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    return res.status(404).json({ error: 'Seite nicht gefunden' });
+  }
+  return res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+});
 
+module.exports = app;
