@@ -570,7 +570,8 @@ function initSecretShortcut() {
     if (window._ehoserSecretsShortcutReady) return;
     window._ehoserSecretsShortcutReady = true;
     window.addEventListener('keydown', (event) => {
-        if (!_chatStarted || _currentCall || event.repeat) return;
+        const chatApp = document.getElementById('chatApp');
+        if (!chatApp || getComputedStyle(chatApp).display === 'none' || _currentCall || event.repeat) return;
         const isEscape = event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape' || Number(event.keyCode) === 27;
         if (!isEscape) {
             _secretEscapeCount = 0;
@@ -634,6 +635,10 @@ function closeBugSecret() {
 function closeBugSecretIfOverlay(event) {
     if (event.target === event.currentTarget) closeBugSecret();
 }
+
+// Der Shortcut darf nicht vom Laden der Chatliste abhängen. So funktioniert
+// er auch dann, wenn eine Hintergrund-Anfrage gerade fehlschlägt oder hängt.
+initSecretShortcut();
 
 function toggleOnlineList() {
     if (_onlineListOpen) hideOnlineHoldList();
