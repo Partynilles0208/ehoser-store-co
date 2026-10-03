@@ -33,6 +33,9 @@ const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_ATTEMPTS = 20;
 const guestPresence = new Map();
 const GUEST_WINDOW_MS = 5 * 60 * 1000;
+// Active chat clients send a heartbeat every five seconds. After twenty
+// seconds without one (for example after closing a laptop), they are offline.
+const CHAT_PRESENCE_WINDOW_MS = 20 * 1000;
 const chatGroupMetaMemory = new Map();
 const chatGroupAdminsMemory = new Map();
 const MODERATION_SEQUENCE_STEPS = [
@@ -2405,11 +2408,11 @@ app.get('/api/users/pro-badges', async (req, res) => {
   res.json({ users: map });
 });
 
-// Online-Nutzer (letzte 5 Minuten)
+// Online-Nutzer (letzte 20 Sekunden)
 app.get('/api/online-users', async (req, res) => {
   const authUser = optionalAuth(req);
 
-  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - CHAT_PRESENCE_WINDOW_MS).toISOString();
   const { data, error } = await supabase
     .from('users')
     .select('username,last_seen')
