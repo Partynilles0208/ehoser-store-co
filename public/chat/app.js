@@ -867,14 +867,36 @@ document.addEventListener('visibilitychange', () => {
 
 function playChatNotificationSound() {
     // Browser notifications do not support a custom sound option. Play the
-    // bundled alarm in the page as well, after the user has granted permission.
+    // ehoser tone in the page as well, after the user has granted permission.
     const now = Date.now();
     if (now - _lastNotificationSoundAt < 1200) return;
     _lastNotificationSoundAt = now;
+    playZuDuDumDum(0.24);
+}
+
+function playZuDuDumDum(volume = 0.07) {
     try {
-        const audio = new Audio('/chat/arlam.mp3');
-        audio.volume = 0.72;
-        void audio.play().catch(() => {});
+        _ringAudioContext = _ringAudioContext || new (window.AudioContext || window.webkitAudioContext)();
+        const notes = [
+            { frequency: 659.25, start: 0.00, length: 0.10 }, // zu
+            { frequency: 783.99, start: 0.15, length: 0.10 }, // du
+            { frequency: 523.25, start: 0.31, length: 0.14 }, // dum
+            { frequency: 440.00, start: 0.50, length: 0.22 }  // dum
+        ];
+        const now = _ringAudioContext.currentTime;
+        notes.forEach(({ frequency, start, length }) => {
+            const oscillator = _ringAudioContext.createOscillator();
+            const gain = _ringAudioContext.createGain();
+            const noteStart = now + start;
+            oscillator.type = 'sine';
+            oscillator.frequency.value = frequency;
+            gain.gain.setValueAtTime(.0001, noteStart);
+            gain.gain.exponentialRampToValueAtTime(volume, noteStart + .015);
+            gain.gain.exponentialRampToValueAtTime(.0001, noteStart + length);
+            oscillator.connect(gain).connect(_ringAudioContext.destination);
+            oscillator.start(noteStart);
+            oscillator.stop(noteStart + length + .03);
+        });
     } catch {}
 }
 
@@ -2932,19 +2954,8 @@ function showIncomingCall(call) {
 function startRingtone() {
     if (_ringTimer) return;
     const pulse = () => {
-        try { navigator.vibrate?.([260, 220, 260]); } catch {}
-        try {
-            _ringAudioContext = _ringAudioContext || new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = _ringAudioContext.createOscillator();
-            const gain = _ringAudioContext.createGain();
-            oscillator.frequency.value = 740;
-            gain.gain.setValueAtTime(.0001, _ringAudioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(.07, _ringAudioContext.currentTime + .02);
-            gain.gain.exponentialRampToValueAtTime(.0001, _ringAudioContext.currentTime + .22);
-            oscillator.connect(gain).connect(_ringAudioContext.destination);
-            oscillator.start();
-            oscillator.stop(_ringAudioContext.currentTime + .24);
-        } catch {}
+        try { navigator.vibrate?.([100, 80, 100, 90, 130]); } catch {}
+        playZuDuDumDum(.09);
     };
     pulse();
     _ringTimer = setInterval(pulse, 1600);
