@@ -596,6 +596,9 @@ function normalizeSettings(raw) {
     presenceOverride: normalizePresenceOverride(src.presenceOverride),
     displayName: typeof src.displayName === 'string' ? src.displayName.trim().slice(0, 40) : '',
     avatarUrl,
+    googleSub: typeof src.googleSub === 'string' ? src.googleSub.trim().slice(0, 255) : '',
+    googleEmail: typeof src.googleEmail === 'string' ? src.googleEmail.trim().toLowerCase().slice(0, 320) : '',
+    googleDriveStorageMode: src.googleDriveStorageMode === 'google_one' ? 'google_one' : 'free',
     premiumUntil: typeof src.premiumUntil === 'string' ? src.premiumUntil : null,
     personalizationEnabled: false,
     personalization: normalizePersonalization({}),
@@ -2034,7 +2037,9 @@ app.put('/api/me/settings', async (req, res) => {
       planRequests: current.settings?.planRequests,
       oasisUsage: current.settings?.oasisUsage,
       passwordHash: current.settings?.passwordHash,
-      _emailPending: current.settings?._emailPending
+      _emailPending: current.settings?._emailPending,
+      googleSub: current.settings?.googleSub,
+      googleEmail: current.settings?.googleEmail
     });
     const profile = await upsertProfile(auth.username, { settings });
     res.json({ ok: true, profile });
@@ -4170,8 +4175,8 @@ app.get('/api/chat/groups', async (req, res) => {
     const admins = await listGroupAdmins(group.id, group.created_by);
     const type = meta.type || fallbackType;
     // A group-call room is only signalling infrastructure, not a conversation.
-    // Do not return it to any chat client, on any device.
-    if (type === 'call') continue;
+    // Older rooms have no metadata, but their generated title is unambiguous.
+    if (type === 'call' || /^Gruppenanruf · \d{2}\.\d{2}\., \d{2}:\d{2}$/.test(String(group.name || ''))) continue;
     const peerUsername = type === 'private'
       ? groupMembers.find((username) => username !== user.username) || null
       : null;

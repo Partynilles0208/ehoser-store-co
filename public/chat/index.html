@@ -396,6 +396,24 @@
       </label>
     </section>
 
+    <section id="settingsGoogleDriveSection" class="settings-section" hidden>
+      <div class="settings-section-title"><span>☁️</span><div><strong>Google-Drive-Backups</strong><small>Für Bilder, Videos und andere ausgewählte Dateien</small></div></div>
+      <label class="settings-select-row" for="settingsGoogleStorageMode">
+        <span><strong>Google-Speicher</strong><small>Der Speicher deines Google-Kontos wird verwendet</small></span>
+        <select id="settingsGoogleStorageMode">
+          <option value="free">Kostenlos (bis 15 GB)</option>
+          <option value="google_one">Google One / Google AI</option>
+        </select>
+      </label>
+      <div class="settings-drive-actions">
+        <button id="settingsGoogleDriveConnect" type="button" onclick="connectGoogleDriveBackup()">Backups einrichten</button>
+        <button id="settingsGoogleDriveFiles" type="button" onclick="openGoogleDriveBackupPicker()" disabled>Dateien sichern</button>
+        <input id="settingsGoogleDriveFilesInput" type="file" multiple accept="image/*,video/*" onchange="uploadGoogleDriveBackups()">
+      </div>
+      <p id="settingsGoogleDriveStatus" class="settings-drive-status">Google Drive noch nicht verbunden.</p>
+      <p class="settings-drive-note">Der Upload läuft direkt von deinem Gerät zu Google Drive. ehoser speichert dafür kein Google-Drive-Passwort und keinen dauerhaften Zugriffstoken.</p>
+    </section>
+
     <section id="settingsPresenceOverrideSection" class="settings-section" hidden>
       <div class="settings-section-title"><span>●</span><div><strong>Sichtbarkeitsstatus</strong><small>Nur für den Ehoser-Besitzer</small></div></div>
       <label class="settings-select-row" for="settingsPresenceOverride">

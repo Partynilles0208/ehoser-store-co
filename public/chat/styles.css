@@ -905,6 +905,12 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .settings-switch-row input:checked + .settings-switch { background: #00a884; }
 .settings-switch-row input:checked + .settings-switch::after { transform: translateX(19px); background: #fff; }
 .settings-switch-row input:focus-visible + .settings-switch { outline: 2px solid #53bdeb; outline-offset: 2px; }
+.settings-drive-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 14px 8px; }
+.settings-drive-actions button { min-height: 36px; padding: 0 11px; border: 1px solid rgba(37,211,102,.42); border-radius: 9px; background: rgba(0,168,132,.12); color: #7ee4cc; font: 700 .74rem var(--font); cursor: pointer; }
+.settings-drive-actions button:disabled { border-color: #3b4a54; background: #202c33; color: #667781; cursor: not-allowed; }
+.settings-drive-actions input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.settings-drive-status, .settings-drive-note { margin: 0; padding: 0 14px 10px; color: #9ecfc1; font-size: .69rem; line-height: 1.45; }
+.settings-drive-note { padding-bottom: 13px; color: #8696a0; }
 .settings-notification-row { display: flex; align-items: center; gap: 11px; margin-top: 10px; padding: 12px 14px; border: 1px solid #2a3942; border-radius: 15px; background: #182229; }
 .settings-notification-row > span { font-size: 1.15rem; }
 .settings-notification-row > div { display: flex; flex-direction: column; }
