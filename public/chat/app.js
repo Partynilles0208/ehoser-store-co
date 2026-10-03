@@ -107,6 +107,9 @@ let _summaryAiEnabled = false;
 let _seenMessageIds = {};
 let _pendingMessages = {};
 let _messageNotificationCursor = 0;
+let _unreadByGroup = {};
+let _unreadActivityAtByGroup = {};
+let _lastNotificationSoundAt = 0;
 let _chatStarted = false;
 let _activeMembers = [];
 let _callPoll = null;
@@ -218,6 +221,49 @@ function persistMessages(groupId, messages) {
         .slice(-180);
     writeChatCache('messages', cache);
     if (_groups.length && document.getElementById('groupList')) renderGroupList();
+}
+
+function normaliseUnreadCounts(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const counts = {};
+    for (const [groupId, count] of Object.entries(value)) {
+        const number = Math.min(999, Math.max(0, Number(count) || 0));
+        if (groupId && number) counts[groupId] = number;
+    }
+    return counts;
+}
+
+function unreadCount(groupId) {
+    return Math.max(0, Number(_unreadByGroup[groupId]) || 0);
+}
+
+function persistUnreadCounts() {
+    writeChatCache('unread', _unreadByGroup);
+    writeChatCache('unread-activity', _unreadActivityAtByGroup);
+}
+
+function markGroupNotificationsRead(groupId) {
+    if (!groupId || !unreadCount(groupId)) return;
+    delete _unreadByGroup[groupId];
+    delete _unreadActivityAtByGroup[groupId];
+    persistUnreadCounts();
+    renderGroupList();
+}
+
+function noteUnreadMessage(message) {
+    const groupId = String(message?.group_id || '');
+    if (!groupId || message?.sender === _me?.username) return false;
+    const chatVisible = !document.hidden && groupId === _activeGroupId && document.hasFocus();
+    if (chatVisible) {
+        markGroupNotificationsRead(groupId);
+        return false;
+    }
+    _unreadByGroup[groupId] = Math.min(999, unreadCount(groupId) + 1);
+    const sentAt = new Date(message?.created_at || '').valueOf();
+    _unreadActivityAtByGroup[groupId] = Number.isFinite(sentAt) ? sentAt : Date.now();
+    persistUnreadCounts();
+    renderGroupList();
+    return true;
 }
 
 function replaceCachedMessage(groupId, oldId, message) {
@@ -501,6 +547,8 @@ async function finishChatBoot() {
             .catch(() => null);
     }
     const cachedGroups = readChatCache('groups', []);
+    _unreadByGroup = normaliseUnreadCounts(readChatCache('unread', {}));
+    _unreadActivityAtByGroup = normaliseUnreadCounts(readChatCache('unread-activity', {}));
     if (Array.isArray(cachedGroups) && cachedGroups.length) {
         _groups = cachedGroups;
         renderGroupList();
@@ -757,7 +805,21 @@ document.addEventListener('visibilitychange', () => {
     if (!document.hidden && _chatStarted) enforceNotificationPermission();
 });
 
+function playChatNotificationSound() {
+    // Browser notifications do not support a custom sound option. Play the
+    // bundled alarm in the page as well, after the user has granted permission.
+    const now = Date.now();
+    if (now - _lastNotificationSoundAt < 1200) return;
+    _lastNotificationSoundAt = now;
+    try {
+        const audio = new Audio('/chat/arlam.mp3');
+        audio.volume = 0.72;
+        void audio.play().catch(() => {});
+    } catch {}
+}
+
 function notifyChat(title, body, tag, url = '/chat/') {
+    playChatNotificationSound();
     if (IS_EHOSER_ANDROID_APP) {
         try {
             window.EhoserAndroid.showNotification(title, body, tag, new URL(url, window.location.origin).toString());
@@ -1011,7 +1073,23 @@ function renderGroupList() {
     const el = document.getElementById('groupList');
     if (!el) return;
     if (!_groups.length) { el.innerHTML = '<p class="empty-hint">' + chatText('noChats') + '</p>'; return; }
-    const visibleGroups = _groups.filter((group) => String(group.name || '').toLowerCase().includes(_chatGroupFilter));
+    const visibleGroups = _groups
+        .filter((group) => String(group.name || '').toLowerCase().includes(_chatGroupFilter))
+        .sort((a, b) => {
+            const aUnread = unreadCount(a.id) > 0;
+            const bUnread = unreadCount(b.id) > 0;
+            if (aUnread !== bUnread) return Number(bUnread) - Number(aUnread);
+            if (aUnread) {
+                const unreadTimeDifference = (Number(_unreadActivityAtByGroup[b.id]) || 0) - (Number(_unreadActivityAtByGroup[a.id]) || 0);
+                if (unreadTimeDifference) return unreadTimeDifference;
+            }
+            const aMessages = getCachedMessages(a.id);
+            const bMessages = getCachedMessages(b.id);
+            const aTime = aMessages.length ? new Date(aMessages[aMessages.length - 1]?.created_at || 0).valueOf() : 0;
+            const bTime = bMessages.length ? new Date(bMessages[bMessages.length - 1]?.created_at || 0).valueOf() : 0;
+            if (aTime !== bTime) return bTime - aTime;
+            return String(a.name || '').localeCompare(String(b.name || ''), 'de');
+        });
     if (!visibleGroups.length) {
         el.innerHTML = '<p class="empty-hint">' + chatText('noResult') + '</p>';
         return;
@@ -1025,11 +1103,13 @@ function renderGroupList() {
         const listTime = lastMessage
             ? parseServerDate(lastMessage.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
             : '';
+        const unread = unreadCount(g.id);
+        const unreadLabel = unread > 99 ? '99+' : String(unread);
         return `
-        <div class="group-item${_activeGroupId === g.id ? ' active' : ''}${g.is_contact ? ' contact-item' : ''}" onclick="selectGroup('${g.id}')">
+        <div class="group-item${_activeGroupId === g.id ? ' active' : ''}${g.is_contact ? ' contact-item' : ''}${unread ? ' has-unread' : ''}" onclick="selectGroup('${g.id}')">
             ${renderConversationAvatar(g, 'gi-avatar')}
             <div class="gi-info">
-                <div class="gi-head"><div class="gi-name">${esc(g.name)}</div><time>${esc(listTime)}</time></div>
+                <div class="gi-head"><div class="gi-name">${esc(g.name)}</div><div class="gi-meta"><time>${esc(listTime)}</time>${unread ? '<span class="unread-badge" aria-label="' + unread + ' ungelesene Nachrichten">' + unreadLabel + '</span>' : ''}</div></div>
                 <div class="gi-sub">${esc(listPreview)}</div>
             </div>
         </div>`;
@@ -1115,6 +1195,7 @@ async function selectGroup(gid) {
     const previousGroupId = _activeGroupId;
     if (previousGroupId && previousGroupId !== gid) stopChatTyping(previousGroupId);
     _activeGroupId = gid;
+    markGroupNotificationsRead(gid);
     const chatApp = document.getElementById('chatApp');
     const opensMobileView = window.matchMedia?.('(max-width: 760px)').matches && !chatApp?.classList.contains('chat-open');
     chatApp?.classList.add('chat-open');
@@ -1258,8 +1339,8 @@ async function pollMessageNotifications(initial = false) {
         if (initial) return;
         for (const message of data.messages || []) {
             if (message.sender === _me?.username) continue;
-            const chatVisible = !document.hidden && message.group_id === _activeGroupId;
-            if (chatVisible) continue;
+            const shouldNotify = noteUnreadMessage(message);
+            if (!shouldNotify) continue;
             const groupName = _groups.find((group) => group.id === message.group_id)?.name || 'ehoser Chat';
             notifyChat(groupName, 'Neue Nachricht von ' + (message.sender || 'jemandem'), 'chat-message-' + message.group_id);
         }
@@ -1362,6 +1443,7 @@ async function markActiveGroupRead(gid = _activeGroupId) {
     if (!gid || gid !== _activeGroupId || document.hidden || !document.hasFocus() || _onlineListOpen || _currentCall || _incomingCall) return;
     const chatApp = document.getElementById('chatApp');
     if (window.matchMedia?.('(max-width: 760px)').matches && !chatApp?.classList.contains('chat-open')) return;
+    markGroupNotificationsRead(gid);
     const upTo = Math.max(0, Number(_lastMsgId[gid]) || 0);
     if (!upTo || (_lastReadSent[gid] || 0) >= upTo) return;
     const previous = _lastReadSent[gid] || 0;
