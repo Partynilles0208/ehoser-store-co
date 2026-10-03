@@ -57,6 +57,9 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .chat-lock-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,168,132,.14); }
 .chat-lock-status { min-height: 20px; color: var(--accent2) !important; font-size: .8rem !important; }
 .chat-lock-status.error { color: #ff8c94 !important; }
+.account-deletion-wall { background: radial-gradient(circle at 50% 10%, rgba(238,102,80,.22), transparent 42%), rgba(24,7,10,.97); }
+.account-deletion-wall .chat-lock-card { border-color: rgba(255,133,112,.34); }
+.account-deletion-wall strong { color: #ffd4cc; }
 
 /* ── Required chat notifications ────────────────────────────────────────── */
 .notification-wall {
@@ -967,6 +970,12 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .settings-export-body button { min-height: 37px; padding: 0 12px; border: 1px solid rgba(37,211,102,.42); border-radius: 9px; background: rgba(0,168,132,.12); color: #7ee4cc; font: 700 .74rem var(--font); cursor: pointer; }
 .settings-export-body button:hover { border-color: #00a884; color: #e9edef; }
 .settings-export-body button:disabled { border-color: #3b4a54; background: #202c33; color: #667781; cursor: wait; }
+.settings-danger-section { border-color: rgba(230,93,83,.45); }
+.settings-danger-section .settings-section-title { background: rgba(124,31,31,.22); }
+.settings-danger-body { padding: 13px 14px; }
+.settings-danger-body p { margin: 0 0 10px; color: #d7aaab; font-size: .72rem; line-height: 1.5; }
+.settings-danger-body button { min-height: 37px; padding: 0 12px; border: 1px solid rgba(255,116,104,.66); border-radius: 9px; background: rgba(173,45,40,.22); color: #ffaaa2; font: 700 .74rem var(--font); cursor: pointer; }
+.settings-danger-body button:hover { background: rgba(198,53,47,.34); color: #fff; }
 .settings-select-row > span, .settings-switch-row > span:first-child { min-width: 0; flex: 1; }
 .settings-select-row select { min-width: 118px; height: 36px; padding: 0 9px; border: 1px solid #3b4a54; border-radius: 9px; outline: 0; background: #202c33; color: #e9edef; font: 600 .78rem var(--font); }
 .settings-switch-row input { position: absolute; opacity: 0; pointer-events: none; }
