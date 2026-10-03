@@ -397,6 +397,14 @@
       </label>
     </section>
 
+    <section class="settings-section settings-export-section">
+      <div class="settings-section-title"><span>📥</span><div><strong>Chat exportieren</strong><small>Lädt den aktuell geöffneten Chat als Textdatei herunter</small></div></div>
+      <div class="settings-export-body">
+        <p id="settingsExportHint">Öffne zuerst einen Chat, den du sichern möchtest.</p>
+        <button id="settingsExportButton" type="button" onclick="exportActiveChat()">Aktuellen Chat herunterladen</button>
+      </div>
+    </section>
+
     <section id="settingsGoogleDriveSection" class="settings-section" hidden>
       <div class="settings-section-title"><span>☁️</span><div><strong>Google-Drive-Backups</strong><small>Für Bilder, Videos und andere ausgewählte Dateien</small></div></div>
       <label class="settings-select-row" for="settingsGoogleStorageMode">
