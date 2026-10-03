@@ -24,5 +24,8 @@
       "src": "/(.*)",
       "dest": "server-supabase.js"
     }
+  ],
+  "crons": [
+    { "path": "/api/internal/account-deletion-cleanup", "schedule": "0 * * * *" }
   ]
 }
