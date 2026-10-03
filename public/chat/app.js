@@ -1098,16 +1098,9 @@ async function claimMailbox(event) {
 }
 
 async function openMailbox() {
-    try {
-        const data = await loadMailbox(true);
-        if (!data.mailbox?.configured) return ensureMailboxAfterLogin();
-        const status = document.getElementById('mailboxSendStatus');
-        status.textContent = data.sendingEnabled ? '' : 'Versand wird noch eingerichtet.';
-        status.classList.remove('error');
-        openModal('mailboxModal');
-    } catch (error) {
-        toast(error?.message || 'Postfach konnte nicht geladen werden.', 'err');
-    }
+    // Das vollständige Postfach hat eine eigene Seite, damit längere E-Mails,
+    // Suche und Ordner auch auf dem Handy angenehm nutzbar bleiben.
+    window.location.assign('/postfach/');
 }
 
 async function markMailboxMessageRead(messageId) {
