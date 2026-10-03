@@ -3,7 +3,6 @@ const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : 
 const API = API_ORIGIN + '/api';
 const CHAT_CACHE_VERSION = 'v3';
 const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
-const CHAT_LOCK_CODE_KEY = 'ehoserChatLocalLockCode';
 // The interface is refreshed every second while an online list is visible.
 // Heartbeats are deliberately less frequent so the database is not written to
 // every second for every open chat.
@@ -124,6 +123,7 @@ let _unreadActivityAtByGroup = {};
 let _lastNotificationSoundAt = 0;
 let _chatStarted = false;
 let _chatLockMode = 'setup';
+let _chatLockConfigured = false;
 let _activeMembers = [];
 let _mailbox = null;
 let _mailboxMessages = [];
@@ -495,10 +495,6 @@ function prepareChatAuthWall(message = '') {
     initChatGoogleAuth();
 }
 
-function chatLocalLockCode() {
-    try { return String(localStorage.getItem(CHAT_LOCK_CODE_KEY) || ''); } catch { return ''; }
-}
-
 function setChatLockStatus(message = '', error = false) {
     const status = document.getElementById('chatLockStatus');
     if (!status) return;
@@ -519,7 +515,7 @@ function showChatLockWall(mode = 'setup') {
     if (title) title.textContent = unlocking ? 'Chat entsperren' : 'Chat sperren';
     if (text) text.textContent = unlocking
         ? 'Gib deinen vierstelligen Chat-Code ein.'
-        : 'Lege einen vierstelligen Code fest. Er wird nur auf diesem Gerät gespeichert.';
+        : 'Lege einen vierstelligen Code fest. Er gilt für dein ehoser-Konto auf allen Geräten.';
     if (confirmWrap) confirmWrap.style.display = unlocking ? 'none' : 'grid';
     if (confirm) { confirm.required = !unlocking; confirm.value = ''; }
     if (submit) submit.textContent = unlocking ? 'Chat öffnen' : 'Code speichern';
@@ -535,7 +531,7 @@ function hideChatLockWall() {
 }
 
 function openChatLock() {
-    if (!chatLocalLockCode()) {
+    if (!_chatLockConfigured) {
         showChatLockWall('setup');
         return;
     }
@@ -556,21 +552,67 @@ async function submitChatLock(event) {
             setChatLockStatus('Die beiden Codes stimmen nicht überein.', true);
             return;
         }
-        localStorage.setItem(CHAT_LOCK_CODE_KEY, code);
+        try {
+            await api('/chat/lock-code', 'PUT', { code });
+            _chatLockConfigured = true;
+            hideChatLockWall();
+            setChatLockStatus('');
+            toast('Chat-Code wurde für dein Konto gespeichert.', 'ok');
+        } catch (error) {
+            setChatLockStatus(error?.message || 'Chat-Code konnte nicht gespeichert werden.', true);
+        }
+        return;
+    }
+    try {
+        await api('/chat/lock/unlock', 'POST', { code });
         hideChatLockWall();
-        setChatLockStatus('');
-        return;
-    }
-    if (code !== chatLocalLockCode()) {
-        setChatLockStatus('Der Code ist nicht korrekt.', true);
+        if (_chatStarted) {
+            show('chatApp');
+        } else {
+            await finishChatBoot();
+        }
+    } catch (error) {
+        setChatLockStatus(error?.message || 'Der Code ist nicht korrekt.', true);
         document.getElementById('chatLockCode')?.select();
-        return;
     }
-    hideChatLockWall();
-    if (_chatStarted) {
-        show('chatApp');
-    } else {
-        await finishChatBoot();
+}
+
+async function loadChatLockStatus() {
+    const data = await api('/chat/lock-status');
+    _chatLockConfigured = Boolean(data?.configured);
+    return _chatLockConfigured;
+}
+
+function accountDeletionSchedule() {
+    const value = _meProfile?.settings?.accountDeletion;
+    return value?.deleteAfter && Number.isFinite(Date.parse(value.deleteAfter)) ? value : null;
+}
+
+function showAccountDeletionWall() {
+    const schedule = accountDeletionSchedule();
+    if (!schedule) return false;
+    const wall = document.getElementById('accountDeletionWall');
+    const deadline = document.getElementById('accountDeletionDeadline');
+    if (deadline) deadline.textContent = new Date(schedule.deleteAfter).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+    if (wall) wall.style.display = 'flex';
+    return true;
+}
+
+async function restoreAccountDeletion() {
+    const button = document.getElementById('restoreAccountButton');
+    if (button) { button.disabled = true; button.textContent = 'Wird wiederhergestellt…'; }
+    try {
+        const data = await api('/me/delete-cancel', 'POST');
+        _meProfile = data.profile || _meProfile;
+        document.getElementById('accountDeletionWall').style.display = 'none';
+        toast('Dein Konto wurde wiederhergestellt.', 'ok');
+        await loadChatLockStatus();
+        await continueChatBoot();
+    } catch (error) {
+        const status = document.getElementById('accountDeletionStatus');
+        if (status) status.textContent = error?.message || 'Wiederherstellung fehlgeschlagen.';
+    } finally {
+        if (button) { button.disabled = false; button.textContent = 'Konto wiederherstellen'; }
     }
 }
 
@@ -770,6 +812,17 @@ function logoutChat() {
         prepareChatAuthWall('Keine Verbindung. Bitte überprüfe dein Internet und versuche es erneut.');
         return;
     }
+    if (showAccountDeletionWall()) return;
+    try {
+        await loadChatLockStatus();
+    } catch {
+        prepareChatAuthWall('Chat-Code konnte nicht geprüft werden. Bitte versuche es erneut.');
+        return;
+    }
+    await continueChatBoot();
+})();
+
+async function continueChatBoot() {
     if (!IS_EHOSER_ANDROID_APP && !('Notification' in window)) {
         showNotificationWall('Dein Browser unterstützt keine Benachrichtigungen. Öffne den Chat bitte in Chrome, Edge oder Firefox.');
         return;
@@ -780,12 +833,12 @@ function logoutChat() {
             : '');
         return;
     }
-    if (chatLocalLockCode()) {
+    if (_chatLockConfigured) {
         showChatLockWall('unlock');
         return;
     }
     await finishChatBoot();
-})();
+}
 
 async function finishChatBoot() {
     if (_chatStarted) return;
@@ -3986,6 +4039,19 @@ async function saveChatSettings() {
         status.textContent = error.message || 'Speichern fehlgeschlagen';
     } finally {
         button.disabled = false;
+    }
+}
+
+async function requestAccountDeletion() {
+    const confirmation = window.prompt('Das Konto wird nach 72 Stunden endgültig gelöscht. Tippe KONTO LÖSCHEN zur Bestätigung:');
+    if (confirmation === null) return;
+    try {
+        const data = await api('/me/delete-request', 'POST', { confirmation });
+        _meProfile = data.profile || _meProfile;
+        closeModal('chatSettingsModal');
+        showAccountDeletionWall();
+    } catch (error) {
+        toast(error?.message || 'Konto-Löschung konnte nicht vorgemerkt werden.', 'err');
     }
 }
 
