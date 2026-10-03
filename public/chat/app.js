@@ -3,6 +3,14 @@ const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : 
 const API = API_ORIGIN + '/api';
 const CHAT_CACHE_VERSION = 'v3';
 const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
+// The interface is refreshed every second while an online list is visible.
+// Heartbeats are deliberately less frequent so the database is not written to
+// every second for every open chat.
+const PRESENCE_REFRESH_INTERVAL_MS = 1000;
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 5000;
+// Kept slightly above the 60-second heartbeat used by an already-open older
+// browser tab, so it remains visible until it receives the new chat code.
+const PRESENCE_ONLINE_WINDOW_MS = 75 * 1000;
 const IS_EHOSER_ANDROID_APP = Boolean(window.EhoserAndroid && typeof window.EhoserAndroid.isNativeApp === 'function');
 let _chatGoogleClientId = '';
 let _chatGoogleInitialized = false;
@@ -59,7 +67,7 @@ function isUserOnline(lastSeen, presenceOverride = 'automatic') {
     if (presenceOverride === 'force_online') return true;
     if (presenceOverride === 'force_offline') return false;
     const date = presenceDate(lastSeen);
-    return Boolean(date && Date.now() - date.valueOf() >= -60_000 && Date.now() - date.valueOf() < 5 * 60 * 1000);
+    return Boolean(date && Date.now() - date.valueOf() >= -60_000 && Date.now() - date.valueOf() < PRESENCE_ONLINE_WINDOW_MS);
 }
 
 function lastSeenLabel(lastSeen, presenceOverride = 'automatic') {
@@ -68,7 +76,7 @@ function lastSeenLabel(lastSeen, presenceOverride = 'automatic') {
     const date = presenceDate(lastSeen);
     if (!date) return 'Zuletzt online unbekannt';
     const elapsed = Math.max(0, Date.now() - date.valueOf());
-    if (elapsed < 5 * 60 * 1000) return 'online';
+    if (elapsed < PRESENCE_ONLINE_WINDOW_MS) return 'online';
     if (elapsed < 60 * 60 * 1000) return 'zuletzt online vor ' + Math.max(1, Math.floor(elapsed / 60_000)) + ' Min.';
     const time = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
     const today = new Date();
@@ -146,8 +154,11 @@ let _groupCallInvitePoll = null;
 let _lastGroupCallInviteId = null;
 let _chatGroupFilter = '';
 let _presenceHeartbeat = null;
+let _presenceHeartbeatBusy = false;
+let _lastPresenceHeartbeatAt = 0;
 let _onlineListOpen = false;
 let _onlineListRequestId = 0;
+let _onlineListRefreshTimer = null;
 let _messagePollBusy = false;
 let _lastReadSent = {};
 let _topbarMemberText = '';
@@ -156,6 +167,7 @@ let _typingLastSentAt = 0;
 let _typingStopTimer = null;
 let _chatSettingsLoginCode = null;
 let _settingsOnlineRequestId = 0;
+let _settingsOnlineRefreshTimer = null;
 const _chatProfiles = new Map();
 
 const FALLBACK_RTC_CONFIG = {
@@ -573,7 +585,7 @@ async function finishChatBoot() {
     _groupCallInvitePoll = setInterval(pollGroupCallInvites, 2500);
     sendChatHeartbeat();
     clearInterval(_presenceHeartbeat);
-    _presenceHeartbeat = setInterval(sendChatHeartbeat, 60000);
+    _presenceHeartbeat = setInterval(sendChatHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
     initHoldOnlineList();
     initSecretShortcut();
     pollCalls();
@@ -582,9 +594,19 @@ async function finishChatBoot() {
     updateAiSummaryToggle();
 }
 
-async function sendChatHeartbeat() {
+async function sendChatHeartbeat(force = false) {
     if (!_chatStarted || !_token) return;
-    try { await api('/heartbeat', 'POST'); } catch {}
+    const now = Date.now();
+    if (_presenceHeartbeatBusy || (!force && now - _lastPresenceHeartbeatAt < PRESENCE_HEARTBEAT_INTERVAL_MS)) return;
+    _presenceHeartbeatBusy = true;
+    try {
+        await api('/heartbeat', 'POST');
+        _lastPresenceHeartbeatAt = Date.now();
+    } catch {
+        // A later scheduled heartbeat retries automatically.
+    } finally {
+        _presenceHeartbeatBusy = false;
+    }
 }
 
 function initHoldOnlineList() {
@@ -611,12 +633,16 @@ function initHoldOnlineList() {
         hideOnlineHoldList();
         stopChatTyping();
     });
-    window.addEventListener('focus', () => markActiveGroupRead(_activeGroupId));
+    window.addEventListener('focus', () => {
+        sendChatHeartbeat(true);
+        markActiveGroupRead(_activeGroupId);
+    });
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
             hideOnlineHoldList();
             stopChatTyping();
         } else {
+            sendChatHeartbeat(true);
             markActiveGroupRead(_activeGroupId);
         }
     });
@@ -714,41 +740,58 @@ async function showOnlineHoldList() {
     const list = document.getElementById('onlineHoldList');
     const count = document.getElementById('onlineHoldCount');
     if (!overlay || !list || !count) return;
-    const requestId = ++_onlineListRequestId;
     _onlineListOpen = true;
     overlay.style.display = 'flex';
     overlay.setAttribute('aria-hidden', 'false');
     list.innerHTML = '<li class="online-hold-loading">Online-Liste wird geladen…</li>';
     count.textContent = 'Online-Liste wird geladen…';
+    await sendChatHeartbeat(true);
+    await refreshOnlineHoldList();
+    clearInterval(_onlineListRefreshTimer);
+    _onlineListRefreshTimer = setInterval(refreshOnlineHoldList, PRESENCE_REFRESH_INTERVAL_MS);
+}
+
+function renderOnlineHoldList(users) {
+    const list = document.getElementById('onlineHoldList');
+    const count = document.getElementById('onlineHoldCount');
+    if (!list || !count) return;
+    count.textContent = users.length === 1 ? '1 Person ist online' : `${users.length} Personen sind online`;
+    if (!users.length) {
+        list.innerHTML = '<li class="online-hold-empty">Gerade ist niemand online.</li>';
+        return;
+    }
+    list.innerHTML = users.map((user) => {
+        const username = String(user?.username || 'Gast');
+        const isMe = username.toLowerCase() === String(_me?.username || '').toLowerCase();
+        return `<li${isMe ? ' class="is-me"' : ''}>`
+            ${renderPersonAvatar(username, 'online-hold-avatar', user)}
+            <span class="online-hold-name">${esc(username)}${isMe ? '<small>Du</small>' : ''}</span>
+            <span class="online-hold-status"><i></i>online</span>
+        </li>`;
+    }).join('');
+}
+
+async function refreshOnlineHoldList() {
+    if (!_onlineListOpen) return;
+    const requestId = ++_onlineListRequestId;
     try {
-        await sendChatHeartbeat();
         const data = await api('/online-users');
         if (!_onlineListOpen || requestId !== _onlineListRequestId) return;
-        const users = Array.isArray(data) ? data : (data.users || []);
-        count.textContent = users.length === 1 ? '1 Person ist online' : `${users.length} Personen sind online`;
-        if (!users.length) {
-            list.innerHTML = '<li class="online-hold-empty">Gerade ist niemand online.</li>';
-            return;
-        }
-        list.innerHTML = users.map((user) => {
-            const username = String(user?.username || 'Gast');
-            const isMe = username.toLowerCase() === String(_me?.username || '').toLowerCase();
-            return `<li${isMe ? ' class="is-me"' : ''}>
-                ${renderPersonAvatar(username, 'online-hold-avatar', user)}
-                <span class="online-hold-name">${esc(username)}${isMe ? '<small>Du</small>' : ''}</span>
-                <span class="online-hold-status"><i></i>online</span>
-            </li>`;
-        }).join('');
+        renderOnlineHoldList(Array.isArray(data) ? data : (data.users || []));
     } catch {
         if (!_onlineListOpen || requestId !== _onlineListRequestId) return;
-        count.textContent = 'Verbindung fehlgeschlagen';
-        list.innerHTML = '<li class="online-hold-empty">Die Online-Liste konnte nicht geladen werden.</li>';
+        const list = document.getElementById('onlineHoldList');
+        const count = document.getElementById('onlineHoldCount');
+        if (count) count.textContent = 'Verbindung fehlgeschlagen';
+        if (list) list.innerHTML = '<li class="online-hold-empty">Die Online-Liste konnte nicht geladen werden.</li>';
     }
 }
 
 function hideOnlineHoldList() {
     _onlineListOpen = false;
     _onlineListRequestId += 1;
+    clearInterval(_onlineListRefreshTimer);
+    _onlineListRefreshTimer = null;
     const overlay = document.getElementById('onlineHoldOverlay');
     if (!overlay) return;
     overlay.style.display = 'none';
@@ -3237,6 +3280,7 @@ async function openChatSettings() {
     _chatSettingsLoginCode = null;
     openModal('chatSettingsModal');
     loadSettingsOnlineList();
+    startSettingsOnlineRefresh();
 
     const [accountResult, codeResult] = await Promise.allSettled([
         api('/me'),
@@ -3259,13 +3303,28 @@ async function openChatSettings() {
     }
 }
 
-async function loadSettingsOnlineList() {
+function startSettingsOnlineRefresh() {
+    clearInterval(_settingsOnlineRefreshTimer);
+    _settingsOnlineRefreshTimer = setInterval(() => {
+        const modal = document.getElementById('chatSettingsModal');
+        if (!modal || modal.style.display === 'none') {
+            clearInterval(_settingsOnlineRefreshTimer);
+            _settingsOnlineRefreshTimer = null;
+            return;
+        }
+        loadSettingsOnlineList(true);
+    }, PRESENCE_REFRESH_INTERVAL_MS);
+}
+
+async function loadSettingsOnlineList(silent = false) {
     const list = document.getElementById('settingsOnlineList');
     const count = document.getElementById('settingsOnlineCount');
     if (!list || !count) return;
     const requestId = ++_settingsOnlineRequestId;
-    count.textContent = 'Kontakte werden geladen…';
-    list.innerHTML = '<li class="settings-online-loading">Online-Liste wird geladen…</li>';
+    if (!silent) {
+        count.textContent = 'Kontakte werden geladen…';
+        list.innerHTML = '<li class="settings-online-loading">Online-Liste wird geladen…</li>';
+    }
     try {
         await sendChatHeartbeat();
         const data = await api('/chat/contacts');
@@ -3495,7 +3554,13 @@ function searchUsers(q, resultsId) {
 
 // ─── Modal Helpers ────────────────────────────────────────────────────────────
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+    if (id === 'chatSettingsModal') {
+        clearInterval(_settingsOnlineRefreshTimer);
+        _settingsOnlineRefreshTimer = null;
+    }
+}
 function closeIfOverlay(e, id) { if (e.target === e.currentTarget) closeModal(id); }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
