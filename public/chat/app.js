@@ -7,6 +7,9 @@ const IS_EHOSER_ANDROID_APP = Boolean(window.EhoserAndroid && typeof window.Ehos
 let _chatGoogleClientId = '';
 let _chatGoogleInitialized = false;
 let _chatGoogleConfigLoading = false;
+const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+let _googleDriveAccessToken = '';
+let _googleDriveFolderId = '';
 
 function hasChatNotificationPermission() {
     if (IS_EHOSER_ANDROID_APP) {
@@ -365,6 +368,14 @@ async function initChatGoogleAuth() {
     } finally {
         _chatGoogleConfigLoading = false;
     }
+}
+
+async function getChatGoogleClientId() {
+    if (_chatGoogleClientId) return _chatGoogleClientId;
+    const response = await fetch(API + '/config');
+    const config = await response.json().catch(() => ({}));
+    _chatGoogleClientId = String(config.googleClientId || '');
+    return _chatGoogleClientId;
 }
 
 async function submitChatGoogleLogin(response) {
@@ -3021,6 +3032,177 @@ async function sendProSticker() {
 }
 
 // ─── Chat settings ───────────────────────────────────────────────────────────
+function setGoogleDriveBackupStatus(message, error = false) {
+    const status = document.getElementById('settingsGoogleDriveStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.style.color = error ? '#ff9aa2' : '#9ecfc1';
+}
+
+function renderGoogleDriveBackupSettings() {
+    const section = document.getElementById('settingsGoogleDriveSection');
+    if (!section) return;
+    const linked = Boolean(_meProfile?.settings?.googleSub);
+    section.hidden = !linked;
+    if (!linked) return;
+    const mode = document.getElementById('settingsGoogleStorageMode');
+    if (mode) mode.value = _meProfile?.settings?.googleDriveStorageMode === 'google_one' ? 'google_one' : 'free';
+    const connect = document.getElementById('settingsGoogleDriveConnect');
+    const files = document.getElementById('settingsGoogleDriveFiles');
+    if (connect) connect.textContent = _googleDriveAccessToken ? 'Google Drive verbunden' : 'Backups einrichten';
+    if (files) files.disabled = !_googleDriveAccessToken;
+    setGoogleDriveBackupStatus(_googleDriveAccessToken
+        ? 'Google Drive ist für diese Sitzung verbunden. Du kannst Dateien auswählen.'
+        : 'Google Drive noch nicht verbunden. Google fragt dich vor dem ersten Upload nach deiner Zustimmung.');
+}
+
+async function waitForGoogleDriveAuthorization() {
+    const until = Date.now() + 5000;
+    while (!window.google?.accounts?.oauth2 && Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    if (!window.google?.accounts?.oauth2) throw new Error('Google Drive konnte nicht geladen werden. Bitte prüfe deine Internetverbindung.');
+}
+
+async function requestGoogleDriveAccessToken() {
+    const clientId = await getChatGoogleClientId();
+    if (!clientId) throw new Error('Google-Backups sind noch nicht eingerichtet.');
+    await waitForGoogleDriveAuthorization();
+    return new Promise((resolve, reject) => {
+        let finished = false;
+        const complete = (callback) => (value) => {
+            if (finished) return;
+            finished = true;
+            callback(value);
+        };
+        try {
+            const client = window.google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: GOOGLE_DRIVE_SCOPE,
+                callback: complete((response) => {
+                    if (response?.error || !response?.access_token) {
+                        reject(new Error(response?.error_description || 'Google Drive wurde nicht freigegeben.'));
+                        return;
+                    }
+                    resolve(response.access_token);
+                })
+            });
+            client.requestAccessToken({ prompt: 'consent' });
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+async function googleDriveRequest(url, token, options = {}) {
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', 'Bearer ' + token);
+    const response = await fetch(url, { ...options, headers });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const message = data?.error?.message || data?.error?.errors?.[0]?.message || response.statusText || 'Google Drive Fehler';
+        throw new Error(message);
+    }
+    return response;
+}
+
+async function ensureGoogleDriveBackupFolder() {
+    if (_googleDriveFolderId) return _googleDriveFolderId;
+    const query = encodeURIComponent("mimeType='application/vnd.google-apps.folder' and name='ehoser Backups' and trashed=false");
+    const listed = await googleDriveRequest('https://www.googleapis.com/drive/v3/files?q=' + query + '&spaces=drive&pageSize=1&fields=files(id,name)', _googleDriveAccessToken);
+    const existing = (await listed.json()).files?.[0];
+    if (existing?.id) {
+        _googleDriveFolderId = existing.id;
+        return _googleDriveFolderId;
+    }
+    const created = await googleDriveRequest('https://www.googleapis.com/drive/v3/files?fields=id,name', _googleDriveAccessToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'ehoser Backups', mimeType: 'application/vnd.google-apps.folder' })
+    });
+    const folder = await created.json();
+    if (!folder?.id) throw new Error('Backup-Ordner konnte nicht erstellt werden.');
+    _googleDriveFolderId = folder.id;
+    return _googleDriveFolderId;
+}
+
+async function uploadFileToGoogleDrive(file, folderId) {
+    const metadata = { name: String(file.name || 'ehoser-Datei').slice(0, 180), parents: [folderId] };
+    const boundary = 'ehoser_drive_' + Math.random().toString(16).slice(2);
+    const body = new Blob([
+        '--' + boundary + '\r\n',
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+        JSON.stringify(metadata), '\r\n',
+        '--' + boundary + '\r\n',
+        'Content-Type: ' + (file.type || 'application/octet-stream') + '\r\n\r\n',
+        file, '\r\n',
+        '--' + boundary + '--'
+    ]);
+    const uploaded = await googleDriveRequest('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size,webViewLink', _googleDriveAccessToken, {
+        method: 'POST',
+        headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
+        body
+    });
+    return uploaded.json();
+}
+
+async function connectGoogleDriveBackup() {
+    if (!_meProfile?.settings?.googleSub) {
+        toast('Backups stehen nur nach einer Anmeldung mit Google zur Verfügung.', 'err');
+        return;
+    }
+    const connect = document.getElementById('settingsGoogleDriveConnect');
+    if (connect) connect.disabled = true;
+    setGoogleDriveBackupStatus('Google-Zustimmung wird geöffnet…');
+    try {
+        _googleDriveAccessToken = await requestGoogleDriveAccessToken();
+        _googleDriveFolderId = '';
+        await ensureGoogleDriveBackupFolder();
+        renderGoogleDriveBackupSettings();
+        toast('Google Drive ist verbunden.', 'ok');
+    } catch (error) {
+        _googleDriveAccessToken = '';
+        _googleDriveFolderId = '';
+        setGoogleDriveBackupStatus(error?.message || 'Google Drive konnte nicht verbunden werden.', true);
+    } finally {
+        if (connect) connect.disabled = false;
+    }
+}
+
+function openGoogleDriveBackupPicker() {
+    if (!_googleDriveAccessToken) {
+        toast('Richte zuerst Google Drive ein.', 'err');
+        return;
+    }
+    document.getElementById('settingsGoogleDriveFilesInput')?.click();
+}
+
+async function uploadGoogleDriveBackups() {
+    const input = document.getElementById('settingsGoogleDriveFilesInput');
+    const files = [...(input?.files || [])];
+    if (!files.length || !_googleDriveAccessToken) return;
+    try {
+        const folderId = await ensureGoogleDriveBackupFolder();
+        let completed = 0;
+        for (const file of files) {
+            completed += 1;
+            setGoogleDriveBackupStatus('Lädt ' + completed + ' von ' + files.length + ' hoch: ' + file.name);
+            await uploadFileToGoogleDrive(file, folderId);
+        }
+        setGoogleDriveBackupStatus('✓ ' + files.length + ' Datei' + (files.length === 1 ? '' : 'en') + ' in „ehoser Backups“ gesichert.');
+        toast('Backup abgeschlossen.', 'ok');
+    } catch (error) {
+        if (/401|invalid credentials|unauthenticated/i.test(String(error?.message || ''))) {
+            _googleDriveAccessToken = '';
+            _googleDriveFolderId = '';
+            renderGoogleDriveBackupSettings();
+        }
+        setGoogleDriveBackupStatus(error?.message || 'Upload zu Google Drive fehlgeschlagen.', true);
+    } finally {
+        if (input) input.value = '';
+    }
+}
+
 async function openChatSettings() {
     const settings = _meProfile?.settings || {};
     const username = _me?.username || 'Nutzer';
@@ -3034,6 +3216,7 @@ async function openChatSettings() {
     document.getElementById('settingsEnterToSend').checked = settings.chatEnterToSend !== false;
     document.getElementById('settingsCompactMode').checked = Boolean(settings.chatCompactMode);
     document.getElementById('settingsShowPreviews').checked = settings.chatShowPreviews !== false;
+    renderGoogleDriveBackupSettings();
     const isEhoserOwner = String(username).toLowerCase() === 'meisterlool_707';
     const presenceSection = document.getElementById('settingsPresenceOverrideSection');
     if (presenceSection) presenceSection.hidden = !isEhoserOwner;
@@ -3067,6 +3250,7 @@ async function openChatSettings() {
         const email = account.user?.email;
         document.getElementById('settingsEmail').textContent = email || 'Keine E-Mail hinterlegt';
         document.getElementById('settingsPlan').textContent = _meProfile?.isPremium ? 'Premium' : (_meProfile?.isPro ? 'PRO' : 'Gratis');
+        renderGoogleDriveBackupSettings();
     } else {
         document.getElementById('settingsEmail').textContent = 'Kontodaten konnten nicht geladen werden';
     }
@@ -3166,7 +3350,8 @@ async function saveChatSettings() {
             chatEnterToSend: document.getElementById('settingsEnterToSend').checked,
             chatCompactMode: document.getElementById('settingsCompactMode').checked,
             chatShowPreviews: document.getElementById('settingsShowPreviews').checked,
-            avatarUrl: document.getElementById('settingsAvatarUrl').value.trim()
+            avatarUrl: document.getElementById('settingsAvatarUrl').value.trim(),
+            googleDriveStorageMode: document.getElementById('settingsGoogleStorageMode')?.value || 'free'
         };
         if (String(_me?.username || '').toLowerCase() === 'meisterlool_707') {
             payload.presenceOverride = document.getElementById('settingsPresenceOverride').value;
@@ -3177,6 +3362,7 @@ async function saveChatSettings() {
         rememberChatProfiles([{ username: _me?.username, avatar_url: _meProfile?.settings?.avatarUrl || '' }]);
         refreshChatAvatarPreview();
         applyChatPreferences();
+        renderGoogleDriveBackupSettings();
         status.textContent = '✓ Gespeichert';
         toast('Einstellungen gespeichert.', 'ok');
     } catch (error) {
