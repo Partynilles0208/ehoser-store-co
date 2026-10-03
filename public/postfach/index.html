@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b141a">
+  <title>Postfach · ehoser</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="mailApp" class="mail-app" hidden>
+    <header class="mail-header">
+      <a class="back-to-chat" href="/chat/" aria-label="Zurück zum Chat">← <span>Chat</span></a>
+      <div class="mail-wordmark"><span class="mail-logo">E</span><span>ehoser</span><small>Postfach</small></div>
+      <div class="mail-header-actions">
+        <button class="icon-button" id="copyAddressButton" type="button" title="Adresse kopieren" aria-label="E-Mail-Adresse kopieren">⧉</button>
+        <button class="icon-button" id="refreshButton" type="button" title="Postfach aktualisieren" aria-label="Postfach aktualisieren">↻</button>
+      </div>
+    </header>
+
+    <section id="mailboxSetup" class="mailbox-setup" hidden aria-labelledby="setupTitle">
+      <div class="setup-card">
+        <span class="setup-icon" aria-hidden="true">✉</span>
+        <p class="eyebrow">Dein echtes E-Mail-Postfach</p>
+        <h1 id="setupTitle">Wähle deine @ehoser.de-Adresse</h1>
+        <p>Mit dieser Adresse kannst du echte E-Mails senden und empfangen. Sie gehört nur dir und kann später nicht geändert werden.</p>
+        <form id="claimMailboxForm" class="claim-address-form">
+          <label for="mailboxLocalPart">Deine Adresse</label>
+          <div class="address-picker"><input id="mailboxLocalPart" type="text" minlength="3" maxlength="32" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="dein.name" required><span>@ehoser.de</span></div>
+          <small>Buchstaben, Zahlen, Punkte, Bindestriche und Unterstriche sind erlaubt.</small>
+          <p id="claimStatus" class="form-status" aria-live="polite"></p>
+          <button id="claimMailboxButton" class="primary-button" type="submit">Postfach anlegen</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="mailboxShell" class="mailbox-shell" hidden>
+      <aside class="mail-sidebar" aria-label="Postfach-Navigation">
+        <div class="mail-address-block">
+          <span class="eyebrow">Deine Adresse</span>
+          <strong id="mailAddress">Lädt…</strong>
+          <button id="copyAddressTextButton" class="copy-address-text" type="button">Adresse kopieren</button>
+        </div>
+        <nav class="folder-nav" aria-label="Ordner">
+          <button class="folder-button active" data-filter="inbox"><span>▰</span> Posteingang <b id="inboxCount">0</b></button>
+          <button class="folder-button" data-filter="sent"><span>↗</span> Gesendet</button>
+          <button class="folder-button" data-filter="all"><span>▤</span> Alle E-Mails</button>
+        </nav>
+        <div class="mail-sidebar-foot"><span id="mailTotalCount">0 E-Mails</span><span class="mail-security">● Nur dein Konto</span></div>
+      </aside>
+
+      <section class="mail-list-panel" aria-label="E-Mail-Liste">
+        <div class="mail-list-head">
+          <div><h1 id="folderTitle">Posteingang</h1><p id="folderSubtitle">Neue E-Mails erscheinen hier.</p></div>
+          <button class="mobile-folders-button" id="mobileFoldersButton" type="button" aria-label="Ordner anzeigen">☰</button>
+        </div>
+        <label class="mail-search"><span aria-hidden="true">⌕</span><input id="mailSearch" type="search" placeholder="E-Mails durchsuchen" autocomplete="off"></label>
+        <div id="mailList" class="mail-list" aria-live="polite"><p class="empty-list">Postfach wird geladen…</p></div>
+      </section>
+
+      <section id="mailDetailPanel" class="mail-detail-panel" aria-label="E-Mail lesen">
+        <div id="mailEmptyDetail" class="mail-empty-detail"><span aria-hidden="true">✉</span><h2>Wähle eine E-Mail</h2><p>Hier kannst du sie vollständig lesen und direkt antworten.</p></div>
+        <article id="mailDetail" class="mail-detail" hidden>
+          <div class="detail-toolbar"><button id="mobileBackToList" class="detail-back" type="button">‹ Liste</button><span id="detailStatus" class="detail-status"></span><time id="detailTime"></time></div>
+          <h2 id="detailSubject"></h2>
+          <div class="detail-sender"><span id="detailAvatar" class="detail-avatar">E</span><div><strong id="detailPerson"></strong><small id="detailAddress"></small></div></div>
+          <pre id="detailBody" class="detail-body"></pre>
+          <div id="detailActions" class="detail-actions"><button id="replyButton" class="secondary-button" type="button">↩ Antworten</button><button id="copyMessageButton" class="secondary-button" type="button">⧉ Text kopieren</button></div>
+        </article>
+      </section>
+    </section>
+
+    <button id="composeFab" class="compose-fab" type="button" aria-label="E-Mail schreiben"><span>✎</span><strong>Schreiben</strong></button>
+  </main>
+
+  <section id="composeOverlay" class="compose-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="composeTitle">
+    <form id="composeForm" class="compose-card">
+      <header class="compose-head"><div><p class="eyebrow">Neue Nachricht</p><h2 id="composeTitle">E-Mail schreiben</h2></div><button id="closeComposeButton" class="icon-button close-compose" type="button" aria-label="Schreiben schließen">✕</button></header>
+      <label>An <input id="composeTo" type="email" autocomplete="email" maxlength="320" placeholder="name@beispiel.de" required></label>
+      <label>Betreff <input id="composeSubject" type="text" maxlength="180" required></label>
+      <label class="compose-text-label">Nachricht <textarea id="composeText" rows="10" maxlength="200000" required></textarea></label>
+      <div class="compose-bottom"><button id="saveDraftButton" class="draft-button" type="button">Entwurf speichern</button><p id="composeStatus" class="form-status" aria-live="polite"></p><button id="sendMailButton" class="primary-button" type="submit">Senden ↗</button></div>
+    </form>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
