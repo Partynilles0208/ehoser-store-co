@@ -279,7 +279,15 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .gi-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .gi-name { font-weight: 600; font-size: .95rem; color: #e9edef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gi-head .gi-name { flex: 1; min-width: 0; }
+.gi-meta { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 28px; flex-shrink: 0; }
 .gi-head time { color: #8696a0; font-size: .66rem; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.unread-badge {
+    min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #00a884; color: #071d18; font-size: .67rem; font-weight: 800;
+    font-variant-numeric: tabular-nums; line-height: 1; box-sizing: border-box;
+}
+.group-item.has-unread .gi-sub { color: #d9fdd3; font-weight: 500; }
 .gi-sub { font-size: .76rem; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .sidebar-footer { padding: 12px 10px; border-top: 1px solid var(--card-border); flex-shrink: 0; }
