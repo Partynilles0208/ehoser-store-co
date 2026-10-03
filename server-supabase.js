@@ -16,6 +16,10 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || !JWT_SECRET.trim()) throw new Error('JWT_SECRET must be configured');
 const UNLOCK_CODE = process.env.UNLOCK_CODE || '';
 const ADMIN_UPLOAD_KEY = process.env.ADMIN_UPLOAD_KEY || '';
+// Der Eigentümerzugang ist absichtlich an den echten Account gebunden, nicht
+// an ein Flag im Browser. Der Username kann bei Bedarf als Deployment-Variable
+// geändert werden, ohne dass der Client angepasst werden muss.
+const OWNER_USERNAME = String(process.env.OWNER_USERNAME || 'meisterlool_707').trim().toLowerCase();
 const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre – Token läuft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -444,7 +448,8 @@ const PUBLIC_API_PATHS = new Set([
   '/api/support/chat',
   '/api/learning/chat',
   '/api/unlock-code',
-  '/api/verify-token'
+  '/api/verify-token',
+  '/api/owner/status'
 ]);
 
 function isPublicApiPath(pathname) {
@@ -595,7 +600,58 @@ function normalizeModerationSettings(raw) {
   };
 }
 
-const ADMIN_PRESENCE_USERNAME = 'meisterlool_707';
+function normalizeOwnerNotice(raw) {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const kind = ['notification', 'announcement'].includes(String(src.kind || '').trim())
+    ? String(src.kind).trim()
+    : 'announcement';
+  const audience = ['all', 'user'].includes(String(src.audience || '').trim())
+    ? String(src.audience).trim()
+    : 'all';
+  const targetUsername = audience === 'user'
+    ? String(src.targetUsername || '').trim().slice(0, 40)
+    : '';
+  const expiresAt = typeof src.expiresAt === 'string' && Number.isFinite(Date.parse(src.expiresAt))
+    ? new Date(src.expiresAt).toISOString()
+    : null;
+  return {
+    id: String(src.id || '').trim().slice(0, 80),
+    title: String(src.title || '').trim().slice(0, 120),
+    message: String(src.message || '').trim().slice(0, 1200),
+    kind,
+    audience: targetUsername ? audience : 'all',
+    targetUsername,
+    active: src.active !== false,
+    createdAt: typeof src.createdAt === 'string' && Number.isFinite(Date.parse(src.createdAt))
+      ? new Date(src.createdAt).toISOString()
+      : new Date().toISOString(),
+    expiresAt
+  };
+}
+
+function normalizeOwnerConsole(raw) {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+  const maintenanceSrc = (src.maintenance && typeof src.maintenance === 'object' && !Array.isArray(src.maintenance))
+    ? src.maintenance
+    : {};
+  const notices = Array.isArray(src.notices)
+    ? src.notices.map(normalizeOwnerNotice).filter((notice) => notice.id && notice.title && notice.message).slice(0, 80)
+    : [];
+  return {
+    maintenance: {
+      enabled: Boolean(maintenanceSrc.enabled),
+      title: String(maintenanceSrc.title || 'Wir sind gleich wieder da').trim().slice(0, 120) || 'Wir sind gleich wieder da',
+      message: String(maintenanceSrc.message || 'Die Webseite ist vorübergehend wegen Update, Programmierung oder sonstigen Gründen nicht verfügbar.').trim().slice(0, 800)
+        || 'Die Webseite ist vorübergehend wegen Update, Programmierung oder sonstigen Gründen nicht verfügbar.',
+      updatedAt: typeof maintenanceSrc.updatedAt === 'string' && Number.isFinite(Date.parse(maintenanceSrc.updatedAt))
+        ? new Date(maintenanceSrc.updatedAt).toISOString()
+        : null
+    },
+    notices
+  };
+}
+
+const ADMIN_PRESENCE_USERNAME = OWNER_USERNAME;
 
 function normalizePresenceOverride(value) {
   const mode = String(value || '').trim().toLowerCase();
@@ -624,6 +680,9 @@ function normalizeSettings(raw) {
     // Mixed Content und ungültige Bildquellen in allen Chat-Clients.
     if (parsed.protocol === 'https:') avatarUrl = parsed.toString();
   } catch {}
+  const ownerConsole = src.ownerConsole && typeof src.ownerConsole === 'object' && !Array.isArray(src.ownerConsole)
+    ? normalizeOwnerConsole(src.ownerConsole)
+    : undefined;
   return {
     language: typeof src.language === 'string' ? src.language : 'de',
     design: typeof src.design === 'string' ? src.design : 'standard',
@@ -645,7 +704,8 @@ function normalizeSettings(raw) {
     planRequests: Array.isArray(src.planRequests) ? src.planRequests.slice(-10) : undefined,
     oasisUsage: normalizeOasisUsage(src.oasisUsage),
     passwordHash: typeof src.passwordHash === 'string' ? src.passwordHash : undefined,
-    _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined
+    _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined,
+    ownerConsole
   };
 }
 
@@ -1026,6 +1086,126 @@ async function upsertProfile(username, patch) {
   };
 }
 
+// ─── Eigentümer-Konsole ────────────────────────────────────────────────────
+// Die Konfiguration liegt im bestehenden, serverseitig geschriebenen Profil des
+// Eigentümers. So funktioniert sie auch bei Deployments, bei denen keine
+// DATABASE_URL für zusätzliche Auto-Migrationen hinterlegt ist.
+let ownerConsoleCache = { value: null, expiresAt: 0 };
+
+function isOwnerUsername(username) {
+  return String(username || '').trim().toLowerCase() === OWNER_USERNAME;
+}
+
+function readOptionalAuthUser(req) {
+  if (req.authUser) return req.authUser;
+  const header = String(req.headers.authorization || '');
+  if (!header.startsWith('Bearer ')) return null;
+  try {
+    return jwt.verify(header.slice(7).trim(), JWT_SECRET);
+  } catch {
+    return null;
+  }
+}
+
+function readOwnerSessionCookie(req) {
+  const rawCookie = String(req.headers.cookie || '');
+  const match = rawCookie.match(/(?:^|;\s*)ehoser_owner_session=([^;]+)/);
+  if (!match) return null;
+  try {
+    const token = decodeURIComponent(match[1]);
+    const auth = jwt.verify(token, JWT_SECRET);
+    return isOwnerUsername(auth?.username) ? auth : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberOwnerBrowser(req, res) {
+  const header = String(req.headers.authorization || '');
+  if (!header.startsWith('Bearer ')) return;
+  const token = header.slice(7).trim();
+  if (!token) return;
+  const secure = req.secure || String(req.headers['x-forwarded-proto'] || '').split(',')[0] === 'https';
+  res.cookie('ehoser_owner_session', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure,
+    maxAge: 12 * 60 * 60 * 1000,
+    path: '/'
+  });
+}
+
+function maintenancePageHtml(maintenance) {
+  const esc = (value) => String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const title = esc(maintenance?.title || 'Wir sind gleich wieder da');
+  const message = esc(maintenance?.message || 'Die Webseite ist vorübergehend wegen Update, Programmierung oder sonstigen Gründen nicht verfügbar.').replace(/\n/g, '<br>');
+  return `<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ehoser – ${title}</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box;background:radial-gradient(circle at 18% 16%,#12436d 0,transparent 34%),radial-gradient(circle at 88% 78%,#0c736f 0,transparent 30%),#061525;color:#f8fbff;font-family:system-ui,sans-serif"><main style="max-width:560px;width:100%;box-sizing:border-box;padding:34px 28px;border:1px solid rgba(126,220,255,.3);border-radius:24px;background:rgba(5,24,43,.82);box-shadow:0 28px 80px rgba(0,0,0,.42);text-align:center"><div style="width:58px;height:58px;border-radius:18px;display:grid;place-items:center;margin:0 auto 20px;background:linear-gradient(135deg,#0ef0d0,#4d9fff);color:#042039;font-weight:900;font-size:2rem">E</div><h1 style="margin:0 0 14px;font-size:clamp(1.65rem,6vw,2.4rem);letter-spacing:-.04em">${title}</h1><p style="margin:0;color:#b9d5e6;font-size:1rem;line-height:1.65">${message}</p><p style="margin:24px 0 0;color:#78bddb;font-size:.9rem">Bitte schau später noch einmal vorbei.</p></main></body></html>`;
+}
+
+function requireOwner(req, res) {
+  const auth = readAuthUser(req, res);
+  if (!auth) return null;
+  if (!isOwnerUsername(auth.username)) {
+    res.status(403).json({ error: 'Dieser Bereich ist nur für den Eigentümer verfügbar.' });
+    return null;
+  }
+  rememberOwnerBrowser(req, res);
+  return auth;
+}
+
+async function getOwnerConsole({ force = false } = {}) {
+  if (!force && ownerConsoleCache.value && ownerConsoleCache.expiresAt > Date.now()) {
+    return ownerConsoleCache.value;
+  }
+  const profile = await getProfile(OWNER_USERNAME);
+  const value = normalizeOwnerConsole(profile.settings?.ownerConsole);
+  ownerConsoleCache = { value, expiresAt: Date.now() + 12_000 };
+  return value;
+}
+
+async function saveOwnerConsole(nextValue) {
+  const value = normalizeOwnerConsole(nextValue);
+  await upsertProfile(OWNER_USERNAME, { settings: { ownerConsole: value } });
+  ownerConsoleCache = { value, expiresAt: Date.now() + 12_000 };
+  return value;
+}
+
+function isNoticeActive(notice, now = Date.now()) {
+  if (!notice?.active) return false;
+  return !notice.expiresAt || Date.parse(notice.expiresAt) > now;
+}
+
+function noticesForUser(notices, username) {
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  return (notices || [])
+    .filter((notice) => isNoticeActive(notice))
+    .filter((notice) => notice.audience === 'all'
+      || (normalizedUsername && String(notice.targetUsername || '').trim().toLowerCase() === normalizedUsername))
+    .map(({ targetUsername, ...notice }) => notice);
+}
+
+async function getOwnerStats() {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('id,last_seen,created_at');
+    if (error) throw error;
+    const now = Date.now();
+    const users = data || [];
+    const online = users.filter((user) => {
+      const seenAt = Date.parse(user.last_seen || '');
+      return Number.isFinite(seenAt) && now - seenAt >= -60_000 && now - seenAt < CHAT_PRESENCE_WINDOW_MS;
+    }).length;
+    const activeToday = users.filter((user) => {
+      const seenAt = Date.parse(user.last_seen || '');
+      return Number.isFinite(seenAt) && now - seenAt < 24 * 60 * 60 * 1000;
+    }).length;
+    return { totalUsers: users.length, onlineUsers: online, activeToday };
+  } catch {
+    return { totalUsers: 0, onlineUsers: 0, activeToday: 0 };
+  }
+}
+
 const oasisSessions = new Map();
 
 function getOasisUsagePayload(profile) {
@@ -1365,6 +1545,64 @@ app.use('/api', (req, res, next) => {
     return res.status(401).json({ error: 'Ungueltiger Token' });
   }
 });
+
+// Während eines Wartungsmodus sind alle normalen API-Funktionen gesperrt.
+// Der Eigentümer wird ausschließlich über seinen signierten Login-Token
+// erkannt. Bestehende Admin-Endpunkte behalten den separaten Admin-Code, damit
+// sie bei einer laufenden Wartung weiter verwaltet werden können.
+app.use('/api', async (req, res, next) => {
+  const apiPath = `/api${req.path === '/' ? '' : req.path}`;
+  if (apiPath === '/api/owner/status' || apiPath.startsWith('/api/owner/') || apiPath.startsWith('/api/admin/')) {
+    return next();
+  }
+  try {
+    const consoleState = await getOwnerConsole();
+    if (!consoleState.maintenance.enabled || isOwnerUsername(readOptionalAuthUser(req)?.username)) {
+      return next();
+    }
+    return res.status(503).json({
+      error: consoleState.maintenance.message,
+      code: 'site_maintenance',
+      maintenance: consoleState.maintenance
+    });
+  } catch {
+    // Eine kurz nicht erreichbare Konfiguration darf die gesamte Website nicht
+    // aussperren. Der gespeicherte Status wird beim nächsten Request erneut
+    // gelesen.
+    return next();
+  }
+});
+
+// Auch direkte Aufrufe wie /chat/, /group-call/ oder /skybreak-auth.html
+// landen während der Wartung auf derselben verständlichen Hinweis-Seite. Die
+// Eigentümer-Konsole bleibt erreichbar, damit der Besitzer den Modus jederzeit
+// wieder ausschalten kann; alle anderen Inhalte benötigen die HttpOnly-Sitzung
+// des Eigentümers.
+app.use(async (req, res, next) => {
+  const ownerConsoleAsset = ['/owner.css', '/owner.js', '/owner-notices.js'].includes(req.path);
+  if (req.path.startsWith('/api/') || req.path === '/owner' || req.path === '/owner/' || req.path === '/owner.html' || req.path === '/maintenance' || ownerConsoleAsset) {
+    return next();
+  }
+  try {
+    const consoleState = await getOwnerConsole();
+    if (!consoleState.maintenance.enabled || readOwnerSessionCookie(req)) return next();
+    res.setHeader('Cache-Control', 'no-store');
+    return res.redirect(302, '/maintenance');
+  } catch {
+    return next();
+  }
+});
+
+app.get('/maintenance', async (req, res) => {
+  try {
+    const consoleState = await getOwnerConsole();
+    if (!consoleState.maintenance.enabled) return res.redirect(302, '/chat/');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.type('html').send(maintenancePageHtml(consoleState.maintenance));
+  } catch {
+    return res.type('html').send(maintenancePageHtml(null));
+  }
+});
 // Der Chat ist der Standard-Einstieg. Das bisherige Control Center bleibt
 // bewusst unter einer eigenen, stabilen Adresse erreichbar.
 app.get(['/control-center', '/control-center/'], (req, res) => {
@@ -1394,12 +1632,144 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Öffentlich lesbarer, aber vom Server gefilterter Status. Persönliche
+// Mitteilungen werden nur zurückgegeben, wenn der passende Login-Token
+// mitgesendet wurde.
+app.get('/api/owner/status', async (req, res) => {
+  const auth = readOptionalAuthUser(req);
+  try {
+    const consoleState = await getOwnerConsole();
+    if (isOwnerUsername(auth?.username)) rememberOwnerBrowser(req, res);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      isOwner: isOwnerUsername(auth?.username),
+      maintenance: consoleState.maintenance,
+      notices: noticesForUser(consoleState.notices, auth?.username)
+    });
+  } catch (error) {
+    res.status(503).json({ error: 'Website-Status konnte nicht geladen werden.' });
+  }
+});
+
+// Der Rest der Konsole ist niemals über einen reinen Client-Check geschützt:
+// jeder Endpoint prüft den JWT-Account noch einmal serverseitig.
+app.get('/api/owner/console', async (req, res) => {
+  if (!requireOwner(req, res)) return;
+  try {
+    const [consoleState, stats] = await Promise.all([getOwnerConsole({ force: true }), getOwnerStats()]);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ...consoleState, stats, owner: OWNER_USERNAME });
+  } catch (error) {
+    res.status(500).json({ error: 'Eigentümer-Konsole konnte nicht geladen werden.' });
+  }
+});
+
+app.put('/api/owner/maintenance', async (req, res) => {
+  if (!requireOwner(req, res)) return;
+  try {
+    const current = await getOwnerConsole({ force: true });
+    const input = req.body && typeof req.body === 'object' ? req.body : {};
+    const next = normalizeOwnerConsole({
+      ...current,
+      maintenance: {
+        ...current.maintenance,
+        enabled: input.enabled === true,
+        title: input.title,
+        message: input.message,
+        updatedAt: new Date().toISOString()
+      }
+    });
+    const saved = await saveOwnerConsole(next);
+    res.json({ ok: true, maintenance: saved.maintenance });
+  } catch (error) {
+    res.status(500).json({ error: 'Wartungsmodus konnte nicht gespeichert werden.' });
+  }
+});
+
+app.post('/api/owner/notices', async (req, res) => {
+  if (!requireOwner(req, res)) return;
+  const input = req.body && typeof req.body === 'object' ? req.body : {};
+  const title = String(input.title || '').trim().slice(0, 120);
+  const message = String(input.message || '').trim().slice(0, 1200);
+  const audience = input.audience === 'user' ? 'user' : 'all';
+  const targetUsername = String(input.targetUsername || '').trim().slice(0, 40);
+  if (!title || !message) return res.status(400).json({ error: 'Titel und Nachricht sind Pflicht.' });
+  if (audience === 'user' && !targetUsername) return res.status(400).json({ error: 'Bitte wähle einen Benutzernamen aus.' });
+
+  try {
+    if (audience === 'user') {
+      const { data, error } = await supabaseAdmin.from('users').select('id').eq('username', targetUsername).maybeSingle();
+      if (error) throw error;
+      if (!data) return res.status(404).json({ error: 'Dieser Benutzername existiert nicht.' });
+    }
+    const expiresAt = input.expiresAt && Number.isFinite(Date.parse(input.expiresAt))
+      ? new Date(input.expiresAt).toISOString()
+      : null;
+    if (expiresAt && Date.parse(expiresAt) <= Date.now()) {
+      return res.status(400).json({ error: 'Das Ablaufdatum muss in der Zukunft liegen.' });
+    }
+    const notice = normalizeOwnerNotice({
+      id: crypto.randomUUID(),
+      title,
+      message,
+      kind: input.kind === 'notification' ? 'notification' : 'announcement',
+      audience,
+      targetUsername,
+      active: true,
+      createdAt: new Date().toISOString(),
+      expiresAt
+    });
+    const current = await getOwnerConsole({ force: true });
+    const notices = [notice, ...current.notices].slice(0, 80);
+    await saveOwnerConsole({ ...current, notices });
+    res.status(201).json({ ok: true, notice });
+  } catch (error) {
+    res.status(500).json({ error: 'Mitteilung konnte nicht gesendet werden.' });
+  }
+});
+
+app.post('/api/owner/notices/:id/toggle', async (req, res) => {
+  if (!requireOwner(req, res)) return;
+  const id = String(req.params.id || '').trim();
+  try {
+    const current = await getOwnerConsole({ force: true });
+    const found = current.notices.find((notice) => notice.id === id);
+    if (!found) return res.status(404).json({ error: 'Mitteilung nicht gefunden.' });
+    const notices = current.notices.map((notice) => notice.id === id
+      ? { ...notice, active: !notice.active }
+      : notice);
+    const saved = await saveOwnerConsole({ ...current, notices });
+    res.json({ ok: true, notice: saved.notices.find((notice) => notice.id === id) });
+  } catch {
+    res.status(500).json({ error: 'Status konnte nicht geändert werden.' });
+  }
+});
+
+app.delete('/api/owner/notices/:id', async (req, res) => {
+  if (!requireOwner(req, res)) return;
+  const id = String(req.params.id || '').trim();
+  try {
+    const current = await getOwnerConsole({ force: true });
+    if (!current.notices.some((notice) => notice.id === id)) {
+      return res.status(404).json({ error: 'Mitteilung nicht gefunden.' });
+    }
+    const saved = await saveOwnerConsole({ ...current, notices: current.notices.filter((notice) => notice.id !== id) });
+    res.json({ ok: true, noticeCount: saved.notices.length });
+  } catch {
+    res.status(500).json({ error: 'Mitteilung konnte nicht gelöscht werden.' });
+  }
+});
+
 app.get('/admin-portal', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-entry.html'));
 });
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get(['/owner', '/owner/'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'owner.html'));
 });
 
 app.get('/chat.png', (req, res) => {
@@ -2258,6 +2628,10 @@ app.put('/api/me/settings', async (req, res) => {
       oasisUsage: current.settings?.oasisUsage,
       passwordHash: current.settings?.passwordHash,
       _emailPending: current.settings?._emailPending,
+      // Eigentümer-Einstellungen werden ausschließlich über /api/owner/*
+      // geschrieben und dürfen durch normale Profileinstellungen nicht
+      // überschrieben oder versehentlich entfernt werden.
+      ownerConsole: current.settings?.ownerConsole,
       googleSub: current.settings?.googleSub,
       googleEmail: current.settings?.googleEmail
     });
