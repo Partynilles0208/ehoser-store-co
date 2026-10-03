@@ -705,12 +705,17 @@ function normalizeSettings(raw) {
     oasisUsage: normalizeOasisUsage(src.oasisUsage),
     passwordHash: typeof src.passwordHash === 'string' ? src.passwordHash : undefined,
     _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined,
+    // Öffentliche E2EE-Schlüssel sind absichtlich profilweit abrufbar; private Schlüssel werden nie gespeichert.
+    e2eePublicKey: (src.e2eePublicKey && typeof src.e2eePublicKey === 'object' && src.e2eePublicKey.kty === 'RSA') ? src.e2eePublicKey : undefined,
+    e2eeKeyUpdatedAt: typeof src.e2eeKeyUpdatedAt === 'string' ? src.e2eeKeyUpdatedAt : undefined,
     ownerConsole
   };
 }
 
 function parseChatMessagePreview(storedContent) {
   const raw = String(storedContent || '');
+  // E2EE payloads must never be interpreted as message text by the server.
+  if (raw.startsWith('{') && raw.includes('"e2ee":1')) return '[Ende-zu-Ende verschlüsselte Nachricht]';
   if (!raw) return '';
   try {
     const parsed = JSON.parse(raw);
