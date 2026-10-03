@@ -46,7 +46,7 @@
     <form id="chatRegisterForm" class="chat-auth-form" style="display:none" onsubmit="submitChatRegister(event)">
       <label>Zugangscode<input id="chatRegisterUnlockCode" type="password" minlength="6" autocomplete="off" required></label>
       <label>Benutzername<input id="chatRegisterUsername" type="text" minlength="3" autocomplete="username" required></label>
-      <label>E-Mail <span>(optional)</span><input id="chatRegisterEmail" type="email" autocomplete="email"></label>
+      <p class="chat-auth-note">Deine echte <strong>@ehoser.de</strong>-Adresse wählst du direkt nach der Anmeldung.</p>
       <label>Passwort<input id="chatRegisterPassword" type="password" minlength="6" autocomplete="new-password" required></label>
       <label>Passwort wiederholen<input id="chatRegisterPasswordConfirm" type="password" minlength="6" autocomplete="new-password" required></label>
       <button id="chatRegisterSubmit" class="btn-primary" type="submit">Account erstellen</button>
@@ -70,6 +70,7 @@
         <span class="brand-sub">Chat</span>
       </div>
       <div class="sidebar-head-actions">
+        <button id="mailboxButton" type="button" onclick="openMailbox()" aria-label="Postfach öffnen" title="Postfach">✉<span id="mailboxUnreadBadge" class="mailbox-unread-badge" hidden>0</span></button>
         <button id="onlineListButton" type="button" onclick="toggleOnlineList()" aria-label="Online-Liste öffnen" title="Online-Liste">●</button>
         <button id="chatSettingsButton" type="button" onclick="openChatSettings()" aria-label="Einstellungen öffnen" title="Einstellungen">⚙</button>
         <button type="button" onclick="openNewGroupModal()" aria-label="Neuen Chat erstellen" title="Neuer Chat">＋</button>
@@ -448,6 +449,44 @@
       <button id="settingsSaveButton" class="btn-primary" type="button" onclick="saveChatSettings()">Speichern</button>
     </div>
   </div>
+</div>
+
+<!-- ── Modal: @ehoser.de-Adresse auswählen ─────────────────────────────── -->
+<div id="mailboxSetupModal" class="modal-overlay mailbox-setup-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="mailboxSetupTitle">
+  <form class="modal mailbox-setup-modal" onsubmit="claimMailbox(event)">
+    <div class="modal-head">
+      <div><p class="mailbox-eyebrow">Echtes E-Mail-Postfach</p><h3 id="mailboxSetupTitle">Wähle deine Adresse</h3></div>
+      <span class="mailbox-brand-mark" aria-hidden="true">✉</span>
+    </div>
+    <p class="mailbox-copy">Du bist angemeldet. Lege jetzt deine persönliche Adresse an – sie kann echte E-Mails senden und empfangen.</p>
+    <label class="mailbox-address-input" for="mailboxLocalPart">
+      <input id="mailboxLocalPart" type="text" minlength="3" maxlength="32" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="dein.name" required>
+      <span>@ehoser.de</span>
+    </label>
+    <p class="mailbox-hint">Erlaubt sind Buchstaben, Zahlen, Punkte, Bindestriche und Unterstriche. Die Adresse kann später nicht geändert werden.</p>
+    <p id="mailboxSetupStatus" class="status-msg" aria-live="polite"></p>
+    <div class="modal-actions">
+      <button id="mailboxClaimButton" class="btn-primary" type="submit">Postfach anlegen</button>
+    </div>
+  </form>
+</div>
+
+<!-- ── Modal: Postfach ─────────────────────────────────────────────────── -->
+<div id="mailboxModal" class="modal-overlay" style="display:none" onclick="closeIfOverlay(event,'mailboxModal')">
+  <section class="modal mailbox-modal" aria-labelledby="mailboxTitle">
+    <div class="modal-head">
+      <div><p class="mailbox-eyebrow">Postfach</p><h3 id="mailboxTitle">E-Mail</h3><small id="mailboxAddress">@ehoser.de</small></div>
+      <button class="modal-x" type="button" onclick="closeModal('mailboxModal')" aria-label="Postfach schließen">✕</button>
+    </div>
+    <form id="mailboxComposeForm" class="mailbox-compose" onsubmit="sendMailboxMessage(event)">
+      <label>An <input id="mailboxTo" type="email" autocomplete="email" maxlength="320" placeholder="name@beispiel.de" required></label>
+      <label>Betreff <input id="mailboxSubject" type="text" maxlength="180" required></label>
+      <label>Nachricht <textarea id="mailboxText" rows="5" maxlength="200000" required></textarea></label>
+      <div class="mailbox-compose-actions"><span id="mailboxSendStatus" class="status-msg" aria-live="polite"></span><button id="mailboxSendButton" class="btn-primary" type="submit">Senden</button></div>
+    </form>
+    <div class="mailbox-list-head"><strong>Nachrichten</strong><button class="mailbox-refresh" type="button" onclick="loadMailbox(true)" title="Aktualisieren" aria-label="Postfach aktualisieren">↻</button></div>
+    <div id="mailboxMessageList" class="mailbox-message-list"><p class="empty-hint">Postfach wird geladen…</p></div>
+  </section>
 </div>
 
 <!-- ── Modal: Mitglieder ─────────────────────────────────────────────────── -->
