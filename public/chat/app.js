@@ -560,6 +560,8 @@ async function finishChatBoot() {
     show('chatApp');
     applyChatPreferences();
     document.getElementById('sidebarMe').textContent = '👤 ' + _me.username;
+    const ownerLink = document.getElementById('ownerConsoleLink');
+    if (ownerLink) ownerLink.style.display = String(_me.username || '').trim().toLowerCase() === 'meisterlool_707' ? '' : 'none';
     if (_meProfile?.isPro) {
         const proStickerItem = document.getElementById('proStickerItem');
         if (proStickerItem) proStickerItem.style.display = '';

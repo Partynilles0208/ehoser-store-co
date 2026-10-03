@@ -3671,6 +3671,7 @@ function showLoggedInUI() {
     const psBadge = currentProfile?.ps_account ? '<span style="background:rgba(77,159,255,0.2);color:#4d9fff;border:1px solid rgba(77,159,255,0.4);border-radius:6px;font-size:0.75em;font-weight:700;padding:2px 7px;letter-spacing:.04em;">PS</span>' : '';
     const personalization = getPersonalization();
     const displayName = currentProfile?.settings?.displayName || currentUser.username;
+    const isOwnerAccount = String(currentUser?.username || '').trim().toLowerCase() === 'meisterlool_707';
     const avatarUrl = currentProfile?.settings?.avatarUrl || '';
     const avatarNode = avatarUrl
         ? `<img src="${escapeAttribute(avatarUrl)}" alt="Profilbild" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1px solid rgba(14,240,208,0.35);">`
@@ -3683,6 +3684,7 @@ function showLoggedInUI() {
         <button type="button" class="nav-chat-button" onclick="openStandaloneChat()" aria-label="Chat öffnen"><img src="/chat.png" alt="Chat" /></button>
         <button type="button" class="nav-pill" onclick="showSection('mode-select')">Hinzufügen</button>
         <button type="button" class="nav-pill" onclick="showSection('updates')">Updates</button>
+        ${isOwnerAccount ? '<a href="/owner.html" class="btn-small" style="width:auto;padding:8px 12px;text-decoration:none;display:inline-flex;align-items:center;">Eigentümer</a>' : ''}
         <button onclick="openSettingsModal()" class="btn-small" style="width:auto;padding:8px 12px;">Einstellungen</button>
         <button onclick="openPricingModal()" class="plan-badge ${hasPremiumAccess() ? 'premium' : (hasProAccess() ? 'pro' : '')}" style="border:0;cursor:pointer;">${plan}</button>
         <span class="plan-badge" title="KI Credits">${credits} Credits</span>

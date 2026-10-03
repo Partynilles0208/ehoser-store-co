@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>ehoser · Eigentümer-Konsole</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/owner.css?v=1">
+</head>
+<body class="owner-page">
+  <main class="owner-shell" id="ownerApp">
+    <div class="owner-topbar">
+      <div class="owner-brand"><span class="owner-brand-mark">E</span><span>ehoser · Eigentümer</span></div>
+      <div class="owner-top-actions">
+        <a class="owner-link" href="/control-center/">Zum Control Center</a>
+        <a class="owner-link" href="/admin.html">Admin-Verwaltung</a>
+        <button class="owner-btn" type="button" onclick="ownerRefresh()">Aktualisieren</button>
+      </div>
+    </div>
+
+    <section class="owner-hero">
+      <div class="owner-eyebrow">Privater Bereich · nur meisterlool_707</div>
+      <h1>Eigentümer-Konsole</h1>
+      <p>Steuere Wartungsmodus, Anzeigen und Benachrichtigungen zentral. Alle Aktionen werden auf dem Server an deinen angemeldeten ehoser-Account gebunden.</p>
+    </section>
+
+    <section class="owner-stats" aria-label="Website-Übersicht">
+      <article class="owner-stat"><span>Registrierte Nutzer</span><strong id="ownerStatUsers">–</strong></article>
+      <article class="owner-stat"><span>Gerade online</span><strong id="ownerStatOnline">–</strong></article>
+      <article class="owner-stat"><span>In den letzten 24 Stunden aktiv</span><strong id="ownerStatToday">–</strong></article>
+    </section>
+
+    <div class="owner-grid">
+      <div>
+        <section class="owner-card">
+          <h2>🚧 Wartungsmodus</h2>
+          <p class="owner-help">Wenn aktiviert, sehen alle anderen die Wartungsseite. Dein Account <strong>meisterlool_707</strong> bleibt angemeldet und kann weiterarbeiten.</p>
+          <label class="owner-check"><input id="maintenanceEnabled" type="checkbox"> Website vorübergehend schließen</label>
+          <label class="owner-field">Überschrift<input id="maintenanceTitle" class="owner-input" maxlength="120" placeholder="Wir sind gleich wieder da"></label>
+          <label class="owner-field">Hinweis für Besucher<textarea id="maintenanceMessage" class="owner-textarea" maxlength="800" placeholder="Die Webseite ist vorübergehend wegen Update, Programmierung oder sonstigen Gründen nicht verfügbar."></textarea></label>
+          <div class="owner-actions"><button class="owner-btn primary" type="button" onclick="ownerSaveMaintenance()">Wartungsmodus speichern</button></div>
+          <p id="maintenanceStatus" class="owner-status"></p>
+        </section>
+
+        <section class="owner-card">
+          <h2>📣 Anzeige oder Benachrichtigung senden</h2>
+          <p class="owner-help">Eine Anzeige wird sichtbar in ehoser eingeblendet. Eine Benachrichtigung wird zusätzlich als Browser-Hinweis gezeigt, wenn die Person dies erlaubt hat und ehoser geöffnet ist.</p>
+          <label class="owner-field">Art
+            <select id="noticeKind" class="owner-select"><option value="announcement">Anzeige für ehoser</option><option value="notification">Benachrichtigung</option></select>
+          </label>
+          <div class="owner-row">
+            <label class="owner-field">Empfänger
+              <select id="noticeAudience" class="owner-select" onchange="ownerToggleRecipient()"><option value="all">Alle Nutzer</option><option value="user">Ein bestimmter Nutzer</option></select>
+            </label>
+            <label id="noticeRecipientWrap" class="owner-field owner-hidden">Benutzername<input id="noticeRecipient" class="owner-input" maxlength="40" placeholder="z. B. name_123"></label>
+          </div>
+          <label class="owner-field">Titel<input id="noticeTitle" class="owner-input" maxlength="120" placeholder="Neues Update"></label>
+          <label class="owner-field">Nachricht<textarea id="noticeMessage" class="owner-textarea" maxlength="1200" placeholder="Schreibe deine Mitteilung …"></textarea></label>
+          <label class="owner-field">Automatisch ausblenden <span style="font-weight:400;color:#8db6cc">(optional)</span><input id="noticeExpiresAt" class="owner-input" type="datetime-local"></label>
+          <div class="owner-actions"><button class="owner-btn primary" type="button" onclick="ownerCreateNotice()">Senden</button></div>
+          <p id="noticeStatus" class="owner-status"></p>
+        </section>
+      </div>
+
+      <section class="owner-card">
+        <h2>Gesendete Mitteilungen</h2>
+        <p class="owner-help">Du kannst bereits versendete Hinweise pausieren, wieder einschalten oder endgültig entfernen.</p>
+        <div id="ownerNoticeList" class="owner-list"><p class="owner-empty">Lade Mitteilungen …</p></div>
+      </section>
+    </div>
+  </main>
+  <script src="/owner.js?v=1"></script>
+  <script src="/owner-notices.js?v=1"></script>
+</body>
+</html>
