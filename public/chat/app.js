@@ -3270,10 +3270,28 @@ async function loadSettingsOnlineList() {
         await sendChatHeartbeat();
         const data = await api('/chat/contacts');
         if (requestId !== _settingsOnlineRequestId) return;
-        const users = data.contacts || [];
+        const contacts = Array.isArray(data.contacts) ? data.contacts : [];
+        const ownUsername = String(_me?.username || '').trim();
+        const ownKey = ownUsername.toLowerCase();
+        // /chat/contacts intentionally only contains *other* accounts so it
+        // can be used for opening private chats. The status view is different:
+        // it must also show the currently signed-in account. Otherwise the UI
+        // can say "0 online" while the chat itself correctly says "online".
+        const ownPresence = ownUsername ? {
+            username: ownUsername,
+            last_seen: new Date().toISOString(),
+            presence_override: _meProfile?.settings?.presenceOverride || 'automatic',
+            display_name: _meProfile?.settings?.displayName || '',
+            avatar_url: _meProfile?.settings?.avatarUrl || ''
+        } : null;
+        const users = [
+            ...(ownPresence ? [ownPresence] : []),
+            ...contacts.filter((user) => String(user?.username || '').trim().toLowerCase() !== ownKey)
+        ];
         rememberChatProfiles(users);
         const onlineCount = users.filter((user) => isUserOnline(user?.last_seen, user?.presence_override)).length;
-        count.textContent = `${onlineCount} online · ${users.length} Kontakte`;
+        const contactCount = Math.max(0, users.length - (ownPresence ? 1 : 0));
+        count.textContent = `${onlineCount} online · ${contactCount} Kontakte`;
         if (!users.length) {
             list.innerHTML = '<li class="settings-online-empty">Noch keine anderen Nutzer vorhanden.</li>';
             return;
@@ -3281,9 +3299,11 @@ async function loadSettingsOnlineList() {
         list.innerHTML = users.map((user) => {
             const username = String(user?.username || 'Gast');
             const online = isUserOnline(user?.last_seen, user?.presence_override);
-            return `<li>
+            const isMe = ownKey && username.trim().toLowerCase() === ownKey;
+            const state = isMe ? (online ? 'Du · online' : 'Du · offline') : lastSeenLabel(user?.last_seen, user?.presence_override);
+            return `<li${isMe ? ' class="is-me"' : ''}>
                 ${renderPersonAvatar(username, 'settings-online-avatar', user)}
-                <span class="settings-online-user">${esc(username)}<small>${esc(lastSeenLabel(user?.last_seen, user?.presence_override))}</small></span>
+                <span class="settings-online-user">${esc(username)}<small>${esc(state)}</small></span>
                 <i class="${online ? '' : 'offline'}" aria-label="${online ? 'online' : 'zuletzt online'}"></i>
             </li>`;
         }).join('');
