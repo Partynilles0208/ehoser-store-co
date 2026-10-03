@@ -5019,15 +5019,25 @@ app.post('/api/chat/e2ee/public-key', async (req, res) => {
   }
 });
 
+const E2EE_KEY_ENVELOPE_PREFIX = '__ehoser_e2ee_key__:';
+function e2eeKeyEnvelopeSender(username) {
+  return E2EE_KEY_ENVELOPE_PREFIX + String(username || '').trim();
+}
+// The current database intentionally has no encrypted_group_key column. Store
+// envelopes in hidden system rows instead, so E2EE works without a schema change.
 async function getE2eeMemberRows(groupId) {
-  let result = await supabaseAdmin.from('chat_group_members')
-    .select('username,encrypted_group_key').eq('group_id', groupId);
-  const missingColumn = /encrypted_group_key.*(does not exist|could not find|schema cache)/i.test(String(result.error?.message || ''));
-  if (missingColumn) {
-    const fallback = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId);
-    return { data: (fallback.data || []).map((row) => ({ ...row, encrypted_group_key: '' })), error: fallback.error, legacy: true };
+  const [{ data: members, error: membersError }, { data: envelopes, error: envelopeError }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId),
+    supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content').eq('group_id', groupId)
+      .like('sender', E2EE_KEY_ENVELOPE_PREFIX + '%').order('id', { ascending: false })
+  ]);
+  if (membersError || envelopeError) return { data: [], error: membersError || envelopeError };
+  const wrappedByUsername = new Map();
+  for (const row of envelopes || []) {
+    const username = String(row.sender || '').slice(E2EE_KEY_ENVELOPE_PREFIX.length);
+    if (username && !wrappedByUsername.has(username)) wrappedByUsername.set(username, String(row.encrypted_content || ''));
   }
-  return { data: result.data || [], error: result.error, legacy: false };
+  return { data: (members || []).map((member) => ({ username: member.username, wrappedKey: wrappedByUsername.get(member.username) || '' })), error: null };
 }
 
 // Ein Mitglied kann nur seine eigene Schlüssel-Hülle laden. Öffentliche Schlüssel
@@ -5045,10 +5055,9 @@ app.get('/api/chat/groups/:id/e2ee', async (req, res) => {
     : { data: [] };
   const publicKeys = new Map((profiles || []).map((profile) => [profile.username, normalizeSettings(profile.settings || {}).e2eePublicKey || null]));
   res.json({
-    legacyColumn: membersResult.legacy,
     members: membersResult.data.map((member) => ({
       username: member.username,
-      wrappedKey: member.username === user.username ? (member.encrypted_group_key || '') : undefined,
+      wrappedKey: member.username === user.username ? (member.wrappedKey || '') : undefined,
       publicKey: publicKeys.get(member.username) || null
     }))
   });
@@ -5067,14 +5076,21 @@ app.put('/api/chat/groups/:id/e2ee', async (req, res) => {
   // The very first key setup may be done by any member. Afterwards only admins
   // can add a new device/member envelope, so nobody can silently replace keys.
   const currentKeys = await getE2eeMemberRows(id);
-  const initialSetup = !currentKeys.error && (currentKeys.data || []).every((member) => !member.encrypted_group_key);
+  const initialSetup = !currentKeys.error && (currentKeys.data || []).every((member) => !member.wrappedKey);
   if (!isAdmin && !initialSetup) return res.status(403).json({ error: 'Nur Gruppenadmins dürfen weitere Schlüssel setzen' });
+  const validMembers = new Set((currentKeys.data || []).map((member) => member.username));
   for (const item of keys) {
     const username = String(item?.username || '').trim();
     const wrappedKey = String(item?.wrappedKey || '');
-    if (!username || !wrappedKey || wrappedKey.length > 20000) return res.status(400).json({ error: 'Ungültige Schlüssel-Hülle' });
-    const { error } = await supabaseAdmin.from('chat_group_members').update({ encrypted_group_key: wrappedKey }).eq('group_id', id).eq('username', username);
-    if (error) return res.status(500).json({ error: 'Verschlüsselung benötigt die Spalte encrypted_group_key. Bitte Datenbank-Migration ausführen.' });
+    if (!validMembers.has(username) || !wrappedKey || wrappedKey.length > 20000) return res.status(400).json({ error: 'Ungültige Schlüssel-Hülle' });
+    const sender = e2eeKeyEnvelopeSender(username);
+    const { data: existing, error: lookupError } = await supabaseAdmin.from('chat_messages').select('id')
+      .eq('group_id', id).eq('sender', sender).order('id', { ascending: false }).limit(1);
+    if (lookupError) return res.status(500).json({ error: 'Schlüssel konnte nicht vorbereitet werden' });
+    const result = existing?.[0]
+      ? await supabaseAdmin.from('chat_messages').update({ encrypted_content: wrappedKey }).eq('id', existing[0].id)
+      : await supabaseAdmin.from('chat_messages').insert({ group_id: id, sender, encrypted_content: wrappedKey });
+    if (result.error) return res.status(500).json({ error: 'Schlüssel konnte nicht gespeichert werden' });
   }
   res.json({ ok: true });
 });
@@ -5327,7 +5343,8 @@ function createChatMessageQuery(groupId, fields) {
     .eq('group_id', groupId)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
-    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%');
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%');
 }
 
 function isTicTacToeTestCommand(username, content) {
