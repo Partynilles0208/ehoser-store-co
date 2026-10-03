@@ -4994,6 +4994,99 @@ app.get('/api/chat/groups/:id/members', async (req, res) => {
   res.json({ members });
 });
 
+// ─── Ende-zu-Ende-Verschlüsselung ─────────────────────────────────────────────
+// Private Schlüssel bleiben ausschließlich im Browser (IndexedDB). Der Server
+// speichert hier nur öffentliche Schlüssel und für Mitglieder verpackte Gruppenschlüssel.
+app.post('/api/chat/e2ee/public-key', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const publicKey = req.body?.publicKey;
+  if (!publicKey || typeof publicKey !== 'object' || publicKey.kty !== 'RSA' || !publicKey.n || !publicKey.e) {
+    return res.status(400).json({ error: 'Ungültiger öffentlicher Schlüssel' });
+  }
+  try {
+    const profile = await getProfile(user.username);
+    const settings = { ...(profile?.settings || {}), e2eePublicKey: publicKey, e2eeKeyUpdatedAt: new Date().toISOString() };
+    const { error } = await supabaseAdmin.from('user_profiles').upsert({ username: user.username, settings }, { onConflict: 'username' });
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Öffentlicher Schlüssel konnte nicht gespeichert werden' });
+  }
+});
+
+async function getE2eeMemberRows(groupId) {
+  let result = await supabaseAdmin.from('chat_group_members')
+    .select('username,encrypted_group_key').eq('group_id', groupId);
+  const missingColumn = /encrypted_group_key.*(does not exist|could not find|schema cache)/i.test(String(result.error?.message || ''));
+  if (missingColumn) {
+    const fallback = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId);
+    return { data: (fallback.data || []).map((row) => ({ ...row, encrypted_group_key: '' })), error: fallback.error, legacy: true };
+  }
+  return { data: result.data || [], error: result.error, legacy: false };
+}
+
+// Ein Mitglied kann nur seine eigene Schlüssel-Hülle laden. Öffentliche Schlüssel
+// der Gruppenmitglieder dürfen zum sicheren Einpacken des Gruppenschlüssels gelesen werden.
+app.get('/api/chat/groups/:id/e2ee', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  const membersResult = await getE2eeMemberRows(id);
+  if (membersResult.error) return res.status(500).json({ error: 'Schlüssel konnten nicht geladen werden' });
+  const usernames = membersResult.data.map((member) => member.username).filter(Boolean);
+  const { data: profiles } = usernames.length
+    ? await supabaseAdmin.from('user_profiles').select('username,settings').in('username', usernames)
+    : { data: [] };
+  const publicKeys = new Map((profiles || []).map((profile) => [profile.username, normalizeSettings(profile.settings || {}).e2eePublicKey || null]));
+  res.json({
+    legacyColumn: membersResult.legacy,
+    members: membersResult.data.map((member) => ({
+      username: member.username,
+      wrappedKey: member.username === user.username ? (member.encrypted_group_key || '') : undefined,
+      publicKey: publicKeys.get(member.username) || null
+    }))
+  });
+});
+
+// Nur Gruppenadmins dürfen Schlüssel-Hüllen für die aktuelle Mitgliedschaft setzen.
+// Der Inhalt wird nie entschlüsselt oder geprüft, sondern unverändert gespeichert.
+app.put('/api/chat/groups/:id/e2ee', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const keys = Array.isArray(req.body?.keys) ? req.body.keys : [];
+  if (!keys.length || keys.length > 200) return res.status(400).json({ error: 'Keine Schlüssel angegeben' });
+  const { data: group } = await supabaseAdmin.from('chat_groups').select('created_by').eq('id', id).maybeSingle();
+  if (!group) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
+  if (!await isGroupAdmin(id, user.username, group.created_by)) return res.status(403).json({ error: 'Nur Gruppenadmins dürfen Schlüssel setzen' });
+  for (const item of keys) {
+    const username = String(item?.username || '').trim();
+    const wrappedKey = String(item?.wrappedKey || '');
+    if (!username || !wrappedKey || wrappedKey.length > 20000) return res.status(400).json({ error: 'Ungültige Schlüssel-Hülle' });
+    const { error } = await supabaseAdmin.from('chat_group_members').update({ encrypted_group_key: wrappedKey }).eq('group_id', id).eq('username', username);
+    if (error) return res.status(500).json({ error: 'Verschlüsselung benötigt die Spalte encrypted_group_key. Bitte Datenbank-Migration ausführen.' });
+  }
+  res.json({ ok: true });
+});
+
+// Alte Nachrichten werden im Browser verschlüsselt; dieser Endpunkt erhält und
+// speichert ausschließlich bereits verschlüsselten Text.
+app.post('/api/chat/groups/:id/e2ee/migrate', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { id } = req.params;
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(0, 200) : [];
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  for (const message of messages) {
+    const messageId = Number(message?.id);
+    const content = String(message?.content || '');
+    if (!Number.isInteger(messageId) || !content || content.length > 65536) return res.status(400).json({ error: 'Ungültige Migrationsnachricht' });
+    const { error } = await supabaseAdmin.from('chat_messages').update({ encrypted_content: content }).eq('id', messageId).eq('group_id', id);
+    if (error) return res.status(500).json({ error: 'Alte Nachricht konnte nicht verschlüsselt gespeichert werden' });
+  }
+  res.json({ ok: true, migrated: messages.length });
+});
+
 // GET /api/chat/groups/:id/admins — Gruppenadmins abrufen
 app.get('/api/chat/groups/:id/admins', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
