@@ -3624,6 +3624,80 @@ async function copyChatLoginCode() {
     }
 }
 
+function chatExportMessageText(message) {
+    const raw = readStoredMessage(message?.content);
+    if (!raw) return '[Ältere verschlüsselte Nachricht kann nicht angezeigt werden]';
+    const item = safeJsonParse(raw, null);
+    if (!item || typeof item !== 'object') return String(raw).trim();
+    switch (item.t) {
+        case 'txt': return String(item.v || '');
+        case 'deleted': return '[Nachricht gelöscht]';
+        case 'img': return '[Foto' + (item.name ? ': ' + item.name : '') + ']' + (item.url ? ' ' + item.url : '');
+        case 'vid': return '[Video' + (item.name ? ': ' + item.name : '') + ']' + (item.url ? ' ' + item.url : '');
+        case 'aud': return '[Sprachnachricht' + (item.name ? ': ' + item.name : '') + ']' + (item.url ? ' ' + item.url : '');
+        case 'file': return '[Datei' + (item.name ? ': ' + item.name : '') + ']' + (item.url ? ' ' + item.url : '');
+        case 'fw': return '[Face Warp]' + (item.url ? ' ' + item.url : '');
+        case 'pro_sticker': return '[Sticker: ' + String(item.label || 'ehoser PRO') + ']';
+        case 'ai_summary': return '[ehoser AI Zusammenfassung] ' + String(item.summary || '');
+        case 'tic_tac_toe': return '[Tic-Tac-Toe] ' + String(item.text || '');
+        default: return String(raw).trim();
+    }
+}
+
+function chatExportFilePart(value) {
+    return String(value || 'chat').replace(/[^a-z0-9äöüß_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'chat';
+}
+
+async function exportActiveChat() {
+    const button = document.getElementById('settingsExportButton');
+    const hint = document.getElementById('settingsExportHint');
+    if (!_activeGroupId) {
+        if (hint) hint.textContent = 'Öffne zuerst einen Chat, den du sichern möchtest.';
+        toast('Bitte zuerst einen Chat öffnen.', 'err');
+        return;
+    }
+    const group = _groups.find((entry) => String(entry.id) === String(_activeGroupId));
+    const groupName = group?.name || 'ehoser Chat';
+    if (button) { button.disabled = true; button.textContent = 'Export wird erstellt…'; }
+    if (hint) hint.textContent = 'Alle Nachrichten werden vorbereitet…';
+    try {
+        const response = await api('/chat/messages/' + encodeURIComponent(_activeGroupId) + '/export');
+        const messages = Array.isArray(response?.messages) ? response.messages : [];
+        const createdAt = new Date();
+        const lines = [
+            'ehoser Chat-Export',
+            'Chat: ' + groupName,
+            'Erstellt: ' + createdAt.toLocaleString('de-DE'),
+            'Nachrichten: ' + messages.length,
+            '',
+            '----------------------------------------',
+            ''
+        ];
+        for (const message of messages) {
+            const date = new Date(message?.created_at || Date.now());
+            const when = Number.isNaN(date.valueOf()) ? 'Unbekannte Zeit' : date.toLocaleString('de-DE');
+            const sender = String(message?.sender || 'ehoser AI');
+            lines.push('[' + when + '] ' + sender + ': ' + chatExportMessageText(message));
+        }
+        const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'ehoser-chat-' + chatExportFilePart(groupName) + '-' + createdAt.toISOString().slice(0, 10) + '.txt';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        if (hint) hint.textContent = '✓ ' + messages.length + ' Nachrichten wurden heruntergeladen.';
+        toast('Chat exportiert.', 'ok');
+    } catch (error) {
+        if (hint) hint.textContent = error?.message || 'Chat-Export fehlgeschlagen.';
+        toast('Chat-Export fehlgeschlagen: ' + (error?.message || 'Unbekannter Fehler'), 'err');
+    } finally {
+        if (button) { button.disabled = false; button.textContent = 'Aktuellen Chat herunterladen'; }
+    }
+}
+
 async function saveChatSettings() {
     const button = document.getElementById('settingsSaveButton');
     const status = document.getElementById('settingsSaveStatus');
