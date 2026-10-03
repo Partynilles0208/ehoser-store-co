@@ -941,6 +941,11 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
     border-bottom: 1px solid rgba(134,150,160,.12); cursor: pointer;
 }
 .settings-section > :last-child { border-bottom: 0; }
+.settings-export-body { padding: 13px 14px; }
+.settings-export-body p { margin: 0 0 10px; color: #8696a0; font-size: .72rem; line-height: 1.45; }
+.settings-export-body button { min-height: 37px; padding: 0 12px; border: 1px solid rgba(37,211,102,.42); border-radius: 9px; background: rgba(0,168,132,.12); color: #7ee4cc; font: 700 .74rem var(--font); cursor: pointer; }
+.settings-export-body button:hover { border-color: #00a884; color: #e9edef; }
+.settings-export-body button:disabled { border-color: #3b4a54; background: #202c33; color: #667781; cursor: wait; }
 .settings-select-row > span, .settings-switch-row > span:first-child { min-width: 0; flex: 1; }
 .settings-select-row select { min-width: 118px; height: 36px; padding: 0 9px; border: 1px solid #3b4a54; border-radius: 9px; outline: 0; background: #202c33; color: #e9edef; font: 600 .78rem var(--font); }
 .settings-switch-row input { position: absolute; opacity: 0; pointer-events: none; }
