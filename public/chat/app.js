@@ -763,7 +763,7 @@ function renderOnlineHoldList(users) {
     list.innerHTML = users.map((user) => {
         const username = String(user?.username || 'Gast');
         const isMe = username.toLowerCase() === String(_me?.username || '').toLowerCase();
-        return `<li${isMe ? ' class="is-me"' : ''}>`
+        return `<li${isMe ? ' class="is-me"' : ''}>
             ${renderPersonAvatar(username, 'online-hold-avatar', user)}
             <span class="online-hold-name">${esc(username)}${isMe ? '<small>Du</small>' : ''}</span>
             <span class="online-hold-status"><i></i>online</span>
