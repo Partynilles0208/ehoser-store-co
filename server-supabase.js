@@ -27,6 +27,9 @@ const OASIS_DAILY_LIMIT_MS = Math.max(1000, Number(process.env.OASIS_DAILY_LIMIT
 const OASIS_USAGE_TIME_ZONE = process.env.OASIS_USAGE_TIME_ZONE || 'Europe/Berlin';
 const OASIS_PYTHON_BIN = process.env.OASIS_PYTHON_BIN || process.env.PYTHON_BIN || 'python';
 const OASIS_BRIDGE_PATH = path.join(__dirname, 'scripts', 'oasis_bridge.py');
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
+const EHOSER_MAIL_DOMAIN = String(process.env.EHOSER_MAIL_DOMAIN || 'ehoser.de').trim().toLowerCase();
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -319,6 +322,38 @@ CREATE TABLE IF NOT EXISTS moderation_actions (
         action_by TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ehoser_mailboxes (
+        username TEXT PRIMARY KEY REFERENCES users(username) ON UPDATE CASCADE ON DELETE CASCADE,
+        address TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS ehoser_mail_messages (
+        id BIGSERIAL PRIMARY KEY,
+        provider_message_id TEXT,
+        direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+        sender_username TEXT REFERENCES users(username) ON UPDATE CASCADE ON DELETE SET NULL,
+        sender_address TEXT NOT NULL,
+        recipient_username TEXT REFERENCES users(username) ON UPDATE CASCADE ON DELETE SET NULL,
+        recipient_address TEXT NOT NULL,
+        subject TEXT NOT NULL DEFAULT '',
+        text_body TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'queued', 'sent', 'delivered', 'failed', 'bounced')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        read_at TIMESTAMPTZ NULL,
+        CONSTRAINT ehoser_mail_messages_provider_direction_key UNIQUE (provider_message_id, direction)
+      );
+      CREATE INDEX IF NOT EXISTS ehoser_mail_messages_recipient_created_idx
+        ON ehoser_mail_messages (recipient_username, created_at DESC);
+      CREATE INDEX IF NOT EXISTS ehoser_mail_messages_sender_created_idx
+        ON ehoser_mail_messages (sender_username, created_at DESC);
+      CREATE INDEX IF NOT EXISTS ehoser_mail_messages_provider_message_idx
+        ON ehoser_mail_messages (provider_message_id);
+      ALTER TABLE ehoser_mailboxes ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE ehoser_mail_messages ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE ehoser_mailboxes, ehoser_mail_messages FROM anon, authenticated;
+      REVOKE ALL ON SEQUENCE ehoser_mail_messages_id_seq FROM anon, authenticated;
     `);
     console.log('✓ Datenbank-Tabellen überprüft/erstellt.');
   } catch (err) {
@@ -1279,6 +1314,31 @@ async function consumeReferralCode(code, newUsername) {
 
 // Middleware
 app.set('trust proxy', 1);
+// This endpoint intentionally runs before express.json(): Resend's Svix
+// signature is calculated over the exact raw request bytes.
+app.post('/api/webhooks/resend', express.raw({ type: 'application/json', limit: '2mb' }), async (req, res) => {
+  const rawPayload = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
+  if (!rawPayload || !resendWebhookSignatureIsValid(req.headers, rawPayload)) {
+    return res.status(401).json({ error: 'Ungültige Webhook-Signatur' });
+  }
+
+  let event;
+  try {
+    event = JSON.parse(rawPayload);
+  } catch {
+    return res.status(400).json({ error: 'Ungültiger Webhook-Inhalt' });
+  }
+
+  try {
+    if (event?.type === 'email.received') await storeResendInboundEmail(event);
+    else await updateResendDeliveryStatus(event);
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Resend webhook failed:', error?.message || error);
+    // A non-2xx response lets Resend retry a transient database/API failure.
+    return res.status(500).json({ error: 'Webhook konnte nicht verarbeitet werden' });
+  }
+});
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -2016,6 +2076,163 @@ app.get('/api/me', async (req, res) => {
   } catch (error) {
     console.error('Load own profile failed:', error.message);
     res.status(500).json({ error: 'Kontodaten konnten nicht geladen werden' });
+  }
+});
+
+// ─── Reale @ehoser.de-Postfächer (Resend) ───────────────────────────────────
+// Mail content never goes through the browser's Supabase client. Every query is
+// scoped to the username inside the verified ehoser login token.
+app.get('/api/mailbox', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  try {
+    const mailbox = await getMailboxForUsername(auth.username);
+    if (!mailbox) return res.json({ mailbox: mailboxSummary(null), messages: [], unreadCount: 0, sendingEnabled: Boolean(RESEND_API_KEY) });
+
+    const [{ data: incoming, error: incomingError }, { data: outgoing, error: outgoingError }] = await Promise.all([
+      supabaseAdmin.from('ehoser_mail_messages')
+        .select('id,direction,sender_username,sender_address,recipient_address,subject,text_body,status,created_at,read_at')
+        .eq('recipient_username', auth.username)
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabaseAdmin.from('ehoser_mail_messages')
+        .select('id,direction,sender_username,sender_address,recipient_address,subject,text_body,status,created_at,read_at')
+        .eq('sender_username', auth.username)
+        .order('created_at', { ascending: false })
+        .limit(100)
+    ]);
+    if (incomingError) throw incomingError;
+    if (outgoingError) throw outgoingError;
+    const messages = [...(incoming || []), ...(outgoing || [])]
+      .sort((a, b) => new Date(b.created_at).valueOf() - new Date(a.created_at).valueOf())
+      .slice(0, 150);
+    const unreadCount = (incoming || []).filter((message) => !message.read_at).length;
+    res.json({ mailbox: mailboxSummary(mailbox), messages, unreadCount, sendingEnabled: Boolean(RESEND_API_KEY) });
+  } catch (error) {
+    console.error('Mailbox load failed:', error?.message || error);
+    res.status(503).json({ error: 'Das Postfach ist noch nicht eingerichtet.' });
+  }
+});
+
+app.post('/api/mailbox/claim', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const localPart = normalizeEhoserMailboxLocalPart(req.body?.localPart);
+  if (!localPart) return res.status(400).json({ error: 'Wähle 3–32 Zeichen: Buchstaben, Zahlen, Punkt, Bindestrich oder Unterstrich.' });
+
+  try {
+    const current = await getMailboxForUsername(auth.username);
+    if (current) return res.json({ mailbox: mailboxSummary(current), alreadyConfigured: true });
+    const address = mailboxAddressForLocalPart(localPart);
+    const { data: used, error: usedError } = await supabaseAdmin
+      .from('ehoser_mailboxes')
+      .select('username')
+      .eq('address', address)
+      .maybeSingle();
+    if (usedError) throw usedError;
+    if (used) return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits vergeben.' });
+
+    const { data: mailbox, error } = await supabaseAdmin
+      .from('ehoser_mailboxes')
+      .insert({ username: auth.username, address })
+      .select('username,address,created_at')
+      .single();
+    if (error) {
+      if (error.code === '23505') return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits vergeben.' });
+      throw error;
+    }
+    res.status(201).json({ mailbox: mailboxSummary(mailbox) });
+  } catch (error) {
+    console.error('Mailbox claim failed:', error?.message || error);
+    res.status(503).json({ error: 'Die E-Mail-Adresse konnte noch nicht angelegt werden.' });
+  }
+});
+
+app.post('/api/mailbox/messages/:id/read', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Ungültige Nachricht.' });
+  try {
+    const { error } = await supabaseAdmin
+      .from('ehoser_mail_messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('recipient_username', auth.username)
+      .is('read_at', null);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Nachricht konnte nicht als gelesen markiert werden.' });
+  }
+});
+
+app.post('/api/mailbox/messages', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  if (!RESEND_API_KEY) return res.status(503).json({ error: 'Der E-Mail-Versand ist noch nicht mit Resend konfiguriert.' });
+
+  const recipientAddress = normalizeEmailAddress(req.body?.to);
+  const subject = String(req.body?.subject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 180);
+  const textBody = String(req.body?.text || '').replace(/\u0000/g, '').trim().slice(0, 200000);
+  if (!recipientAddress) return res.status(400).json({ error: 'Bitte gib eine gültige Empfängeradresse ein.' });
+  if (!subject) return res.status(400).json({ error: 'Bitte gib einen Betreff ein.' });
+  if (!textBody) return res.status(400).json({ error: 'Bitte schreibe eine Nachricht.' });
+
+  try {
+    const mailbox = await getMailboxForUsername(auth.username);
+    if (!mailbox) return res.status(409).json({ error: 'Richte zuerst dein @ehoser.de-Postfach ein.' });
+    const displayName = String(auth.username || 'ehoser').replace(/[\r\n"<>]/g, '').slice(0, 48) || 'ehoser';
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'User-Agent': 'ehoser-mail/1.0',
+        'Idempotency-Key': crypto.randomUUID()
+      },
+      body: JSON.stringify({
+        from: `${displayName} via ehoser <${mailbox.address}>`,
+        to: [recipientAddress],
+        reply_to: mailbox.address,
+        subject,
+        text: textBody
+      })
+    });
+    const raw = await response.text();
+    let result = {};
+    try { result = raw ? JSON.parse(raw) : {}; } catch {}
+    if (!response.ok) {
+      const message = result?.message || result?.name || result?.error || 'Resend konnte die E-Mail nicht senden.';
+      return res.status(response.status >= 400 && response.status < 500 ? 400 : 502).json({ error: message });
+    }
+
+    const providerMessageId = String(result?.id || result?.data?.id || '').trim() || null;
+    const { data: message, error } = await supabaseAdmin
+      .from('ehoser_mail_messages')
+      .insert({
+        provider_message_id: providerMessageId,
+        direction: 'outbound',
+        sender_username: auth.username,
+        sender_address: mailbox.address,
+        // Incoming mail is created by the signed Resend webhook. Keeping this
+        // null prevents a sent message from appearing in somebody else's inbox
+        // before that verified inbound event arrives.
+        recipient_username: null,
+        recipient_address: recipientAddress,
+        subject,
+        text_body: textBody,
+        status: 'sent',
+        read_at: new Date().toISOString()
+      })
+      .select('id,direction,sender_username,sender_address,recipient_address,subject,text_body,status,created_at,read_at')
+      .single();
+    if (error) throw error;
+    res.status(201).json({ message });
+  } catch (error) {
+    console.error('Mailbox send failed:', error?.message || error);
+    res.status(500).json({ error: 'Die E-Mail wurde nicht gespeichert. Bitte prüfe dein Postfach, bevor du es erneut versuchst.' });
   }
 });
 
@@ -3570,6 +3787,154 @@ function parseChatMemberState(row) {
   } catch {
     return null;
   }
+}
+
+function normalizeEmailAddress(value) {
+  const source = typeof value === 'object' && value
+    ? (value.email || value.address || value.value || '')
+    : String(value || '');
+  const bracketed = String(source).match(/<\s*([^<>\s]+@[^<>\s]+)\s*>/);
+  const candidate = (bracketed?.[1] || String(source).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '')
+    .trim()
+    .toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate.slice(0, 320) : '';
+}
+
+function normalizeEhoserMailboxLocalPart(value) {
+  const local = String(value || '').trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])?$/.test(local)) return null;
+  return local;
+}
+
+function mailboxAddressForLocalPart(localPart) {
+  return `${localPart}@${EHOSER_MAIL_DOMAIN}`;
+}
+
+function mailboxSummary(mailbox) {
+  if (!mailbox) return { configured: false, address: null };
+  return { configured: true, address: mailbox.address, createdAt: mailbox.created_at };
+}
+
+async function getMailboxForUsername(username) {
+  const { data, error } = await supabaseAdmin
+    .from('ehoser_mailboxes')
+    .select('username,address,created_at')
+    .eq('username', username)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function resendWebhookSignatureIsValid(headers, rawPayload) {
+  if (!RESEND_WEBHOOK_SECRET) return false;
+  const id = String(headers['svix-id'] || '').trim();
+  const timestamp = String(headers['svix-timestamp'] || '').trim();
+  const signature = String(headers['svix-signature'] || '').trim();
+  const timestampSeconds = Number(timestamp);
+  if (!id || !signature || !Number.isFinite(timestampSeconds) || Math.abs(Date.now() - timestampSeconds * 1000) > 5 * 60 * 1000) {
+    return false;
+  }
+
+  let key;
+  try {
+    key = Buffer.from(RESEND_WEBHOOK_SECRET.replace(/^whsec_/, ''), 'base64');
+  } catch {
+    return false;
+  }
+  if (!key.length) return false;
+
+  const expected = crypto
+    .createHmac('sha256', key)
+    .update(`${id}.${timestamp}.${rawPayload}`)
+    .digest('base64');
+  return signature.split(/\s+/).some((entry) => {
+    const match = entry.match(/^v1,(.+)$/);
+    if (!match) return false;
+    const actual = Buffer.from(match[1]);
+    const wanted = Buffer.from(expected);
+    return actual.length === wanted.length && crypto.timingSafeEqual(actual, wanted);
+  });
+}
+
+function collectEmailAddresses(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return [...new Set(values.map(normalizeEmailAddress).filter(Boolean))];
+}
+
+async function fetchReceivedResendEmail(emailId) {
+  if (!RESEND_API_KEY) throw new Error('RESEND_API_KEY ist nicht konfiguriert.');
+  const response = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, Accept: 'application/json' }
+  });
+  const raw = await response.text();
+  let payload = {};
+  try { payload = raw ? JSON.parse(raw) : {}; } catch {}
+  if (!response.ok) throw new Error(payload?.message || payload?.error || `Resend-Abruf fehlgeschlagen (HTTP ${response.status})`);
+  return payload?.data || payload;
+}
+
+async function storeResendInboundEmail(event) {
+  const eventData = event?.data || {};
+  const providerMessageId = String(eventData.email_id || eventData.id || '').trim();
+  if (!providerMessageId) throw new Error('Resend-WebHook enthält keine E-Mail-ID.');
+
+  // The webhook metadata is enough to route the message. This avoids fetching
+  // full mail content for an address that is not an ehoser mailbox.
+  const initialRecipients = collectEmailAddresses(eventData.to || eventData.received_for);
+  if (!initialRecipients.length) return { ignored: true };
+  const { data: recipientMailboxes, error: recipientError } = await supabaseAdmin
+    .from('ehoser_mailboxes')
+    .select('username,address')
+    .in('address', initialRecipients);
+  if (recipientError) throw recipientError;
+  if (!recipientMailboxes?.length) return { ignored: true };
+
+  const fullEmail = await fetchReceivedResendEmail(providerMessageId);
+  const recipients = collectEmailAddresses(fullEmail.to || eventData.to || eventData.received_for);
+  const recipient = recipientMailboxes.find((mailbox) => recipients.includes(String(mailbox.address).toLowerCase())) || recipientMailboxes[0];
+  const senderAddress = normalizeEmailAddress(fullEmail.from || eventData.from) || 'unbekannt@absender.invalid';
+  const { data: senderMailbox } = await supabaseAdmin
+    .from('ehoser_mailboxes')
+    .select('username')
+    .eq('address', senderAddress)
+    .maybeSingle();
+
+  const subject = String(fullEmail.subject || eventData.subject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 180);
+  const textBody = String(fullEmail.text || '').replace(/\u0000/g, '').slice(0, 200000);
+  const { error } = await supabaseAdmin.from('ehoser_mail_messages').insert({
+    provider_message_id: providerMessageId,
+    direction: 'inbound',
+    sender_username: senderMailbox?.username || null,
+    sender_address: senderAddress,
+    recipient_username: recipient.username,
+    recipient_address: recipient.address,
+    subject,
+    text_body: textBody || 'Diese E-Mail enthält keinen lesbaren Textinhalt.',
+    status: 'received'
+  });
+  // Resend can replay a webhook. The unique provider ID makes this idempotent.
+  if (error && error.code !== '23505') throw error;
+  return { ignored: false };
+}
+
+async function updateResendDeliveryStatus(event) {
+  const eventData = event?.data || {};
+  const providerMessageId = String(eventData.email_id || eventData.id || '').trim();
+  if (!providerMessageId) return;
+  const statusByEvent = {
+    'email.sent': 'sent',
+    'email.delivered': 'delivered',
+    'email.failed': 'failed',
+    'email.bounced': 'bounced'
+  };
+  const status = statusByEvent[event?.type];
+  if (!status) return;
+  const { error } = await supabaseAdmin
+    .from('ehoser_mail_messages')
+    .update({ status })
+    .eq('provider_message_id', providerMessageId)
+    .eq('direction', 'outbound');
+  if (error) throw error;
 }
 
 async function getStoredChatMemberState(groupId, username, kind) {
