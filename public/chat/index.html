@@ -12,12 +12,24 @@
 </head>
 <body>
 
+<!-- ── Account deletion recovery ───────────────────────────────────────── -->
+<div id="accountDeletionWall" class="chat-lock-wall account-deletion-wall" style="display:none" role="dialog" aria-modal="true" aria-labelledby="accountDeletionTitle">
+  <section class="chat-lock-card">
+    <div class="chat-lock-icon" aria-hidden="true">⏳</div>
+    <h2 id="accountDeletionTitle">Konto-Löschung vorgemerkt</h2>
+    <p>Dein Konto wird am <strong id="accountDeletionDeadline">–</strong> endgültig gelöscht. Bis dahin kannst du es sofort wiederherstellen.</p>
+    <button id="restoreAccountButton" class="btn-primary" type="button" onclick="restoreAccountDeletion()">Konto wiederherstellen</button>
+    <button class="btn-secondary" type="button" onclick="logoutChat()">Abmelden</button>
+    <p id="accountDeletionStatus" class="chat-lock-status" aria-live="polite"></p>
+  </section>
+</div>
+
 <!-- ── Local chat lock ─────────────────────────────────────────────────── -->
 <div id="chatLockWall" class="chat-lock-wall" style="display:none" role="dialog" aria-modal="true" aria-labelledby="chatLockTitle">
   <form class="chat-lock-card" onsubmit="submitChatLock(event)">
     <div class="chat-lock-icon" aria-hidden="true">🔒</div>
     <h2 id="chatLockTitle">Chat sperren</h2>
-    <p id="chatLockText">Lege einen vierstelligen Code fest. Er wird nur auf diesem Gerät gespeichert.</p>
+    <p id="chatLockText">Lege einen vierstelligen Code fest. Er gilt für dein Konto auf allen Geräten.</p>
     <label>4-stelliger Code
       <input id="chatLockCode" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="one-time-code" placeholder="••••" required>
     </label>
@@ -423,6 +435,14 @@
       </div>
     </section>
 
+    <section class="settings-section settings-danger-section">
+      <div class="settings-section-title"><span>⚠️</span><div><strong>Konto löschen</strong><small>Du kannst die Löschung innerhalb von 72 Stunden rückgängig machen.</small></div></div>
+      <div class="settings-danger-body">
+        <p>Nach Ablauf der Frist wird das Konto mit seinen Kontodaten und eigenen Chat-Daten endgültig gelöscht.</p>
+        <button type="button" onclick="requestAccountDeletion()">Konto-Löschung starten</button>
+      </div>
+    </section>
+
     <section id="settingsGoogleDriveSection" class="settings-section" hidden>
       <div class="settings-section-title"><span>☁️</span><div><strong>Google-Drive-Backups</strong><small>Für Bilder, Videos und andere ausgewählte Dateien</small></div></div>
       <label class="settings-select-row" for="settingsGoogleStorageMode">
@@ -576,7 +596,6 @@
 </section>
 
 <script src="app.js"></script>
-<script src="pin-lock.js"></script>
 <script src="/owner-notices.js?v=1"></script>
 </body>
 </html>
