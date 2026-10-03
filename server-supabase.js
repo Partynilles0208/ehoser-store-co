@@ -2623,7 +2623,7 @@ app.get('/api/admin/users', async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('users')
       .select('id, username, created_at')
       .order('created_at', { ascending: false });
@@ -2653,7 +2653,7 @@ app.get('/api/admin/users', async (req, res) => {
   } catch (error) {
     console.error('Admin Users Error:', error);
     res.setHeader('x-admin-offline', '1');
-    res.json([]);
+    res.status(500).json({ error: 'Registrierte Nutzer konnten nicht geladen werden' });
   }
 });
 
