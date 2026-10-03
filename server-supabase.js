@@ -34,6 +34,9 @@ const OASIS_BRIDGE_PATH = path.join(__dirname, 'scripts', 'oasis_bridge.py');
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
 const EHOSER_MAIL_DOMAIN = String(process.env.EHOSER_MAIL_DOMAIN || 'ehoser.de').trim().toLowerCase();
+const ACCOUNT_DELETION_GRACE_MS = 72 * 60 * 60 * 1000;
+const ACCOUNT_DELETION_CONFIRMATION = 'KONTO LÖSCHEN';
+const CRON_SECRET = String(process.env.CRON_SECRET || '');
 
 const authAttempts = new Map();
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
@@ -705,11 +708,31 @@ function normalizeSettings(raw) {
     oasisUsage: normalizeOasisUsage(src.oasisUsage),
     passwordHash: typeof src.passwordHash === 'string' ? src.passwordHash : undefined,
     _emailPending: (src._emailPending && typeof src._emailPending === 'object') ? src._emailPending : undefined,
+    // Der Chat-Code wird nur als bcrypt-Hash gespeichert. So funktioniert er
+    // mit demselben Account auf allen Geräten, ohne Klartext zu speichern.
+    chatLockCodeHash: typeof src.chatLockCodeHash === 'string' ? src.chatLockCodeHash.slice(0, 255) : '',
+    chatLockCodeSetAt: typeof src.chatLockCodeSetAt === 'string' && Number.isFinite(Date.parse(src.chatLockCodeSetAt))
+      ? new Date(src.chatLockCodeSetAt).toISOString() : null,
+    accountDeletion: normalizeAccountDeletion(src.accountDeletion),
     // Öffentliche E2EE-Schlüssel sind absichtlich profilweit abrufbar; private Schlüssel werden nie gespeichert.
     e2eePublicKey: (src.e2eePublicKey && typeof src.e2eePublicKey === 'object' && src.e2eePublicKey.kty === 'RSA') ? src.e2eePublicKey : undefined,
     e2eeKeyUpdatedAt: typeof src.e2eeKeyUpdatedAt === 'string' ? src.e2eeKeyUpdatedAt : undefined,
     ownerConsole
   };
+}
+
+function normalizeAccountDeletion(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const requestedAt = typeof src.requestedAt === 'string' && Number.isFinite(Date.parse(src.requestedAt))
+    ? new Date(src.requestedAt).toISOString() : null;
+  const deleteAfter = typeof src.deleteAfter === 'string' && Number.isFinite(Date.parse(src.deleteAfter))
+    ? new Date(src.deleteAfter).toISOString() : null;
+  return requestedAt && deleteAfter ? { requestedAt, deleteAfter } : null;
+}
+
+function accountDeletionIsDue(profile) {
+  const deleteAfter = profile?.settings?.accountDeletion?.deleteAfter;
+  return Boolean(deleteAfter && Number.isFinite(Date.parse(deleteAfter)) && Date.parse(deleteAfter) <= Date.now());
 }
 
 function parseChatMessagePreview(storedContent) {
@@ -1089,6 +1112,66 @@ async function upsertProfile(username, patch) {
     isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
     credits: Number(newSettings?.credits?.balance || 0)
   };
+}
+
+async function permanentlyDeleteAccount(username, userId = null) {
+  const { data: userRow } = userId
+    ? { data: { id: userId, username } }
+    : await supabaseAdmin.from('users').select('id,username').eq('username', username).maybeSingle();
+  if (!userRow?.id) return false;
+
+  const { data: ownedGroups } = await supabaseAdmin.from('chat_groups').select('id').eq('created_by', username);
+  const groupIds = (ownedGroups || []).map((group) => group.id).filter(Boolean);
+  const ignore = (request) => Promise.resolve(request).catch(() => {});
+  await Promise.all([
+    ignore(supabaseAdmin.from('installations').delete().eq('user_id', userRow.id)),
+    ignore(supabaseAdmin.from('desktop_login_requests').delete().eq('user_id', userRow.id)),
+    ignore(supabaseAdmin.from('ehoser_mail_messages').delete().eq('sender_username', username)),
+    ignore(supabaseAdmin.from('ehoser_mail_messages').delete().eq('recipient_username', username)),
+    ignore(supabaseAdmin.from('ehoser_mailboxes').delete().eq('username', username)),
+    ignore(supabaseAdmin.from('plan_requests').delete().eq('username', username)),
+    ignore(supabaseAdmin.from('referral_invites').delete().eq('inviter_username', username)),
+    ignore(supabaseAdmin.from('referral_invites').delete().eq('used_by', username)),
+    ignore(supabaseAdmin.from('chat_reports').delete().eq('reported_by', username)),
+    ignore(supabaseAdmin.from('chat_reports').delete().eq('target_username', username)),
+    ignore(supabaseAdmin.from('chat_group_admins').delete().eq('username', username)),
+    ignore(supabaseAdmin.from('chat_group_members').delete().eq('username', username)),
+    ignore(supabaseAdmin.from('chat_messages').delete().eq('sender', username)),
+    ignore(supabaseAdmin.from('chat_messages').delete().eq('sender', chatMemberStateSender(username, 'receipt'))),
+    ignore(supabaseAdmin.from('chat_messages').delete().eq('sender', chatMemberStateSender(username, 'typing')))
+  ]);
+  if (groupIds.length) {
+    await Promise.all([
+      ignore(supabaseAdmin.from('chat_messages').delete().in('group_id', groupIds)),
+      ignore(supabaseAdmin.from('chat_group_admins').delete().in('group_id', groupIds)),
+      ignore(supabaseAdmin.from('chat_group_members').delete().in('group_id', groupIds)),
+      ignore(supabaseAdmin.from('chat_group_meta').delete().in('group_id', groupIds)),
+      ignore(supabaseAdmin.from('chat_groups').delete().in('id', groupIds))
+    ]);
+  }
+  memoryProfiles.delete(username);
+  await ignore(supabaseAdmin.from('user_profiles').delete().eq('username', username));
+  const { error } = await supabaseAdmin.from('users').delete().eq('id', userRow.id);
+  if (error) throw error;
+  return true;
+}
+
+let accountDeletionCleanupRunning = false;
+async function purgeExpiredAccountDeletions() {
+  if (accountDeletionCleanupRunning) return 0;
+  accountDeletionCleanupRunning = true;
+  try {
+    const { data, error } = await supabaseAdmin.from('user_profiles').select('username,settings');
+    if (error) throw error;
+    const due = (data || []).filter((row) => accountDeletionIsDue({ settings: normalizeSettings(row.settings || {}) }));
+    let deleted = 0;
+    for (const row of due) {
+      try { if (await permanentlyDeleteAccount(row.username)) deleted += 1; } catch (error) { console.error('Scheduled account deletion failed:', row.username, error?.message || error); }
+    }
+    return deleted;
+  } finally {
+    accountDeletionCleanupRunning = false;
+  }
 }
 
 // ─── Eigentümer-Konsole ────────────────────────────────────────────────────
@@ -2388,6 +2471,10 @@ app.post('/api/verify-token', async (req, res) => {
     );
     const effectiveUsername = userRow?.username || decoded.username;
     const profile = await getProfile(effectiveUsername);
+    if (accountDeletionIsDue(profile)) {
+      await permanentlyDeleteAccount(effectiveUsername, userRow?.id || decoded.id);
+      return res.status(410).json({ error: 'Dieses Konto wurde nach Ablauf der 72-Stunden-Frist endgültig gelöscht.' });
+    }
     const moderationState = getActiveModerationState(userRow, profile);
     if (moderationState && moderationState.type !== 'warn') {
       return res.status(423).json({
@@ -2638,13 +2725,101 @@ app.put('/api/me/settings', async (req, res) => {
       // überschrieben oder versehentlich entfernt werden.
       ownerConsole: current.settings?.ownerConsole,
       googleSub: current.settings?.googleSub,
-      googleEmail: current.settings?.googleEmail
+      googleEmail: current.settings?.googleEmail,
+      chatLockCodeHash: current.settings?.chatLockCodeHash,
+      chatLockCodeSetAt: current.settings?.chatLockCodeSetAt,
+      accountDeletion: current.settings?.accountDeletion
     });
     const profile = await upsertProfile(auth.username, { settings });
     res.json({ ok: true, profile });
   } catch (error) {
     console.error('Save own settings failed:', error.message);
     res.status(500).json({ error: 'Einstellungen konnten nicht gespeichert werden' });
+  }
+});
+
+// ─── Accountweiter Chat-Sperrcode ───────────────────────────────────────────
+app.get('/api/chat/lock-status', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const profile = await getProfile(auth.username);
+  res.json({ configured: Boolean(profile.settings?.chatLockCodeHash), setAt: profile.settings?.chatLockCodeSetAt || null });
+});
+
+app.put('/api/chat/lock-code', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const code = String(req.body?.code || '').replace(/\D/g, '');
+  if (!/^\d{4}$/.test(code)) return res.status(400).json({ error: 'Der Chat-Code muss genau vier Ziffern haben.' });
+  try {
+    const current = await getProfile(auth.username);
+    const settings = {
+      ...(current.settings || {}),
+      chatLockCodeHash: await bcrypt.hash(code, 12),
+      chatLockCodeSetAt: new Date().toISOString()
+    };
+    await upsertProfile(auth.username, { settings });
+    res.json({ ok: true, configured: true });
+  } catch {
+    res.status(500).json({ error: 'Chat-Code konnte nicht gespeichert werden.' });
+  }
+});
+
+app.post('/api/chat/lock/unlock', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  const code = String(req.body?.code || '').replace(/\D/g, '');
+  const profile = await getProfile(auth.username);
+  const hash = profile.settings?.chatLockCodeHash;
+  if (!hash) return res.json({ ok: true, configured: false });
+  const valid = /^\d{4}$/.test(code) && await bcrypt.compare(code, hash).catch(() => false);
+  if (!valid) return res.status(401).json({ error: 'Der Chat-Code ist nicht korrekt.' });
+  res.json({ ok: true, configured: true });
+});
+
+// ─── Konto-Löschung mit 72-Stunden-Wiederherstellung ────────────────────────
+app.post('/api/me/delete-request', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  if (String(req.body?.confirmation || '').trim().toUpperCase() !== ACCOUNT_DELETION_CONFIRMATION) {
+    return res.status(400).json({ error: 'Bestätige die Löschung mit „KONTO LÖSCHEN“.' });
+  }
+  try {
+    const current = await getProfile(auth.username);
+    const requestedAt = new Date();
+    const settings = { ...(current.settings || {}), accountDeletion: {
+      requestedAt: requestedAt.toISOString(),
+      deleteAfter: new Date(requestedAt.valueOf() + ACCOUNT_DELETION_GRACE_MS).toISOString()
+    } };
+    const profile = await upsertProfile(auth.username, { settings });
+    res.json({ ok: true, profile, deleteAfter: profile.settings.accountDeletion.deleteAfter });
+  } catch {
+    res.status(500).json({ error: 'Die Konto-Löschung konnte nicht vorgemerkt werden.' });
+  }
+});
+
+app.post('/api/me/delete-cancel', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  try {
+    const current = await getProfile(auth.username);
+    const settings = { ...(current.settings || {}) };
+    delete settings.accountDeletion;
+    const profile = await upsertProfile(auth.username, { settings });
+    res.json({ ok: true, profile });
+  } catch {
+    res.status(500).json({ error: 'Die Konto-Wiederherstellung konnte nicht gespeichert werden.' });
+  }
+});
+
+app.get('/api/internal/account-deletion-cleanup', async (req, res) => {
+  const authorization = String(req.headers.authorization || '');
+  if (!CRON_SECRET || authorization !== `Bearer ${CRON_SECRET}`) return res.status(401).json({ error: 'Nicht autorisiert' });
+  try {
+    const deleted = await purgeExpiredAccountDeletions();
+    res.json({ ok: true, deleted });
+  } catch {
+    res.status(500).json({ error: 'Bereinigung fehlgeschlagen' });
   }
 });
 
