@@ -3,6 +3,7 @@ const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : 
 const API = API_ORIGIN + '/api';
 const CHAT_CACHE_VERSION = 'v3';
 const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
+const CHAT_LOCK_CODE_KEY = 'ehoserChatLocalLockCode';
 // The interface is refreshed every second while an online list is visible.
 // Heartbeats are deliberately less frequent so the database is not written to
 // every second for every open chat.
@@ -122,6 +123,7 @@ let _unreadByGroup = {};
 let _unreadActivityAtByGroup = {};
 let _lastNotificationSoundAt = 0;
 let _chatStarted = false;
+let _chatLockMode = 'setup';
 let _activeMembers = [];
 let _mailbox = null;
 let _mailboxMessages = [];
@@ -493,6 +495,85 @@ function prepareChatAuthWall(message = '') {
     initChatGoogleAuth();
 }
 
+function chatLocalLockCode() {
+    try { return String(localStorage.getItem(CHAT_LOCK_CODE_KEY) || ''); } catch { return ''; }
+}
+
+function setChatLockStatus(message = '', error = false) {
+    const status = document.getElementById('chatLockStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('error', error);
+}
+
+function showChatLockWall(mode = 'setup') {
+    _chatLockMode = mode;
+    const wall = document.getElementById('chatLockWall');
+    const title = document.getElementById('chatLockTitle');
+    const text = document.getElementById('chatLockText');
+    const confirmWrap = document.getElementById('chatLockConfirmWrap');
+    const confirm = document.getElementById('chatLockConfirm');
+    const submit = document.getElementById('chatLockSubmit');
+    if (!wall) return;
+    const unlocking = mode === 'unlock';
+    if (title) title.textContent = unlocking ? 'Chat entsperren' : 'Chat sperren';
+    if (text) text.textContent = unlocking
+        ? 'Gib deinen vierstelligen Chat-Code ein.'
+        : 'Lege einen vierstelligen Code fest. Er wird nur auf diesem Gerät gespeichert.';
+    if (confirmWrap) confirmWrap.style.display = unlocking ? 'none' : 'grid';
+    if (confirm) { confirm.required = !unlocking; confirm.value = ''; }
+    if (submit) submit.textContent = unlocking ? 'Chat öffnen' : 'Code speichern';
+    document.getElementById('chatLockCode').value = '';
+    setChatLockStatus('');
+    wall.style.display = 'flex';
+    setTimeout(() => document.getElementById('chatLockCode')?.focus(), 40);
+}
+
+function hideChatLockWall() {
+    const wall = document.getElementById('chatLockWall');
+    if (wall) wall.style.display = 'none';
+}
+
+function openChatLock() {
+    if (!chatLocalLockCode()) {
+        showChatLockWall('setup');
+        return;
+    }
+    document.getElementById('chatApp').style.display = 'none';
+    showChatLockWall('unlock');
+}
+
+async function submitChatLock(event) {
+    event.preventDefault();
+    const code = String(document.getElementById('chatLockCode')?.value || '').replace(/\D/g, '');
+    const confirm = String(document.getElementById('chatLockConfirm')?.value || '').replace(/\D/g, '');
+    if (!/^\d{4}$/.test(code)) {
+        setChatLockStatus('Bitte genau vier Ziffern eingeben.', true);
+        return;
+    }
+    if (_chatLockMode === 'setup') {
+        if (code !== confirm) {
+            setChatLockStatus('Die beiden Codes stimmen nicht überein.', true);
+            return;
+        }
+        localStorage.setItem(CHAT_LOCK_CODE_KEY, code);
+        hideChatLockWall();
+        setChatLockStatus('');
+        return;
+    }
+    if (code !== chatLocalLockCode()) {
+        setChatLockStatus('Der Code ist nicht korrekt.', true);
+        document.getElementById('chatLockCode')?.select();
+        return;
+    }
+    hideChatLockWall();
+    if (_chatStarted) {
+        show('chatApp');
+    } else {
+        await finishChatBoot();
+    }
+}
+
 function saveChatAuth(data, username, accessCode) {
     localStorage.setItem('token', data.token);
     localStorage.setItem(CHAT_ACCESS_CODE_KEY, accessCode);
@@ -697,6 +778,10 @@ function logoutChat() {
         showNotificationWall(window.Notification?.permission === 'denied'
             ? 'Benachrichtigungen sind blockiert. Erlaube sie in den Website-Einstellungen und lade die Seite neu.'
             : '');
+        return;
+    }
+    if (chatLocalLockCode()) {
+        showChatLockWall('unlock');
         return;
     }
     await finishChatBoot();
