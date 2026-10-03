@@ -19,6 +19,7 @@ function parseServerDate(value) {
 
 const ENTRY_ACCESS_CODE = '020818';
 const ENTRY_UNLOCK_KEY = 'ehoserEntryUnlocked';
+const ENTRY_ACCESS_CODE_KEY = 'ehoserEntryAccessCode';
 const ENTRY_CHOICE_KEY = 'ehoserEntryChoice';
 const DESKTOP_AUTH_KEY = 'ehoserDesktopActivated';
 const DESKTOP_USER_CACHE_KEY = 'ehoserDesktopUserCache';
@@ -2108,6 +2109,15 @@ function isEntryUnlocked() {
     return localStorage.getItem(ENTRY_UNLOCK_KEY) === '1';
 }
 
+function syncEntryAccessCodeToAuthForms() {
+    const accessCode = localStorage.getItem(ENTRY_ACCESS_CODE_KEY) || '';
+    if (!accessCode) return;
+    ['unlockCode', 'loginUnlockCode'].forEach((id) => {
+        const input = document.getElementById(id);
+        if (input && !input.value) input.value = accessCode;
+    });
+}
+
 function showEntryGate(choiceVisible = false, message = '') {
     const gate = document.getElementById('entryGate');
     const choiceCard = document.getElementById('entryChoiceCard');
@@ -2140,14 +2150,16 @@ function submitEntryCode() {
     }
 
     localStorage.setItem(ENTRY_UNLOCK_KEY, '1');
-    if (help) help.textContent = 'Code akzeptiert. Bitte wähle jetzt deinen Bereich.';
-    showEntryGate(true);
+    localStorage.setItem(ENTRY_ACCESS_CODE_KEY, code);
+    syncEntryAccessCodeToAuthForms();
+    if (help) help.textContent = 'Code akzeptiert. Das Control Center wird geöffnet…';
+    enterControlCenter();
 }
 
 function enterControlCenter() {
     localStorage.setItem(ENTRY_CHOICE_KEY, 'control-center');
     hideEntryGate();
-    showSection('auth');
+    showSection('mode-select');
     window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
@@ -2162,6 +2174,7 @@ function initEntryGate() {
     if (!input) return;
 
     if (isEntryUnlocked()) {
+        syncEntryAccessCodeToAuthForms();
         hideEntryGate();
         return;
     }
@@ -3440,7 +3453,8 @@ async function startApp() {
     allApps = [];
     localStorage.removeItem('proStatus');
     showLoggedOutUI();
-    showSection('auth');
+    syncEntryAccessCodeToAuthForms();
+    showSection('mode-select');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -3658,8 +3672,13 @@ async function handleRegister(event) {
 }
 
 function openStandaloneChat() {
+    if (!localStorage.getItem('token') && !isAdminGuestPreview()) {
+        showAlert('Bitte melde dich zuerst oben rechts an, um den Chat zu öffnen.', 'error');
+        showSection('auth');
+        return;
+    }
     const isLocalDev = /localhost|127\.0\.0\.1/.test(window.location.hostname);
-    const url = isLocalDev ? `${window.location.origin}/chat` : 'https://ehoser.de/chat';
+    const url = isLocalDev ? window.location.origin + '/chat' : 'https://ehoser.de/chat';
     window.location.href = url;
 }
 
@@ -4296,6 +4315,11 @@ async function copyUnlockCode() {
 }
 
 function selectMode(mode) {
+    if (mode !== 'store' && !localStorage.getItem('token') && !isAdminGuestPreview()) {
+        showAlert('Dieser Bereich ist für Gäste gesperrt. Bitte oben rechts anmelden.', 'error');
+        showSection('auth');
+        return;
+    }
     if (isDesktopMode() && DESKTOP_ONLINE_MODES.has(mode)) {
         const names = {
             games: 'Online Spiele',
