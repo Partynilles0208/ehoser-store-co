@@ -2433,7 +2433,8 @@ async function sendMessage() {
     const storedContent = await encryptChatContent(_activeGroupId, plainContent);
     const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
     if (!ticTacToeTest) {
-        appendMessage(tempMessage, storedContent);
+        // Store ciphertext, but render the local plaintext immediately.
+        appendMessage(tempMessage, plainContent);
         persistMessages(_activeGroupId, [tempMessage]);
     }
     try {
@@ -2446,7 +2447,7 @@ async function sendMessage() {
         const finalMessage = { id, sender: _me.username, created_at, content: storedContent };
         replaceCachedMessage(_activeGroupId, tempId, finalMessage);
         // finalize optimistic message (upgrade pending element or append if missing)
-        finalizePendingMessage(tempId, id, created_at, storedContent, storedContent);
+        finalizePendingMessage(tempId, id, created_at, storedContent, plainContent);
         _lastMsgId[_activeGroupId] = id;
         if (_summaryAiEnabled && _meProfile?.isPro) {
             setTimeout(() => triggerChatAiSummary(), 300);
@@ -2463,12 +2464,13 @@ async function sendMediaMessage(payload) {
     const plainContent = JSON.stringify(payload);
     const storedContent = await encryptChatContent(_activeGroupId, plainContent);
     const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
-    appendMessage(tempMessage, storedContent);
+    // Store ciphertext, but render the local plaintext immediately.
+    appendMessage(tempMessage, plainContent);
     persistMessages(_activeGroupId, [tempMessage]);
     try {
         const { id, created_at } = await api('/chat/messages', 'POST', { groupId: _activeGroupId, content: storedContent });
         replaceCachedMessage(_activeGroupId, tempId, { id, sender: _me.username, created_at, content: storedContent });
-        finalizePendingMessage(tempId, id, created_at, storedContent, storedContent);
+        finalizePendingMessage(tempId, id, created_at, storedContent, plainContent);
         _lastMsgId[_activeGroupId] = id;
         const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
     } catch (e) { const el = document.querySelector(`[data-tempid="${tempId}"]`); if (el) el.classList.add('send-failed'); toast('Senden fehlgeschlagen: ' + e.message, 'err'); }
