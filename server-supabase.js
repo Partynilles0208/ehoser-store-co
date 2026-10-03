@@ -5300,6 +5300,34 @@ app.post('/api/chat/messages', async (req, res) => {
   res.json({ id: data.id, created_at: data.created_at });
 });
 
+// GET /api/chat/messages/:groupId/export — vollständigen Chat für ein Mitglied exportieren
+app.get('/api/chat/messages/:groupId/export', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId } = req.params;
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+
+  async function loadExportRows(fields) {
+    const rows = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await createChatMessageQuery(groupId, fields)
+        .order('id', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) return { error };
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) return { rows };
+    }
+  }
+
+  let result = await loadExportRows(CHAT_MESSAGE_FIELDS);
+  if (result.error && isMissingChatMessageMetadata(result.error)) {
+    result = await loadExportRows(LEGACY_CHAT_MESSAGE_FIELDS);
+  }
+  if (result.error) return res.status(500).json({ error: 'Chat-Export konnte nicht erstellt werden' });
+  res.json({ messages: (result.rows || []).map(publicChatMessage) });
+});
+
 // GET /api/chat/messages/:groupId?after=<id>&changedAfter=<ISO time> — Nachrichten abrufen (polling)
 app.get('/api/chat/messages/:groupId', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
