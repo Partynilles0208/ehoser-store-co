@@ -23,6 +23,19 @@
   </div>
 </div>
 
+<!-- ── Chat-Sperre ───────────────────────────────────────────────────────── -->
+<div id="chatPinWall" class="chat-pin-wall" style="display:none" role="dialog" aria-modal="true" aria-labelledby="chatPinTitle">
+  <div class="chat-pin-box">
+    <div class="chat-pin-icon" aria-hidden="true">🔒</div>
+    <h2 id="chatPinTitle">Chat sperren</h2>
+    <p id="chatPinText">Lege einen vierstelligen Code für diesen Browser fest.</p>
+    <label>4-stelliger Code<input id="chatPinInput" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="[0-9]{4}" placeholder="••••"></label>
+    <label id="chatPinConfirmWrap">Code wiederholen<input id="chatPinConfirmInput" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="[0-9]{4}" placeholder="••••"></label>
+    <button id="chatPinSubmit" class="btn-primary" type="button" onclick="submitChatPin()">Code speichern</button>
+    <p id="chatPinHelp" class="chat-pin-help" aria-live="polite"></p>
+  </div>
+</div>
+
 <!-- ── Login Wall ─────────────────────────────────────────────────────────── -->
 <div id="loginWall" class="login-wall" style="display:none">
   <div class="login-wall-box">
@@ -73,6 +86,7 @@
         <button id="mailboxButton" type="button" onclick="openMailbox()" aria-label="Postfach öffnen" title="Postfach">✉<span id="mailboxUnreadBadge" class="mailbox-unread-badge" hidden>0</span></button>
         <button id="onlineListButton" type="button" onclick="toggleOnlineList()" aria-label="Online-Liste öffnen" title="Online-Liste">●</button>
         <button id="chatSettingsButton" type="button" onclick="openChatSettings()" aria-label="Einstellungen öffnen" title="Einstellungen">⚙</button>
+        <button id="chatLockButton" type="button" onclick="openChatLock()" aria-label="Chat sperren" title="Chat sperren">🔒</button>
         <button type="button" onclick="openNewGroupModal()" aria-label="Neuen Chat erstellen" title="Neuer Chat">＋</button>
       </div>
     </div>
