@@ -1625,19 +1625,20 @@ async function selectGroup(gid) {
     _topbarMemberText = chatText('loadingMembers');
     updateTypingIndicator([]);
     const cachedMessages = getCachedMessages(gid);
+    let e2eeReady = true;
     try {
         await ensureE2eeForGroup(gid);
         await decryptMessagesForGroup(gid, cachedMessages);
         migrateGroupHistory(gid);
     } catch (error) {
+        e2eeReady = false;
         const area = document.getElementById('messagesArea');
         if (area) area.innerHTML = '<div class="msg-loading">Sicherer Schlüssel wird vorbereitet…</div>';
-        // The regular message poll retries in the background. Do not render
-        // cached ciphertext or a half-decrypted conversation meanwhile.
+        // Continue loading group members: calls must stay available even while
+        // encrypted messages are temporarily waiting for their key.
         console.warn('E2EE-Vorbereitung wartet:', error?.message || error);
-        return;
     }
-    if (cachedMessages.length) renderCachedMessages(gid, cachedMessages);
+    if (e2eeReady && cachedMessages.length) renderCachedMessages(gid, cachedMessages);
     else document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden geladen…</div>';
     _activeMembers = [];
     updateCallButtons();
