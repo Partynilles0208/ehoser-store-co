@@ -2422,6 +2422,7 @@ app.get('/api/online-users', async (req, res) => {
   const guestCount = guestPresence.size;
 
   const visibleRows = [...(data || [])];
+  let ownerPresenceMode = 'automatic';
   // The ehoser owner may choose a visible status independently from the last
   // heartbeat. It is read from the profile rather than changing last_seen.
   try {
@@ -2431,6 +2432,7 @@ app.get('/api/online-users', async (req, res) => {
       .eq('username', ADMIN_PRESENCE_USERNAME)
       .maybeSingle();
     const mode = getPresenceOverride(ADMIN_PRESENCE_USERNAME, normalizeSettings(ownerProfile?.settings || {}));
+    ownerPresenceMode = mode;
     const ownerIndex = visibleRows.findIndex((row) => String(row?.username || '').toLowerCase() === ADMIN_PRESENCE_USERNAME);
     if (mode === 'force_offline' && ownerIndex >= 0) {
       visibleRows.splice(ownerIndex, 1);
@@ -2447,6 +2449,32 @@ app.get('/api/online-users', async (req, res) => {
       }
     }
   } catch {}
+
+  // A signed-in chat session is active right now, even when the database read
+  // races the heartbeat update by a few milliseconds. Include that account in
+  // the same response so the F8 list can never claim that nobody is online
+  // while the current person is using the chat. The owner's explicit
+  // "always offline" setting still wins.
+  if (authUser?.username) {
+    const ownName = String(authUser.username).trim();
+    const ownKey = ownName.toLowerCase();
+    const ownerForcedOffline = ownKey === ADMIN_PRESENCE_USERNAME && ownerPresenceMode === 'force_offline';
+    if (!ownerForcedOffline) {
+      const ownIndex = visibleRows.findIndex((row) => String(row?.username || '').trim().toLowerCase() === ownKey);
+      if (ownIndex >= 0) {
+        visibleRows[ownIndex] = { ...visibleRows[ownIndex], last_seen: new Date().toISOString() };
+      } else {
+        try {
+          const { data: own } = await supabaseAdmin
+            .from('users')
+            .select('username,last_seen')
+            .eq('username', ownName)
+            .maybeSingle();
+          if (own?.username) visibleRows.unshift({ ...own, last_seen: new Date().toISOString() });
+        } catch {}
+      }
+    }
+  }
 
   const users = [];
   if (authUser) {
