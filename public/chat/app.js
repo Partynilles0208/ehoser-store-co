@@ -192,9 +192,13 @@ function e2eeB64ToBytes(value) {
     for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
     return out;
 }
-function isE2eePayload(value) {
+function encryptedPayloadInfo(value) {
     const payload = safeJsonParse(value, null);
-    return Boolean(payload && payload.e2ee === 1 && payload.alg === 'A256GCM' && payload.iv && payload.c);
+    if (!payload || typeof payload !== 'object' || !payload.iv || !payload.c) return null;
+    return { payload, current: payload.e2ee === 1 && payload.alg === 'A256GCM' };
+}
+function isE2eePayload(value) {
+    return Boolean(encryptedPayloadInfo(value)?.current);
 }
 function openE2eeDb() {
     return new Promise((resolve, reject) => {
@@ -1330,7 +1334,12 @@ async function uploadFile(file, onLabel) {
 
 // Ciphertext is decrypted only in this browser. Plaintext remains in memory only.
 function readStoredMessage(value) {
-    if (isE2eePayload(value)) return _e2eePlaintexts.has(value) ? _e2eePlaintexts.get(value) : null;
+    const encrypted = encryptedPayloadInfo(value);
+    if (encrypted) {
+        // Old encryption from the removed system has no compatible local key.
+        // Never render its raw cipher text as if it were a chat message.
+        return encrypted.current && _e2eePlaintexts.has(value) ? _e2eePlaintexts.get(value) : null;
+    }
     return typeof value === 'string' ? value : JSON.stringify(value || '');
 }
 
