@@ -5023,21 +5023,33 @@ const E2EE_KEY_ENVELOPE_PREFIX = '__ehoser_e2ee_key__:';
 function e2eeKeyEnvelopeSender(username) {
   return E2EE_KEY_ENVELOPE_PREFIX + String(username || '').trim();
 }
-// The current database intentionally has no encrypted_group_key column. Store
-// envelopes in hidden system rows instead, so E2EE works without a schema change.
+// Prefer the old dedicated column whenever it is available. Existing chats may
+// already have valid envelopes there; falling back to hidden system rows keeps
+// E2EE working on databases where that column was removed.
 async function getE2eeMemberRows(groupId) {
+  const columnResult = await supabaseAdmin.from('chat_group_members')
+    .select('username,encrypted_group_key').eq('group_id', groupId);
+  const columnMissing = /encrypted_group_key.*(does not exist|could not find|schema cache)/i.test(String(columnResult.error?.message || ''));
+  if (!columnResult.error) {
+    return {
+      data: (columnResult.data || []).map((member) => ({ username: member.username, wrappedKey: String(member.encrypted_group_key || '') })),
+      error: null,
+      storage: 'column'
+    };
+  }
+  if (!columnMissing) return { data: [], error: columnResult.error, storage: 'messages' };
   const [{ data: members, error: membersError }, { data: envelopes, error: envelopeError }] = await Promise.all([
     supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId),
     supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content').eq('group_id', groupId)
       .like('sender', E2EE_KEY_ENVELOPE_PREFIX + '%').order('id', { ascending: false })
   ]);
-  if (membersError || envelopeError) return { data: [], error: membersError || envelopeError };
+  if (membersError || envelopeError) return { data: [], error: membersError || envelopeError, storage: 'messages' };
   const wrappedByUsername = new Map();
   for (const row of envelopes || []) {
     const username = String(row.sender || '').slice(E2EE_KEY_ENVELOPE_PREFIX.length);
     if (username && !wrappedByUsername.has(username)) wrappedByUsername.set(username, String(row.encrypted_content || ''));
   }
-  return { data: (members || []).map((member) => ({ username: member.username, wrappedKey: wrappedByUsername.get(member.username) || '' })), error: null };
+  return { data: (members || []).map((member) => ({ username: member.username, wrappedKey: wrappedByUsername.get(member.username) || '' })), error: null, storage: 'messages' };
 }
 
 // Ein Mitglied kann nur seine eigene Schlüssel-Hülle laden. Öffentliche Schlüssel
@@ -5083,6 +5095,11 @@ app.put('/api/chat/groups/:id/e2ee', async (req, res) => {
     const username = String(item?.username || '').trim();
     const wrappedKey = String(item?.wrappedKey || '');
     if (!validMembers.has(username) || !wrappedKey || wrappedKey.length > 20000) return res.status(400).json({ error: 'Ungültige Schlüssel-Hülle' });
+    if (currentKeys.storage === 'column') {
+      const result = await supabaseAdmin.from('chat_group_members').update({ encrypted_group_key: wrappedKey }).eq('group_id', id).eq('username', username);
+      if (result.error) return res.status(500).json({ error: 'Schlüssel konnte nicht gespeichert werden' });
+      continue;
+    }
     const sender = e2eeKeyEnvelopeSender(username);
     const { data: existing, error: lookupError } = await supabaseAdmin.from('chat_messages').select('id')
       .eq('group_id', id).eq('sender', sender).order('id', { ascending: false }).limit(1);
