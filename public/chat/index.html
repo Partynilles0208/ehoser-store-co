@@ -12,6 +12,23 @@
 </head>
 <body>
 
+<!-- ── Local chat lock ─────────────────────────────────────────────────── -->
+<div id="chatLockWall" class="chat-lock-wall" style="display:none" role="dialog" aria-modal="true" aria-labelledby="chatLockTitle">
+  <form class="chat-lock-card" onsubmit="submitChatLock(event)">
+    <div class="chat-lock-icon" aria-hidden="true">🔒</div>
+    <h2 id="chatLockTitle">Chat sperren</h2>
+    <p id="chatLockText">Lege einen vierstelligen Code fest. Er wird nur auf diesem Gerät gespeichert.</p>
+    <label>4-stelliger Code
+      <input id="chatLockCode" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="one-time-code" placeholder="••••" required>
+    </label>
+    <label id="chatLockConfirmWrap">Code wiederholen
+      <input id="chatLockConfirm" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="one-time-code" placeholder="••••" required>
+    </label>
+    <button id="chatLockSubmit" class="btn-primary" type="submit">Code speichern</button>
+    <p id="chatLockStatus" class="chat-lock-status" aria-live="polite"></p>
+  </form>
+</div>
+
 <!-- ── Notification permission wall ─────────────────────────────────────── -->
 <div id="notificationWall" class="notification-wall" style="display:none">
   <div class="notification-wall-box">
@@ -20,19 +37,6 @@
     <p>Für ehoser Chat sind Benachrichtigungen Pflicht. Sie werden nur für neue Chat-Nachrichten und eingehende Anrufe verwendet.</p>
     <button id="notificationEnableBtn" class="btn-primary" onclick="enableChatNotifications()">Benachrichtigungen erlauben</button>
     <p id="notificationHelp" class="notification-help"></p>
-  </div>
-</div>
-
-<!-- ── Chat-Sperre ───────────────────────────────────────────────────────── -->
-<div id="chatPinWall" class="chat-pin-wall" style="display:none" role="dialog" aria-modal="true" aria-labelledby="chatPinTitle">
-  <div class="chat-pin-box">
-    <div class="chat-pin-icon" aria-hidden="true">🔒</div>
-    <h2 id="chatPinTitle">Chat sperren</h2>
-    <p id="chatPinText">Lege einen vierstelligen Code für diesen Browser fest.</p>
-    <label>4-stelliger Code<input id="chatPinInput" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="[0-9]{4}" placeholder="••••"></label>
-    <label id="chatPinConfirmWrap">Code wiederholen<input id="chatPinConfirmInput" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="[0-9]{4}" placeholder="••••"></label>
-    <button id="chatPinSubmit" class="btn-primary" type="button" onclick="submitChatPin()">Code speichern</button>
-    <p id="chatPinHelp" class="chat-pin-help" aria-live="polite"></p>
   </div>
 </div>
 
@@ -86,7 +90,6 @@
         <button id="mailboxButton" type="button" onclick="openMailbox()" aria-label="Postfach öffnen" title="Postfach">✉<span id="mailboxUnreadBadge" class="mailbox-unread-badge" hidden>0</span></button>
         <button id="onlineListButton" type="button" onclick="toggleOnlineList()" aria-label="Online-Liste öffnen" title="Online-Liste">●</button>
         <button id="chatSettingsButton" type="button" onclick="openChatSettings()" aria-label="Einstellungen öffnen" title="Einstellungen">⚙</button>
-        <button id="chatLockButton" type="button" onclick="openChatLock()" aria-label="Chat sperren" title="Chat sperren">🔒</button>
         <button type="button" onclick="openNewGroupModal()" aria-label="Neuen Chat erstellen" title="Neuer Chat">＋</button>
       </div>
     </div>
@@ -138,6 +141,7 @@
           <button id="videoCallBtn" class="call-icon-btn" onclick="startCall('video')" title="Videoanruf starten" aria-label="Videoanruf starten" disabled>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6.8A1.8 1.8 0 0 0 13.2 5H4.8A1.8 1.8 0 0 0 3 6.8v10.4A1.8 1.8 0 0 0 4.8 19h8.4a1.8 1.8 0 0 0 1.8-1.8v-1.7l4.1 2.55a1.25 1.25 0 0 0 1.9-1.06V7.01a1.25 1.25 0 0 0-1.9-1.06Z"/></svg>
           </button>
+          <button id="chatLockButton" class="topbar-btn topbar-btn-ghost topbar-icon-btn" type="button" onclick="openChatLock()" title="Chat sperren" aria-label="Chat sperren">🔒</button>
           <button id="chatAiSummaryToggle" class="topbar-btn topbar-btn-ghost ai-summary-toggle" onclick="toggleEhoserAiSummary()">🤖 ehoser AI</button>
           <button class="topbar-btn topbar-icon-btn" onclick="openAddMemberModal()" title="Mitglied hinzufügen" aria-label="Mitglied hinzufügen">＋</button>
           <button class="topbar-btn topbar-btn-ghost topbar-icon-btn" onclick="openMembersModal()" title="Mitglieder anzeigen" aria-label="Mitglieder anzeigen">👥</button>
