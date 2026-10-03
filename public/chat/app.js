@@ -289,9 +289,17 @@ async function decryptChatContent(groupId, stored) {
     return text;
 }
 async function decryptMessagesForGroup(groupId, messages) {
-    await Promise.all((messages || []).map(async (message) => {
-        try { await decryptChatContent(groupId, message.content); } catch { _e2eePlaintexts.set(message.content, null); }
+    const results = await Promise.all((messages || []).map(async (message) => {
+        try {
+            await decryptChatContent(groupId, message.content);
+            return null;
+        } catch (error) {
+            _e2eePlaintexts.set(message.content, null);
+            return isE2eePayload(message.content) ? error : null;
+        }
     }));
+    const error = results.find(Boolean);
+    if (error) throw new Error('Verschlüsselte Nachrichten konnten auf diesem Gerät nicht geöffnet werden. Bitte warte kurz und lade den Chat erneut.');
 }
 async function migrateGroupHistory(groupId) {
     if (_e2eeMigrated.has(groupId)) return;
@@ -1622,7 +1630,12 @@ async function selectGroup(gid) {
         await decryptMessagesForGroup(gid, cachedMessages);
         migrateGroupHistory(gid);
     } catch (error) {
-        toast('Verschlüsselung konnte nicht vorbereitet werden: ' + (error?.message || error), 'err');
+        const area = document.getElementById('messagesArea');
+        if (area) area.innerHTML = '<div class="msg-loading">Sicherer Schlüssel wird vorbereitet…</div>';
+        // The regular message poll retries in the background. Do not render
+        // cached ciphertext or a half-decrypted conversation meanwhile.
+        console.warn('E2EE-Vorbereitung wartet:', error?.message || error);
+        return;
     }
     if (cachedMessages.length) renderCachedMessages(gid, cachedMessages);
     else document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden geladen…</div>';
