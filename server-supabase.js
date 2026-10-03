@@ -1630,7 +1630,7 @@ app.post('/api/login', async (req, res) => {
 
     clearAttempts(clientKey);
 
-    try { await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', data.id); } catch {}
+    try { await supabaseAdmin.from('users').update({ last_seen: new Date().toISOString() }).eq('id', data.id); } catch {}
 
     const isAdmin = false;
     const token = jwt.sign(
@@ -1936,7 +1936,7 @@ app.post('/api/verify-token', async (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     let userRow = null;
     try {
-      const { data } = await supabase
+      const { data } = await supabaseAdmin
         .from('users')
         .select('id,username,banned_until,ban_reason')
         .eq('id', decoded.id)
@@ -1945,7 +1945,7 @@ app.post('/api/verify-token', async (req, res) => {
     } catch {}
 
     // last_seen aktualisieren (Fehler ignorieren)
-    try { await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id); } catch {}
+    try { await supabaseAdmin.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id); } catch {}
     const refreshedToken = jwt.sign(
       { id: decoded.id, username: decoded.username, isAdmin: Boolean(decoded.isAdmin) },
       JWT_SECRET,
@@ -2413,7 +2413,7 @@ app.get('/api/online-users', async (req, res) => {
   const authUser = optionalAuth(req);
 
   const since = new Date(Date.now() - CHAT_PRESENCE_WINDOW_MS).toISOString();
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('users')
     .select('username,last_seen')
     .gte('last_seen', since)
@@ -2505,13 +2505,27 @@ app.post('/api/guest-heartbeat', async (req, res) => {
 app.post('/api/heartbeat', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Nicht angemeldet' });
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    await supabase.from('users').update({ last_seen: new Date().toISOString() }).eq('id', decoded.id);
-    res.json({ ok: true });
+    decoded = jwt.verify(token, JWT_SECRET);
   } catch {
-    res.status(401).json({ error: 'Ungültiger Token' });
+    return res.status(401).json({ error: 'Ungültiger Token' });
   }
+
+  const seenAt = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .update({ last_seen: seenAt })
+    .eq('id', decoded.id)
+    .select('username,last_seen')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Heartbeat update failed:', error.message);
+    return res.status(500).json({ error: 'Online-Status konnte nicht aktualisiert werden' });
+  }
+  if (!data) return res.status(404).json({ error: 'Nutzerkonto nicht gefunden' });
+  res.json({ ok: true, username: data.username, last_seen: data.last_seen || seenAt });
 });
 
 // Alle Apps abrufen
