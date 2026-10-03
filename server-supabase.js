@@ -5063,7 +5063,12 @@ app.put('/api/chat/groups/:id/e2ee', async (req, res) => {
   if (!keys.length || keys.length > 200) return res.status(400).json({ error: 'Keine Schlüssel angegeben' });
   const { data: group } = await supabaseAdmin.from('chat_groups').select('created_by').eq('id', id).maybeSingle();
   if (!group) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
-  if (!await isGroupAdmin(id, user.username, group.created_by)) return res.status(403).json({ error: 'Nur Gruppenadmins dürfen Schlüssel setzen' });
+  const isAdmin = await isGroupAdmin(id, user.username, group.created_by);
+  // The very first key setup may be done by any member. Afterwards only admins
+  // can add a new device/member envelope, so nobody can silently replace keys.
+  const currentKeys = await getE2eeMemberRows(id);
+  const initialSetup = !currentKeys.error && (currentKeys.data || []).every((member) => !member.encrypted_group_key);
+  if (!isAdmin && !initialSetup) return res.status(403).json({ error: 'Nur Gruppenadmins dürfen weitere Schlüssel setzen' });
   for (const item of keys) {
     const username = String(item?.username || '').trim();
     const wrappedKey = String(item?.wrappedKey || '');
