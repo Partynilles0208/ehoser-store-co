@@ -123,6 +123,9 @@ let _unreadActivityAtByGroup = {};
 let _lastNotificationSoundAt = 0;
 let _chatStarted = false;
 let _activeMembers = [];
+let _mailbox = null;
+let _mailboxMessages = [];
+let _mailboxRefreshTimer = null;
 let _callPoll = null;
 let _incomingCall = null;
 let _currentCall = null;
@@ -450,7 +453,6 @@ async function submitChatRegister(event) {
     event.preventDefault();
     const accessCode = document.getElementById('chatRegisterUnlockCode').value.trim();
     const username = document.getElementById('chatRegisterUsername').value.trim();
-    const email = document.getElementById('chatRegisterEmail').value.trim();
     const password = document.getElementById('chatRegisterPassword').value;
     const confirmation = document.getElementById('chatRegisterPasswordConfirm').value;
     if (password !== confirmation) {
@@ -467,7 +469,6 @@ async function submitChatRegister(event) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 username,
-                email: email || undefined,
                 password,
                 unlockCode: accessCode,
                 referralCode: new URLSearchParams(window.location.search).get('ref') || undefined
@@ -579,6 +580,7 @@ async function finishChatBoot() {
     // Always refresh from the server before showing the chat list. Local storage is
     // only a fast preview, never the source of truth for chats on another device.
     await loadGroups();
+    await ensureMailboxAfterLogin();
     await pollMessageNotifications(true);
     _poll = setInterval(pollMessages, 3000);
     _callPoll = setInterval(pollCalls, 1500);
@@ -588,6 +590,8 @@ async function finishChatBoot() {
     _presenceHeartbeat = setInterval(sendChatHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
     initHoldOnlineList();
     initSecretShortcut();
+    clearInterval(_mailboxRefreshTimer);
+    _mailboxRefreshTimer = setInterval(() => { loadMailbox(false).catch(() => {}); }, 15000);
     pollCalls();
     pollGroupCallInvites();
     document.addEventListener('click', globalClickClose);
@@ -957,6 +961,193 @@ async function api(path, method = 'GET', body = null) {
     }
     if (!r.ok) throw new Error(data?.error || 'HTTP ' + r.status);
     return data;
+}
+
+// ─── Reales @ehoser.de-Postfach ─────────────────────────────────────────────
+function setMailboxUnreadBadge(count) {
+    const badge = document.getElementById('mailboxUnreadBadge');
+    if (!badge) return;
+    const unread = Math.max(0, Number(count) || 0);
+    badge.hidden = unread === 0;
+    badge.textContent = unread > 99 ? '99+' : String(unread);
+}
+
+function mailboxTimeLabel(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) return '';
+    return date.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function mailboxStatusLabel(status) {
+    return ({ queued: 'Wird gesendet', sent: 'Gesendet', delivered: 'Zugestellt', failed: 'Fehlgeschlagen', bounced: 'Nicht zustellbar', received: 'Empfangen' })[status] || '';
+}
+
+function renderMailboxMessages() {
+    const list = document.getElementById('mailboxMessageList');
+    if (!list) return;
+    list.replaceChildren();
+    if (!_mailboxMessages.length) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-hint';
+        empty.textContent = 'Noch keine E-Mails in diesem Postfach.';
+        list.appendChild(empty);
+        return;
+    }
+    for (const message of _mailboxMessages) {
+        const item = document.createElement('article');
+        const incoming = message.direction === 'inbound';
+        item.className = 'mailbox-message ' + (incoming ? 'mailbox-incoming' : 'mailbox-outgoing') + (incoming && !message.read_at ? ' mailbox-unread' : '');
+        item.tabIndex = 0;
+        item.setAttribute('role', 'button');
+
+        const top = document.createElement('div');
+        top.className = 'mailbox-message-top';
+        const sender = document.createElement('strong');
+        sender.textContent = incoming ? (message.sender_address || 'Unbekannter Absender') : ('An: ' + (message.recipient_address || ''));
+        const time = document.createElement('time');
+        time.textContent = mailboxTimeLabel(message.created_at);
+        time.dateTime = message.created_at || '';
+        top.append(sender, time);
+
+        const subject = document.createElement('div');
+        subject.className = 'mailbox-message-subject';
+        subject.textContent = message.subject || '(ohne Betreff)';
+        const preview = document.createElement('p');
+        preview.textContent = message.text_body || '';
+        item.append(top, subject, preview);
+        if (!incoming) {
+            const status = document.createElement('small');
+            status.className = 'mailbox-message-status';
+            status.textContent = mailboxStatusLabel(message.status);
+            item.appendChild(status);
+        }
+        const openMessage = () => {
+            item.classList.toggle('mailbox-expanded');
+            if (incoming && !message.read_at) {
+                item.classList.remove('mailbox-unread');
+                markMailboxMessageRead(message.id);
+            }
+        };
+        item.addEventListener('click', openMessage);
+        item.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openMessage(); }
+        });
+        list.appendChild(item);
+    }
+}
+
+async function loadMailbox(renderWhenHidden = false) {
+    const data = await api('/mailbox');
+    _mailbox = data.mailbox || null;
+    _mailboxMessages = Array.isArray(data.messages) ? data.messages : [];
+    setMailboxUnreadBadge(data.unreadCount || 0);
+    const address = document.getElementById('mailboxAddress');
+    if (address) address.textContent = _mailbox?.address || '@ehoser.de';
+    const modal = document.getElementById('mailboxModal');
+    if (renderWhenHidden || modal?.style.display !== 'none') renderMailboxMessages();
+    return data;
+}
+
+function suggestedMailboxLocalPart() {
+    return String(_me?.username || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]/g, '')
+        .replace(/^[._-]+|[._-]+$/g, '')
+        .slice(0, 32);
+}
+
+async function ensureMailboxAfterLogin() {
+    try {
+        const data = await loadMailbox(false);
+        if (data.mailbox?.configured) return;
+        const input = document.getElementById('mailboxLocalPart');
+        if (input && !input.value) input.value = suggestedMailboxLocalPart();
+        document.getElementById('mailboxSetupStatus').textContent = '';
+        openModal('mailboxSetupModal');
+        setTimeout(() => input?.focus(), 80);
+    } catch (error) {
+        // Chat remains usable if the deployment has not received the migration yet.
+        console.warn('Mailbox could not be loaded:', error?.message || error);
+    }
+}
+
+async function claimMailbox(event) {
+    event.preventDefault();
+    const input = document.getElementById('mailboxLocalPart');
+    const status = document.getElementById('mailboxSetupStatus');
+    const button = document.getElementById('mailboxClaimButton');
+    const localPart = input?.value.trim().toLowerCase() || '';
+    button.disabled = true;
+    button.textContent = 'Wird angelegt…';
+    status.textContent = '';
+    status.classList.remove('error');
+    try {
+        const data = await api('/mailbox/claim', 'POST', { localPart });
+        _mailbox = data.mailbox;
+        closeModal('mailboxSetupModal');
+        const address = document.getElementById('mailboxAddress');
+        if (address) address.textContent = _mailbox?.address || '@ehoser.de';
+        toast('Dein echtes Postfach ' + _mailbox.address + ' ist bereit.', 'ok');
+    } catch (error) {
+        status.textContent = error?.message || 'Postfach konnte nicht angelegt werden.';
+        status.classList.add('error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Postfach anlegen';
+    }
+}
+
+async function openMailbox() {
+    try {
+        const data = await loadMailbox(true);
+        if (!data.mailbox?.configured) return ensureMailboxAfterLogin();
+        const status = document.getElementById('mailboxSendStatus');
+        status.textContent = data.sendingEnabled ? '' : 'Versand wird noch eingerichtet.';
+        status.classList.remove('error');
+        openModal('mailboxModal');
+    } catch (error) {
+        toast(error?.message || 'Postfach konnte nicht geladen werden.', 'err');
+    }
+}
+
+async function markMailboxMessageRead(messageId) {
+    try {
+        await api('/mailbox/messages/' + encodeURIComponent(messageId) + '/read', 'POST');
+        const message = _mailboxMessages.find((item) => Number(item.id) === Number(messageId));
+        if (message) message.read_at = new Date().toISOString();
+        const unread = _mailboxMessages.filter((item) => item.direction === 'inbound' && !item.read_at).length;
+        setMailboxUnreadBadge(unread);
+    } catch {
+        // Reading a mail is still possible when the status update is temporarily unavailable.
+    }
+}
+
+async function sendMailboxMessage(event) {
+    event.preventDefault();
+    const status = document.getElementById('mailboxSendStatus');
+    const button = document.getElementById('mailboxSendButton');
+    const payload = {
+        to: document.getElementById('mailboxTo').value.trim(),
+        subject: document.getElementById('mailboxSubject').value.trim(),
+        text: document.getElementById('mailboxText').value.trim()
+    };
+    button.disabled = true;
+    button.textContent = 'Wird gesendet…';
+    status.textContent = '';
+    status.classList.remove('error');
+    try {
+        const data = await api('/mailbox/messages', 'POST', payload);
+        if (data.message) _mailboxMessages.unshift(data.message);
+        document.getElementById('mailboxComposeForm').reset();
+        renderMailboxMessages();
+        toast('E-Mail wurde an Resend übergeben.', 'ok');
+    } catch (error) {
+        status.textContent = error?.message || 'E-Mail konnte nicht gesendet werden.';
+        status.classList.add('error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Senden';
+    }
 }
 
 async function uploadFile(file, onLabel) {
@@ -3282,21 +3473,31 @@ async function openChatSettings() {
     loadSettingsOnlineList();
     startSettingsOnlineRefresh();
 
-    const [accountResult, codeResult] = await Promise.allSettled([
+    const [accountResult, codeResult, mailboxResult] = await Promise.allSettled([
         api('/me'),
-        api('/me/login-code')
+        api('/me/login-code'),
+        api('/mailbox')
     ]);
     if (accountResult.status === 'fulfilled') {
         const account = accountResult.value;
         _meProfile = account.profile || _meProfile;
         document.getElementById('settingsAvatarUrl').value = _meProfile?.settings?.avatarUrl || document.getElementById('settingsAvatarUrl').value;
         refreshChatAvatarPreview();
-        const email = account.user?.email;
-        document.getElementById('settingsEmail').textContent = email || 'Keine E-Mail hinterlegt';
         document.getElementById('settingsPlan').textContent = _meProfile?.isPremium ? 'Premium' : (_meProfile?.isPro ? 'PRO' : 'Gratis');
         renderGoogleDriveBackupSettings();
     } else {
         document.getElementById('settingsEmail').textContent = 'Kontodaten konnten nicht geladen werden';
+    }
+    if (mailboxResult.status === 'fulfilled') {
+        const mailboxData = mailboxResult.value;
+        _mailbox = mailboxData.mailbox || _mailbox;
+        _mailboxMessages = Array.isArray(mailboxData.messages) ? mailboxData.messages : _mailboxMessages;
+        setMailboxUnreadBadge(mailboxData.unreadCount || 0);
+        document.getElementById('settingsEmail').textContent = _mailbox?.configured
+            ? _mailbox.address
+            : 'Noch kein @ehoser.de-Postfach angelegt';
+    } else if (accountResult.status === 'fulfilled') {
+        document.getElementById('settingsEmail').textContent = 'Postfach konnte nicht geladen werden';
     }
     if (codeResult.status === 'fulfilled') {
         _chatSettingsLoginCode = codeResult.value.loginCode || null;
