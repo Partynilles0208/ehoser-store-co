@@ -300,7 +300,7 @@ async function migrateGroupHistory(groupId) {
         const data = await api('/chat/messages/' + encodeURIComponent(groupId) + '/export');
         const changed = [];
         for (const message of data.messages || []) {
-            if (!message?.content || isE2eePayload(message.content) || message.deleted_at) continue;
+            if (!message?.content || encryptedPayloadInfo(message.content) || message.deleted_at) continue;
             changed.push({ id: message.id, content: await encryptChatContent(groupId, message.content) });
         }
         for (let offset = 0; offset < changed.length; offset += 200) {
