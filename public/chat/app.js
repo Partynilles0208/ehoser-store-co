@@ -173,6 +173,142 @@ let _settingsOnlineRequestId = 0;
 let _settingsOnlineRefreshTimer = null;
 const _chatProfiles = new Map();
 
+// E2EE: private RSA keys stay only in this browser's IndexedDB. The server stores
+// only public keys, encrypted group-key envelopes and ciphertext.
+const E2EE_DB_NAME = 'ehoser-chat-e2ee-v1';
+const E2EE_KEY_STORE = 'keys';
+const _e2eeGroupKeys = new Map();
+const _e2eePlaintexts = new Map();
+const _e2eeReady = new Map();
+const _e2eeMigrated = new Set();
+
+function e2eeBytesToB64(bytes) {
+    const array = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    let binary = ''; for (const byte of array) binary += String.fromCharCode(byte);
+    return btoa(binary);
+}
+function e2eeB64ToBytes(value) {
+    const binary = atob(String(value || '')); const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
+}
+function isE2eePayload(value) {
+    const payload = safeJsonParse(value, null);
+    return Boolean(payload && payload.e2ee === 1 && payload.alg === 'A256GCM' && payload.iv && payload.c);
+}
+function openE2eeDb() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(E2EE_DB_NAME, 1);
+        request.onupgradeneeded = () => request.result.createObjectStore(E2EE_KEY_STORE);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Sicherer Schlüsselspeicher nicht verfügbar'));
+    });
+}
+async function e2eeStoredKey(name) {
+    const db = await openE2eeDb();
+    return new Promise((resolve, reject) => {
+        const request = db.transaction(E2EE_KEY_STORE, 'readonly').objectStore(E2EE_KEY_STORE).get(name);
+        request.onsuccess = () => { db.close(); resolve(request.result || null); };
+        request.onerror = () => { db.close(); reject(request.error); };
+    });
+}
+async function e2eeSaveKey(name, key) {
+    const db = await openE2eeDb();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(E2EE_KEY_STORE, 'readwrite');
+        transaction.objectStore(E2EE_KEY_STORE).put(key, name);
+        transaction.oncomplete = () => { db.close(); resolve(); };
+        transaction.onerror = () => { db.close(); reject(transaction.error); };
+    });
+}
+async function getE2eeIdentity() {
+    let privateKey = await e2eeStoredKey('private');
+    let publicKey = await e2eeStoredKey('public');
+    if (!privateKey || !publicKey) {
+        const pair = await crypto.subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, false, ['encrypt', 'decrypt']);
+        privateKey = pair.privateKey; publicKey = pair.publicKey;
+        await Promise.all([e2eeSaveKey('private', privateKey), e2eeSaveKey('public', publicKey)]);
+    }
+    const publicJwk = await crypto.subtle.exportKey('jwk', publicKey);
+    await api('/chat/e2ee/public-key', 'POST', { publicKey: publicJwk });
+    return { privateKey };
+}
+async function e2eeWrap(rawKey, publicJwk) {
+    const key = await crypto.subtle.importKey('jwk', publicJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+    return e2eeBytesToB64(await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, key, rawKey));
+}
+async function e2eeUnwrap(wrappedKey, privateKey) {
+    return new Uint8Array(await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, privateKey, e2eeB64ToBytes(wrappedKey)));
+}
+async function ensureE2eeForGroup(groupId) {
+    if (_e2eeGroupKeys.has(groupId)) return _e2eeGroupKeys.get(groupId);
+    if (_e2eeReady.has(groupId)) return _e2eeReady.get(groupId);
+    const work = (async () => {
+        const identity = await getE2eeIdentity();
+        const state = await api('/chat/groups/' + encodeURIComponent(groupId) + '/e2ee');
+        if (state.legacyColumn) throw new Error('Die Datenbank-Migration für Ende-zu-Ende-Verschlüsselung fehlt noch.');
+        const mine = (state.members || []).find((member) => member.username === _me?.username);
+        let rawKey;
+        if (mine?.wrappedKey) {
+            rawKey = await e2eeUnwrap(mine.wrappedKey, identity.privateKey);
+        } else {
+            const members = state.members || [];
+            if (members.some((member) => member.wrappedKey)) throw new Error('Ein bestehendes Gruppenmitglied muss diesen Chat einmal öffnen, um dein Gerät sicher hinzuzufügen.');
+            if (!members.length || members.some((member) => !member.publicKey)) throw new Error('Alle Chatmitglieder müssen den Chat einmal öffnen, bevor die Verschlüsselung starten kann.');
+            rawKey = crypto.getRandomValues(new Uint8Array(32));
+            const keys = await Promise.all(members.map(async (member) => ({ username: member.username, wrappedKey: await e2eeWrap(rawKey, member.publicKey) })));
+            await api('/chat/groups/' + encodeURIComponent(groupId) + '/e2ee', 'PUT', { keys });
+        }
+        const key = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+        _e2eeGroupKeys.set(groupId, key);
+        return key;
+    })();
+    _e2eeReady.set(groupId, work);
+    try { return await work; } finally { _e2eeReady.delete(groupId); }
+}
+async function encryptChatContent(groupId, plain) {
+    const key = await ensureE2eeForGroup(groupId);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(String(plain)));
+    const payload = JSON.stringify({ e2ee: 1, v: 1, alg: 'A256GCM', iv: e2eeBytesToB64(iv), c: e2eeBytesToB64(cipher) });
+    _e2eePlaintexts.set(payload, String(plain));
+    return payload;
+}
+async function decryptChatContent(groupId, stored) {
+    if (!isE2eePayload(stored)) return typeof stored === 'string' ? stored : JSON.stringify(stored || '');
+    if (_e2eePlaintexts.has(stored)) return _e2eePlaintexts.get(stored);
+    const payload = safeJsonParse(stored, null);
+    const key = await ensureE2eeForGroup(groupId);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: e2eeB64ToBytes(payload.iv) }, key, e2eeB64ToBytes(payload.c));
+    const text = new TextDecoder().decode(plain);
+    _e2eePlaintexts.set(stored, text);
+    return text;
+}
+async function decryptMessagesForGroup(groupId, messages) {
+    await Promise.all((messages || []).map(async (message) => {
+        try { await decryptChatContent(groupId, message.content); } catch { _e2eePlaintexts.set(message.content, null); }
+    }));
+}
+async function migrateGroupHistory(groupId) {
+    if (_e2eeMigrated.has(groupId)) return;
+    _e2eeMigrated.add(groupId);
+    try {
+        const data = await api('/chat/messages/' + encodeURIComponent(groupId) + '/export');
+        const changed = [];
+        for (const message of data.messages || []) {
+            if (!message?.content || isE2eePayload(message.content) || message.deleted_at) continue;
+            changed.push({ id: message.id, content: await encryptChatContent(groupId, message.content) });
+        }
+        for (let offset = 0; offset < changed.length; offset += 200) {
+            await api('/chat/groups/' + encodeURIComponent(groupId) + '/e2ee/migrate', 'POST', { messages: changed.slice(offset, offset + 200) });
+        }
+    } catch (error) {
+        _e2eeMigrated.delete(groupId);
+        console.warn('E2EE-Migration fehlgeschlagen:', error?.message || error);
+    }
+}
+
+
 const FALLBACK_RTC_CONFIG = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -1192,11 +1328,9 @@ async function uploadFile(file, onLabel) {
     return data;
 }
 
-// New chat messages are stored as ordinary JSON text. Older encrypted records
-// cannot be decoded after encryption is disabled and are shown as legacy items.
+// Ciphertext is decrypted only in this browser. Plaintext remains in memory only.
 function readStoredMessage(value) {
-    const parsed = safeJsonParse(value, null);
-    if (parsed && typeof parsed === 'object' && parsed.iv && parsed.c) return null;
+    if (isE2eePayload(value)) return _e2eePlaintexts.has(value) ? _e2eePlaintexts.get(value) : null;
     return typeof value === 'string' ? value : JSON.stringify(value || '');
 }
 
@@ -1474,6 +1608,13 @@ async function selectGroup(gid) {
     _topbarMemberText = chatText('loadingMembers');
     updateTypingIndicator([]);
     const cachedMessages = getCachedMessages(gid);
+    try {
+        await ensureE2eeForGroup(gid);
+        await decryptMessagesForGroup(gid, cachedMessages);
+        migrateGroupHistory(gid);
+    } catch (error) {
+        toast('Verschlüsselung konnte nicht vorbereitet werden: ' + (error?.message || error), 'err');
+    }
     if (cachedMessages.length) renderCachedMessages(gid, cachedMessages);
     else document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden geladen…</div>';
     _activeMembers = [];
@@ -1629,6 +1770,8 @@ async function loadMessages(gid, initial) {
             markActiveGroupRead(gid);
             return;
         }
+        await ensureE2eeForGroup(gid);
+        await decryptMessagesForGroup(gid, messages);
         persistMessages(gid, messages);
         await fetchProBadges(messages.map((m) => m.sender));
         if (gid !== _activeGroupId) return;
@@ -2169,7 +2312,8 @@ async function editMessage(msgId, newText, row) {
     try {
         const gid = _activeGroupId;
         if (!gid) throw new Error('Keine Gruppe aktiv');
-        const response = await api('/chat/messages/' + msgId, 'PATCH', { content: JSON.stringify({ t: 'txt', v: String(newText) }) });
+        const encryptedContent = await encryptChatContent(gid, JSON.stringify({ t: 'txt', v: String(newText) }));
+        const response = await api('/chat/messages/' + msgId, 'PATCH', { content: encryptedContent });
         if (!response.message) throw new Error('Die aktualisierte Nachricht fehlt');
         updateRenderedMessageRow(row, response.message, readStoredMessage(response.message.content));
         updateCachedMessage(gid, response.message);
@@ -2263,7 +2407,8 @@ async function sendMessage() {
     inp.value = ''; inp.style.height = ''; inp.disabled = true;
     const ticTacToeTest = String(_me?.username || '').toLowerCase() === 'meisterlool_707' && text === '/test';
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-    const storedContent = JSON.stringify({ t:'txt', v:text });
+    const plainContent = JSON.stringify({ t:'txt', v:text });
+    const storedContent = await encryptChatContent(_activeGroupId, plainContent);
     const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
     if (!ticTacToeTest) {
         appendMessage(tempMessage, storedContent);
@@ -2293,7 +2438,8 @@ async function sendMediaMessage(payload) {
     if (!enforceNotificationPermission()) return;
     if (!_activeGroupId) return;
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-    const storedContent = JSON.stringify(payload);
+    const plainContent = JSON.stringify(payload);
+    const storedContent = await encryptChatContent(_activeGroupId, plainContent);
     const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
     appendMessage(tempMessage, storedContent);
     persistMessages(_activeGroupId, [tempMessage]);
