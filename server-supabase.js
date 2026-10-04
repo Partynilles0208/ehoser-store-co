@@ -5666,14 +5666,14 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
     // migration has not run yet.
     hasMessageMetadata = false;
     let legacyQuery = createChatMessageQuery(groupId, LEGACY_CHAT_MESSAGE_FIELDS);
-    legacyQuery = after
-      ? legacyQuery.gt('id', after).order('id', { ascending: true }).limit(50)
-      : legacyQuery.order('id', { ascending: false }).limit(180);
+    // Legacy tables do not have updated_at. Re-read the current chat window
+    // so replacements (for example a deleted-message notice) reach every member.
+    legacyQuery = legacyQuery.order('id', { ascending: false }).limit(180);
     ({ data, error } = await legacyQuery);
   }
   if (error) return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
 
-  const initialRows = after ? (data || []) : (data || []).slice().reverse();
+  const initialRows = (after && hasMessageMetadata) ? (data || []) : (data || []).slice().reverse();
   let changedRows = [];
   if (hasMessageMetadata && changedAfter) {
     const changedResult = await createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS)
