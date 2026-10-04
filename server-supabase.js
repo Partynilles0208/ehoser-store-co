@@ -25,6 +25,8 @@ const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'qwen/qwen3.8-27b';
 const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
+// Override this if Groq changes the Qwen model identifier in the future.
+const CHAT_AUTOCORRECT_GROQ_MODEL = process.env.CHAT_AUTOCORRECT_GROQ_MODEL || 'qwen/qwen3-32b';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
 const OASIS_DAILY_LIMIT_MS = Math.max(1000, Number(process.env.OASIS_DAILY_LIMIT_MS || 60000));
@@ -693,6 +695,8 @@ function normalizeSettings(raw) {
     chatEnterToSend: src.chatEnterToSend !== false,
     chatCompactMode: Boolean(src.chatCompactMode),
     chatShowPreviews: src.chatShowPreviews !== false,
+    // Off by default. Only an explicit user action enables sending a draft to Groq.
+    chatAutocorrectEnabled: src.chatAutocorrectEnabled === true,
     presenceOverride: normalizePresenceOverride(src.presenceOverride),
     displayName: typeof src.displayName === 'string' ? src.displayName.trim().slice(0, 40) : '',
     avatarUrl,
@@ -2737,6 +2741,47 @@ app.put('/api/me/settings', async (req, res) => {
   } catch (error) {
     console.error('Save own settings failed:', error.message);
     res.status(500).json({ error: 'Einstellungen konnten nicht gespeichert werden' });
+  }
+});
+
+// ─── Chat-Autokorrektur (freiwillig, Qwen über Groq) ───────────────────────
+app.post('/api/chat/autocorrect', async (req, res) => {
+  const auth = readAuthUser(req, res);
+  if (!auth) return;
+  res.setHeader('Cache-Control', 'no-store');
+
+  const text = String(req.body?.text || '').trim();
+  if (!text) return res.status(400).json({ error: 'Keine Nachricht zum Korrigieren.' });
+  if (text.length > 4000) return res.status(400).json({ error: 'Die Nachricht ist für die Autokorrektur zu lang.' });
+
+  const profile = await getProfile(auth.username);
+  if (profile.settings?.chatAutocorrectEnabled !== true) {
+    return res.status(403).json({ error: 'Autokorrektur ist ausgeschaltet. Es wurde kein Nachrichtentext an die KI gesendet.' });
+  }
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(503).json({ error: 'Autokorrektur ist noch nicht eingerichtet.' });
+
+  try {
+    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + groqKey },
+      body: JSON.stringify({
+        model: CHAT_AUTOCORRECT_GROQ_MODEL,
+        temperature: 0,
+        max_tokens: 700,
+        messages: [
+          { role: 'system', content: 'Du bist ausschließlich eine deutsche Autokorrektur. Gib NUR den korrigierten Originaltext zurück – ohne Erklärung, Anführungszeichen oder Markdown. Korrigiere Rechtschreibung, Groß-/Kleinschreibung und offensichtliche Grammatikfehler. Ändere niemals Bedeutung, Namen, Links, Emojis, Zahlen, Datenschutzangaben oder private Inhalte. Erfinde nichts und entferne nichts.' },
+          { role: 'user', content: text }
+        ]
+      })
+    });
+    const data = await groqResponse.json().catch(() => ({}));
+    if (!groqResponse.ok) return res.status(502).json({ error: 'Autokorrektur ist gerade nicht erreichbar.' });
+    const corrected = String(data?.choices?.[0]?.message?.content || '').trim();
+    return res.json({ text: corrected || text, model: CHAT_AUTOCORRECT_GROQ_MODEL });
+  } catch {
+    return res.status(502).json({ error: 'Autokorrektur ist gerade nicht erreichbar.' });
   }
 });
 
