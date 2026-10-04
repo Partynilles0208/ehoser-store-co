@@ -4228,6 +4228,9 @@ async function exportActiveChat() {
         const messages = Array.isArray(response?.messages) ? response.messages : [];
         const createdAt = new Date();
         const lines = [
+            'Ehoser Safety Certificate',
+            '---------------------------------------------',
+            '',
             'ehoser Chat-Export',
             'Chat: ' + groupName,
             'Erstellt: ' + createdAt.toLocaleString('de-DE'),
@@ -4242,6 +4245,17 @@ async function exportActiveChat() {
             const sender = String(message?.sender || 'ehoser AI');
             lines.push('[' + when + '] ' + sender + ': ' + chatExportMessageText(message));
         }
+        lines.push(
+            '',
+            '---------------------------------------------',
+            'Safety conditions by Ehoser safety certificate Thank you for using your ehoser.de team',
+            '',
+            'Ehoser Copyright 2026',
+            '',
+            'Do not share this chat under any circumstances for data protection reasons, we ask for your understanding your ehoser team',
+            '',
+            'Warning: This export contains deleted-message notices; deleted message content is not included.'
+        );
         const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');

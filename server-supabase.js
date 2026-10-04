@@ -6325,10 +6325,15 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
 app.delete('/api/chat/messages/:id', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { id } = req.params;
-  const { data: msgRow, error: selectError } = await supabaseAdmin.from('chat_messages').select(CHAT_MESSAGE_FIELDS).eq('id', id).maybeSingle();
-  if (selectError) return res.status(500).json({ error: 'DB Fehler' });
+  // Older installations may not have the optional message-action columns yet.
+  // In that case use the legacy fields and replace only the stored content.
+  const { data: msgRow, error: selectError, hasMetadata } = await readChatMessageForAction(id);
+  if (selectError) return res.status(500).json({ error: 'DB Fehler beim Laden der Nachricht' });
   if (!msgRow) return res.status(404).json({ error: 'Nachricht nicht gefunden' });
-  if (msgRow.deleted_at) return res.status(409).json({ error: 'Nachricht wurde bereits gelöscht' });
+  if (hasMetadata && msgRow.deleted_at) return res.status(409).json({ error: 'Nachricht wurde bereits gelöscht' });
+  if (!hasMetadata && String(msgRow.encrypted_content || '') === DELETED_CHAT_MESSAGE_CONTENT) {
+    return res.status(409).json({ error: 'Nachricht wurde bereits gelöscht' });
+  }
 
   const { data: self } = await supabaseAdmin
     .from('chat_group_members')
@@ -6340,18 +6345,22 @@ app.delete('/api/chat/messages/:id', async (req, res) => {
   if (msgRow.sender !== user.username) return res.status(403).json({ error: 'Du kannst nur eigene Nachrichten löschen' });
 
   const now = new Date().toISOString();
+  const deletionUpdate = hasMetadata
+    ? {
+        encrypted_content: DELETED_CHAT_MESSAGE_CONTENT,
+        deleted_at: now,
+        deleted_by: user.username,
+        pinned_at: null,
+        pinned_by: null,
+        updated_at: now
+      }
+    : { encrypted_content: DELETED_CHAT_MESSAGE_CONTENT };
+
   const { data: updated, error } = await supabaseAdmin
     .from('chat_messages')
-    .update({
-      encrypted_content: DELETED_CHAT_MESSAGE_CONTENT,
-      deleted_at: now,
-      deleted_by: user.username,
-      pinned_at: null,
-      pinned_by: null,
-      updated_at: now
-    })
+    .update(deletionUpdate)
     .eq('id', id)
-    .select(CHAT_MESSAGE_FIELDS)
+    .select(hasMetadata ? CHAT_MESSAGE_FIELDS : LEGACY_CHAT_MESSAGE_FIELDS)
     .single();
   if (error) return res.status(500).json({ error: 'Nachricht konnte nicht gelöscht werden' });
   res.json({ ok: true, message: publicChatMessage(updated) });
