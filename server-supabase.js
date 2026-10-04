@@ -24,7 +24,7 @@ const TOKEN_EXPIRES_IN = '3650d'; // 10 Jahre – Token läuft praktisch nie ab
 const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'qwen/qwen3.8-27b';
-const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
+const SUPPORT_GROQ_MODEL = process.env.SUPPORT_GROQ_MODEL || 'openai/gpt-oss-20b';
 // Override this if Groq changes the Qwen model identifier in the future.
 const CHAT_AUTOCORRECT_GROQ_MODEL = process.env.CHAT_AUTOCORRECT_GROQ_MODEL || 'qwen/qwen3-32b';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
@@ -7244,8 +7244,8 @@ app.post('/api/ki/premium', async (req, res) => {
 });
 
 app.post('/api/support/chat', async (req, res) => {
-  const openAIKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || process.env.API_KEY;
-  if (!openAIKey) return res.status(500).json({ error: 'OPENAI_API_KEY nicht konfiguriert' });
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(503).json({ error: 'GROQ_API_KEY nicht konfiguriert' });
 
   let username = null;
   try {
@@ -7263,17 +7263,25 @@ app.post('/api/support/chat', async (req, res) => {
       || 'Du bist Ehoser Support. Antworte auf Deutsch, freundlich, kurz und praktisch. Verrate keine Secrets, Tokens, Codes oder Admin-Interna.';
     const supportContext = username ? `Angemeldeter Nutzer: ${username}` : 'Nutzer ist nicht angemeldet oder Gast.';
 
-    const aiRes = await fetch('https://api.openai.com/v1/responses', {
+    const aiRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAIKey}`
+        Authorization: `Bearer ${groqKey}`
       },
       body: JSON.stringify({
-        model: SUPPORT_OPENAI_MODEL,
-        instructions: `${String(systemPrompt)}\n\n${supportContext}`,
-        input: toOpenAIResponsesInput(messages),
-        max_output_tokens: 700
+        model: SUPPORT_GROQ_MODEL,
+        messages: [
+          { role: 'system', content: `${String(systemPrompt)}\n\n${supportContext}` },
+          ...messages
+            .filter((msg) => msg && msg.role !== 'system')
+            .map((msg) => ({
+              role: msg.role === 'assistant' ? 'assistant' : 'user',
+              content: String(msg.content || '')
+            }))
+        ],
+        stream: false,
+        max_tokens: 700
       })
     });
 
@@ -7285,13 +7293,13 @@ app.post('/api/support/chat', async (req, res) => {
       return res.status(aiRes.status).json({ error: message });
     }
 
-    const content = responseOutputText(data);
+    const content = String(data?.choices?.[0]?.message?.content || '').trim();
     res.json({
       choices: [{ message: { role: 'assistant', content: content || 'Keine Antwort erhalten.' } }],
-      model: SUPPORT_OPENAI_MODEL
+      model: SUPPORT_GROQ_MODEL
     });
   } catch (err) {
-    console.error('Support OpenAI Error:', err);
+    console.error('Support Groq Error:', err);
     res.status(502).json({ error: 'Support nicht erreichbar' });
   }
 });
