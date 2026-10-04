@@ -25,6 +25,7 @@ const PRO_BONUS_MS = 2 * 24 * 60 * 60 * 1000;
 const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'qwen/qwen3.8-27b';
 const SUPPORT_GROQ_MODEL = process.env.SUPPORT_GROQ_MODEL || 'openai/gpt-oss-20b';
+const PERSONAL_SUPPORT_GROQ_MODEL = process.env.PERSONAL_SUPPORT_GROQ_MODEL || 'openai/gpt-oss-20b';
 // Override this if Groq changes the Qwen model identifier in the future.
 const CHAT_AUTOCORRECT_GROQ_MODEL = process.env.CHAT_AUTOCORRECT_GROQ_MODEL || 'qwen/qwen3-32b';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
@@ -6952,7 +6953,7 @@ app.post('/api/ps/analyze', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: PERSONAL_SUPPORT_GROQ_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Bisherige Antworten:\n\n${answersText}\n\nErstelle 10 personalisierte Folgefragen.` }
@@ -7018,8 +7019,18 @@ app.post('/api/ps/chat', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        model: PERSONAL_SUPPORT_GROQ_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...(messages.some((message) => message?.role === 'user')
+            ? messages
+              .filter((message) => message && (message.role === 'user' || message.role === 'assistant'))
+              .map((message) => ({
+                role: message.role,
+                content: String(message.content || '').slice(0, 12000)
+              }))
+            : [{ role: 'user', content: 'Begrüße mich kurz und frage einfühlsam, was mich gerade beschäftigt.' }])
+        ],
         temperature: 0.8,
         max_tokens: 1000
       })
