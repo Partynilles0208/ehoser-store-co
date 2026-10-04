@@ -2801,7 +2801,7 @@ async function handleFilePick(input, kind) {
     if (!file) return;
     input.value = '';
     try {
-        const res = await uploadFile(file, 'Wird hochgeladen… ' + file.name);
+        const res = await uploadChatAttachmentToGoogleDrive(file, 'Wird hochgeladen… ' + file.name);
         let payload;
         const mime = res.mime || '';
         const isImage = mime.startsWith('image/');
@@ -3855,7 +3855,7 @@ async function uploadFileToGoogleDrive(file, folderId, onProgress) {
     // A resumable upload keeps memory use low and also works for files that are
     // much larger than a normal chat attachment.
     const start = await googleDriveRequest(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,webViewLink',
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,webViewLink,webContentLink',
         _googleDriveAccessToken,
         {
             method: 'POST',
@@ -3899,6 +3899,51 @@ async function uploadFileToGoogleDrive(file, folderId, onProgress) {
         return response.json();
     }
     throw new Error('Google-Drive-Upload wurde nicht abgeschlossen.');
+}
+
+
+// Chat attachments use the owner's Drive directly. The chat stores an unlisted
+// direct-download URL only, never an OAuth token or a Google Drive page URL.
+async function uploadChatAttachmentToGoogleDrive(file, onLabel) {
+    if (!_token || !_me?.username) throw new Error('Bitte melde dich zuerst an.');
+    const overlay = document.getElementById('uploadOverlay');
+    if (onLabel) document.getElementById('uploadLabel').textContent = onLabel;
+    if (overlay) overlay.style.display = 'flex';
+
+    try {
+        if (!_googleDriveAccessToken) {
+            _googleDriveAccessToken = await requestGoogleDriveAccessToken();
+            _googleDriveFolderId = '';
+        }
+        const folderId = await ensureGoogleDriveBackupFolder();
+        const uploaded = await uploadFileToGoogleDrive(file, folderId, (done, total) => {
+            const percent = total ? Math.round((done / total) * 100) : 0;
+            const label = document.getElementById('uploadLabel');
+            if (label) label.textContent = 'Wird in Google Drive hochgeladen… ' + percent + '%';
+        });
+        if (!uploaded?.id) throw new Error('Google Drive hat keine Datei-ID zurückgegeben.');
+
+        // The user explicitly selected this attachment for the chat. Anyone
+        // possessing the unlisted direct URL can download this one file.
+        await googleDriveRequest(
+            'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(uploaded.id) + '/permissions',
+            _googleDriveAccessToken,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'anyone', role: 'reader', allowFileDiscovery: false })
+            }
+        );
+
+        return {
+            url: 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(uploaded.id),
+            name: uploaded.name || file.name || 'ehoser-Datei',
+            size: Number(uploaded.size || file.size || 0),
+            mime: uploaded.mimeType || file.type || 'application/octet-stream'
+        };
+    } finally {
+        if (overlay) overlay.style.display = 'none';
+    }
 }
 
 async function connectGoogleDriveBackup() {
