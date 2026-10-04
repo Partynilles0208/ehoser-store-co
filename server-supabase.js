@@ -1715,6 +1715,8 @@ app.get('/api/config', (req, res) => {
   res.json({
     ytApiKey: process.env.YT_API_KEY || '',
     googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    // Dedicated client for user-owned Drive uploads. This is intentionally public: OAuth client IDs are safe to send to the browser.
+    googleDriveClientId: process.env.GOOGLE_DRIVE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '',
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
     githubRepo: process.env.GITHUB_REPO || 'Partynilles0208/ehoser-store-co'
   });

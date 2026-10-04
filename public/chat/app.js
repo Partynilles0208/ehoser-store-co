@@ -13,6 +13,7 @@ const PRESENCE_HEARTBEAT_INTERVAL_MS = 5000;
 const PRESENCE_ONLINE_WINDOW_MS = 75 * 1000;
 const IS_EHOSER_ANDROID_APP = Boolean(window.EhoserAndroid && typeof window.EhoserAndroid.isNativeApp === 'function');
 let _chatGoogleClientId = '';
+let _chatGoogleDriveClientId = '';
 let _chatGoogleInitialized = false;
 let _chatGoogleConfigLoading = false;
 const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -663,6 +664,14 @@ async function getChatGoogleClientId() {
     const config = await response.json().catch(() => ({}));
     _chatGoogleClientId = String(config.googleClientId || '');
     return _chatGoogleClientId;
+}
+
+async function getChatGoogleDriveClientId() {
+    if (_chatGoogleDriveClientId) return _chatGoogleDriveClientId;
+    const response = await fetch(API + '/config', { cache: 'no-store' });
+    const config = await response.json().catch(() => ({}));
+    _chatGoogleDriveClientId = String(config.googleDriveClientId || config.googleClientId || '');
+    return _chatGoogleDriveClientId;
 }
 
 async function submitChatGoogleLogin(response) {
@@ -3689,14 +3698,15 @@ function setGoogleDriveBackupStatus(message, error = false) {
 function renderGoogleDriveBackupSettings() {
     const section = document.getElementById('settingsGoogleDriveSection');
     if (!section) return;
-    const linked = Boolean(_meProfile?.settings?.googleSub);
-    section.hidden = !linked;
-    if (!linked) return;
+    // Drive can be connected to any signed-in ehoser account. It does not have to be the same Google account used for login.
+    const signedIn = Boolean(_token && _me?.username);
+    section.hidden = !signedIn;
+    if (!signedIn) return;
     const mode = document.getElementById('settingsGoogleStorageMode');
     if (mode) mode.value = _meProfile?.settings?.googleDriveStorageMode === 'google_one' ? 'google_one' : 'free';
     const connect = document.getElementById('settingsGoogleDriveConnect');
     const files = document.getElementById('settingsGoogleDriveFiles');
-    if (connect) connect.textContent = _googleDriveAccessToken ? 'Google Drive verbunden' : 'Backups einrichten';
+    if (connect) connect.textContent = _googleDriveAccessToken ? 'Google Drive verbunden' : 'Google Drive verbinden';
     if (files) files.disabled = !_googleDriveAccessToken;
     setGoogleDriveBackupStatus(_googleDriveAccessToken
         ? 'Google Drive ist für diese Sitzung verbunden. Du kannst Dateien auswählen.'
@@ -3712,7 +3722,7 @@ async function waitForGoogleDriveAuthorization() {
 }
 
 async function requestGoogleDriveAccessToken() {
-    const clientId = await getChatGoogleClientId();
+    const clientId = await getChatGoogleDriveClientId();
     if (!clientId) throw new Error('Google-Backups sind noch nicht eingerichtet.');
     await waitForGoogleDriveAuthorization();
     return new Promise((resolve, reject) => {
@@ -3755,7 +3765,7 @@ async function googleDriveRequest(url, token, options = {}) {
 
 async function ensureGoogleDriveBackupFolder() {
     if (_googleDriveFolderId) return _googleDriveFolderId;
-    const query = encodeURIComponent("mimeType='application/vnd.google-apps.folder' and name='ehoser Backups' and trashed=false");
+    const query = encodeURIComponent("mimeType='application/vnd.google-apps.folder' and name='ehoser Dateien' and trashed=false");
     const listed = await googleDriveRequest('https://www.googleapis.com/drive/v3/files?q=' + query + '&spaces=drive&pageSize=1&fields=files(id,name)', _googleDriveAccessToken);
     const existing = (await listed.json()).files?.[0];
     if (existing?.id) {
@@ -3765,7 +3775,7 @@ async function ensureGoogleDriveBackupFolder() {
     const created = await googleDriveRequest('https://www.googleapis.com/drive/v3/files?fields=id,name', _googleDriveAccessToken, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'ehoser Backups', mimeType: 'application/vnd.google-apps.folder' })
+        body: JSON.stringify({ name: 'ehoser Dateien', mimeType: 'application/vnd.google-apps.folder' })
     });
     const folder = await created.json();
     if (!folder?.id) throw new Error('Backup-Ordner konnte nicht erstellt werden.');
@@ -3773,29 +3783,66 @@ async function ensureGoogleDriveBackupFolder() {
     return _googleDriveFolderId;
 }
 
-async function uploadFileToGoogleDrive(file, folderId) {
-    const metadata = { name: String(file.name || 'ehoser-Datei').slice(0, 180), parents: [folderId] };
-    const boundary = 'ehoser_drive_' + Math.random().toString(16).slice(2);
-    const body = new Blob([
-        '--' + boundary + '\r\n',
-        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-        JSON.stringify(metadata), '\r\n',
-        '--' + boundary + '\r\n',
-        'Content-Type: ' + (file.type || 'application/octet-stream') + '\r\n\r\n',
-        file, '\r\n',
-        '--' + boundary + '--'
-    ]);
-    const uploaded = await googleDriveRequest('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,size,webViewLink', _googleDriveAccessToken, {
-        method: 'POST',
-        headers: { 'Content-Type': 'multipart/related; boundary=' + boundary },
-        body
-    });
-    return uploaded.json();
+async function uploadFileToGoogleDrive(file, folderId, onProgress) {
+    const total = Number(file?.size || 0);
+    if (!total) throw new Error('Leere Dateien können nicht hochgeladen werden.');
+
+    const safeName = String(file.name || 'ehoser-Datei').slice(0, 180);
+    const mimeType = String(file.type || 'application/octet-stream');
+    const metadata = { name: safeName, parents: [folderId] };
+
+    // A resumable upload keeps memory use low and also works for files that are
+    // much larger than a normal chat attachment.
+    const start = await googleDriveRequest(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,webViewLink',
+        _googleDriveAccessToken,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json; charset=UTF-8',
+                'X-Upload-Content-Type': mimeType,
+                'X-Upload-Content-Length': String(total)
+            },
+            body: JSON.stringify(metadata)
+        }
+    );
+    const uploadUrl = start.headers.get('location');
+    if (!uploadUrl) throw new Error('Google Drive hat keine Upload-Adresse zurückgegeben.');
+
+    const chunkSize = 8 * 1024 * 1024;
+    let offset = 0;
+    while (offset < total) {
+        const chunk = file.slice(offset, Math.min(offset + chunkSize, total));
+        const end = offset + chunk.size - 1;
+        const response = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: {
+                Authorization: 'Bearer ' + _googleDriveAccessToken,
+                'Content-Type': mimeType,
+                'Content-Range': 'bytes ' + offset + '-' + end + '/' + total
+            },
+            body: chunk
+        });
+
+        if (response.status === 308) {
+            offset += chunk.size;
+            if (onProgress) onProgress(offset, total);
+            continue;
+        }
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data?.error?.message || response.statusText || 'Google-Drive-Upload fehlgeschlagen.');
+        }
+
+        if (onProgress) onProgress(total, total);
+        return response.json();
+    }
+    throw new Error('Google-Drive-Upload wurde nicht abgeschlossen.');
 }
 
 async function connectGoogleDriveBackup() {
-    if (!_meProfile?.settings?.googleSub) {
-        toast('Backups stehen nur nach einer Anmeldung mit Google zur Verfügung.', 'err');
+    if (!_token || !_me?.username) {
+        toast('Bitte melde dich zuerst an.', 'err');
         return;
     }
     const connect = document.getElementById('settingsGoogleDriveConnect');
@@ -3834,9 +3881,12 @@ async function uploadGoogleDriveBackups() {
         for (const file of files) {
             completed += 1;
             setGoogleDriveBackupStatus('Lädt ' + completed + ' von ' + files.length + ' hoch: ' + file.name);
-            await uploadFileToGoogleDrive(file, folderId);
+            await uploadFileToGoogleDrive(file, folderId, (uploaded, total) => {
+                const percent = total ? Math.min(100, Math.round((uploaded / total) * 100)) : 0;
+                setGoogleDriveBackupStatus('Lädt ' + completed + ' von ' + files.length + ' hoch: ' + file.name + ' (' + percent + '%)');
+            });
         }
-        setGoogleDriveBackupStatus('✓ ' + files.length + ' Datei' + (files.length === 1 ? '' : 'en') + ' in „ehoser Backups“ gesichert.');
+        setGoogleDriveBackupStatus('✓ ' + files.length + ' Datei' + (files.length === 1 ? '' : 'en') + ' in „ehoser Dateien“ hochgeladen.');
         toast('Backup abgeschlossen.', 'ok');
     } catch (error) {
         if (/401|invalid credentials|unauthenticated/i.test(String(error?.message || ''))) {
@@ -4118,7 +4168,6 @@ async function saveChatSettings() {
             chatCompactMode: document.getElementById('settingsCompactMode').checked,
             chatShowPreviews: document.getElementById('settingsShowPreviews').checked,
             avatarUrl: document.getElementById('settingsAvatarUrl').value.trim(),
-            googleDriveStorageMode: document.getElementById('settingsGoogleStorageMode')?.value || 'free'
         };
         if (String(_me?.username || '').toLowerCase() === 'meisterlool_707') {
             payload.presenceOverride = document.getElementById('settingsPresenceOverride').value;
