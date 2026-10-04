@@ -114,6 +114,8 @@ let _proBadgeCache = {};
 let _poll = null;
 let _ngMembers = {}; // selected members for a new group
 let _recorder = null, _recChunks = [], _recTimer = null, _recSecs = 0;
+// Exactly one voice message may play at a time.
+let _activeVoiceAudio = null, _activeVoiceButton = null;
 let _attachOpen = false;
 let _replyingTo = null;
 let _summaryAiEnabled = false;
@@ -1508,7 +1510,7 @@ const CHAT_TRANSLATIONS = {
         noChats: 'Noch keine Chats.<br>Tippe oben auf ＋.', noResult: 'Kein Chat gefunden.',
         privateChat: 'Privater Chat', members: 'Mitglieder', member: 'Mitglied',
         oldMessage: 'Alte Nachricht', deletedMessage: 'Nachricht wurde gelöscht', message: 'Nachricht', you: 'Du',
-        photo: '📷 Foto', video: '🎥 Video', audio: '🎤 Sprachnachricht',
+        photo: '📷 Foto', video: '🎥 Video', audio: '💎 Sprachnachricht',
         file: '📎 Datei', sticker: '✨ Sticker', summary: '🤖 Zusammenfassung',
         loadingMembers: 'Mitglieder werden geladen…', typingOne: 'schreibt gerade…',
         typingMany: 'schreiben…', typingGroup: 'Mehrere Personen schreiben gerade…'
@@ -1521,7 +1523,7 @@ const CHAT_TRANSLATIONS = {
         noChats: 'No chats yet.<br>Tap ＋ above.', noResult: 'No chat found.',
         privateChat: 'Private chat', members: 'members', member: 'member',
         oldMessage: 'Old message', deletedMessage: 'Message deleted', message: 'Message', you: 'You',
-        photo: '📷 Photo', video: '🎥 Video', audio: '🎤 Voice message',
+        photo: '📷 Photo', video: '🎥 Video', audio: '💎 Voice message',
         file: '📎 File', sticker: '✨ Sticker', summary: '🤖 Summary',
         loadingMembers: 'Loading members…', typingOne: 'is typing…',
         typingMany: 'are typing…', typingGroup: 'Several people are typing…'
@@ -2454,7 +2456,7 @@ function renderAudio(p) {
     }).join('');
     const dur = p.dur ? fmtTime(p.dur) : '';
     return `<div class="msg-audio-player">
-        <button class="msg-audio-play" onclick="playAudio('${esc(p.url)}', this)">▶</button>
+        <button class="msg-audio-play" type="button" onclick="playAudio('${esc(p.url)}', this)" title="Sprachnachricht abspielen" aria-label="Sprachnachricht abspielen">▶</button>
         <div class="msg-audio-wave">${bars}</div>
         <span class="msg-audio-dur">${dur}</span>
     </div>`;
@@ -2875,11 +2877,70 @@ function stopVoice() {
     document.getElementById('msgInput').style.display = '';
 }
 
+function setVoicePlaybackButton(button, playing) {
+    if (!button) return;
+    button.textContent = playing ? '⏸' : '▶';
+    const label = playing ? 'Sprachnachricht pausieren' : 'Sprachnachricht abspielen';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+}
+
+function stopActiveVoicePlayback() {
+    const audio = _activeVoiceAudio;
+    const button = _activeVoiceButton;
+    _activeVoiceAudio = null;
+    _activeVoiceButton = null;
+    if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.src = '';
+    }
+    setVoicePlaybackButton(button, false);
+}
+
 function playAudio(url, btn) {
+    // A second tap on the same message pauses it; the next tap continues it.
+    if (_activeVoiceAudio && _activeVoiceButton === btn) {
+        if (_activeVoiceAudio.paused) {
+            _activeVoiceAudio.play().catch(() => toast('Sprachnachricht konnte nicht fortgesetzt werden.', 'err'));
+        } else {
+            _activeVoiceAudio.pause();
+        }
+        return;
+    }
+
+    // A new message always stops the previous one, so voices never overlap.
+    stopActiveVoicePlayback();
     const audio = new Audio(url);
-    btn.textContent = '⏸';
-    audio.play();
-    audio.onended = () => btn.textContent = '▶';
+    _activeVoiceAudio = audio;
+    _activeVoiceButton = btn;
+
+    audio.addEventListener('play', () => {
+        if (_activeVoiceAudio === audio) setVoicePlaybackButton(btn, true);
+    });
+    audio.addEventListener('pause', () => {
+        if (_activeVoiceAudio === audio) setVoicePlaybackButton(btn, false);
+    });
+    audio.addEventListener('ended', () => {
+        if (_activeVoiceAudio !== audio) return;
+        _activeVoiceAudio = null;
+        _activeVoiceButton = null;
+        setVoicePlaybackButton(btn, false);
+    });
+    audio.addEventListener('error', () => {
+        if (_activeVoiceAudio !== audio) return;
+        _activeVoiceAudio = null;
+        _activeVoiceButton = null;
+        setVoicePlaybackButton(btn, false);
+        toast('Sprachnachricht konnte nicht abgespielt werden.', 'err');
+    });
+    audio.play().catch(() => {
+        if (_activeVoiceAudio !== audio) return;
+        _activeVoiceAudio = null;
+        _activeVoiceButton = null;
+        setVoicePlaybackButton(btn, false);
+        toast('Sprachnachricht konnte nicht abgespielt werden.', 'err');
+    });
 }
 
 // ─── Audio & video calls ─────────────────────────────────────────────────────
