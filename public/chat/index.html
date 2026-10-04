@@ -165,6 +165,13 @@
 
       <!-- Input Bar -->
       <div class="input-wrap">
+        <div id="replyPreview" class="reply-preview" style="display:none" aria-live="polite">
+          <div class="reply-preview-copy">
+            <strong id="replyPreviewAuthor"></strong>
+            <span id="replyPreviewText"></span>
+          </div>
+          <button type="button" class="reply-preview-close" onclick="clearReplyTo()" aria-label="Antwort verwerfen">✕</button>
+        </div>
 
         <!-- Attach -->
         <div id="attachWrap" class="attach-wrap">
