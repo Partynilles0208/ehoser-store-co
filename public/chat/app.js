@@ -119,6 +119,9 @@ let _activeVoiceAudio = null, _activeVoiceButton = null;
 let _attachOpen = false;
 let _replyingTo = null;
 let _summaryAiEnabled = false;
+// Disabled by default: no chat text is sent to the autocorrection service.
+let _chatAutocorrectEnabled = false;
+let _chatAutocorrectBusy = false;
 let _seenMessageIds = {};
 let _pendingMessages = {};
 let _messageNotificationCursor = 0;
@@ -856,6 +859,8 @@ async function finishChatBoot() {
     if (_chatStarted) return;
     _chatStarted = true;
     show('chatApp');
+    _chatAutocorrectEnabled = _meProfile?.settings?.chatAutocorrectEnabled === true;
+    renderChatAutocorrectButton();
     applyChatPreferences();
     document.getElementById('sidebarMe').textContent = '👤 ' + _me.username;
     const ownerLink = document.getElementById('ownerConsoleLink');
@@ -2652,10 +2657,23 @@ async function triggerChatAiSummary() {
 async function sendMessage() {
     if (!enforceNotificationPermission()) return;
     const inp = document.getElementById('msgInput');
-    const text = inp.value.trim();
+    let text = inp.value.trim();
     if (!text || !_activeGroupId) return;
+    inp.disabled = true;
+    if (_chatAutocorrectEnabled) {
+        try {
+            text = await autocorrectChatDraft(text);
+        } catch {
+            // The message is still sent locally and unchanged if Qwen is unavailable.
+            toast('Autokorrektur nicht erreichbar – Nachricht bleibt unverändert.', 'err');
+        }
+    }
+    if (!text) {
+        inp.disabled = false;
+        return;
+    }
     stopChatTyping();
-    inp.value = ''; inp.style.height = ''; inp.disabled = true;
+    inp.value = ''; inp.style.height = '';
     const ticTacToeTest = String(_me?.username || '').toLowerCase() === 'meisterlool_707' && text === '/test';
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
     const replyTo = currentReplyTarget();
@@ -2751,6 +2769,59 @@ function handleMessageInput(el) {
     autoResize(el);
     if (String(el?.value || '').trim()) signalChatTyping();
     else stopChatTyping();
+}
+
+function renderChatAutocorrectButton() {
+    const button = document.getElementById('chatAutocorrectBtn');
+    if (!button) return;
+    const enabled = _chatAutocorrectEnabled === true;
+    button.classList.toggle('active', enabled);
+    button.disabled = _chatAutocorrectBusy;
+    button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    button.setAttribute('aria-label', enabled ? 'Autokorrektur an' : 'Autokorrektur aus');
+    button.title = enabled
+        ? 'Autokorrektur an – Text wird vor dem Senden von Qwen geprüft'
+        : 'Autokorrektur aus – Nachricht bleibt nur auf deinem Gerät';
+}
+
+async function toggleChatAutocorrect() {
+    const next = !_chatAutocorrectEnabled;
+    if (!next) {
+        // Privacy first: stop all AI requests in this browser immediately.
+        _chatAutocorrectEnabled = false;
+        renderChatAutocorrectButton();
+        try {
+            const data = await api('/me/settings', 'PUT', { chatAutocorrectEnabled: false });
+            _meProfile = data.profile || _meProfile;
+        } catch {
+            // Staying off is safer even when the preference could not be synced.
+            toast('Autokorrektur bleibt auf diesem Gerät aus.', 'ok');
+        }
+        return;
+    }
+
+    _chatAutocorrectBusy = true;
+    renderChatAutocorrectButton();
+    try {
+        const data = await api('/me/settings', 'PUT', { chatAutocorrectEnabled: true });
+        _meProfile = data.profile || _meProfile;
+        _chatAutocorrectEnabled = _meProfile?.settings?.chatAutocorrectEnabled === true;
+        if (!_chatAutocorrectEnabled) throw new Error('Autokorrektur konnte nicht aktiviert werden.');
+        toast('Autokorrektur ist an. Qwen prüft nur Nachrichten, die du sendest.', 'ok');
+    } catch (error) {
+        _chatAutocorrectEnabled = false;
+        toast(error?.message || 'Autokorrektur konnte nicht aktiviert werden.', 'err');
+    } finally {
+        _chatAutocorrectBusy = false;
+        renderChatAutocorrectButton();
+    }
+}
+
+async function autocorrectChatDraft(text) {
+    if (!_chatAutocorrectEnabled) return text;
+    const data = await api('/chat/autocorrect', 'POST', { text });
+    const corrected = String(data?.text || '').trim();
+    return corrected || text;
 }
 
 function signalChatTyping() {
