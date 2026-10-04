@@ -3273,6 +3273,11 @@ function startRingtone() {
 function stopRingtone() {
     clearInterval(_ringTimer);
     _ringTimer = null;
+    // Closing the context immediately silences notes that are already playing.
+    // A later incoming call creates a fresh context in playZuDuDumDum().
+    const context = _ringAudioContext;
+    _ringAudioContext = null;
+    if (context && context.state !== 'closed') context.close().catch(() => {});
     try { navigator.vibrate?.(0); } catch {}
 }
 
