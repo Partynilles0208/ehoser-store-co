@@ -26,7 +26,7 @@ const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'qwen/qwen3.8-27b';
 const SUPPORT_OPENAI_MODEL = process.env.SUPPORT_OPENAI_MODEL || 'gpt-5.4-mini';
 // Override this if Groq changes the Qwen model identifier in the future.
-const CHAT_AUTOCORRECT_GROQ_MODEL = process.env.CHAT_AUTOCORRECT_GROQ_MODEL || 'qwen/qwen3-32b';
+const CHAT_AUTOCORRECT_GROQ_MODEL = process.env.CHAT_AUTOCORRECT_GROQ_MODEL || 'qwen/qwen3.8-27b';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
 const OASIS_DAILY_LIMIT_MS = Math.max(1000, Number(process.env.OASIS_DAILY_LIMIT_MS || 60000));
@@ -2777,7 +2777,17 @@ app.post('/api/chat/autocorrect', async (req, res) => {
       })
     });
     const data = await groqResponse.json().catch(() => ({}));
-    if (!groqResponse.ok) return res.status(502).json({ error: 'Autokorrektur ist gerade nicht erreichbar.' });
+    if (!groqResponse.ok) {
+      const groqMessage = String(data?.error?.message || data?.error || '');
+      const reason = groqResponse.status === 401
+        ? 'Groq-Schlüssel ist ungültig oder fehlt in Vercel.'
+        : groqResponse.status === 403
+          ? 'Dieses Qwen-Modell ist für den Groq-Schlüssel nicht freigeschaltet.'
+          : groqResponse.status === 429
+            ? 'Groq-Limit erreicht. Bitte gleich erneut versuchen.'
+            : (groqMessage || 'Groq hat die Autokorrektur abgelehnt.');
+      return res.status(502).json({ error: reason });
+    }
     const corrected = String(data?.choices?.[0]?.message?.content || '').trim();
     return res.json({ text: corrected || text, model: CHAT_AUTOCORRECT_GROQ_MODEL });
   } catch {
