@@ -2663,9 +2663,9 @@ async function sendMessage() {
     if (_chatAutocorrectEnabled) {
         try {
             text = await autocorrectChatDraft(text);
-        } catch {
+        } catch (error) {
             // The message is still sent locally and unchanged if Qwen is unavailable.
-            toast('Autokorrektur nicht erreichbar – Nachricht bleibt unverändert.', 'err');
+            toast(error?.message || 'Autokorrektur nicht erreichbar – Nachricht bleibt unverändert.', 'err');
         }
     }
     if (!text) {
