@@ -114,6 +114,7 @@ let _poll = null;
 let _ngMembers = {}; // selected members for a new group
 let _recorder = null, _recChunks = [], _recTimer = null, _recSecs = 0;
 let _attachOpen = false;
+let _replyingTo = null;
 let _summaryAiEnabled = false;
 let _seenMessageIds = {};
 let _pendingMessages = {};
@@ -2046,10 +2047,24 @@ function isDeletedMessage(message, plainJson) {
     return safeJsonParse(plainJson, null)?.t === 'deleted';
 }
 
+function normaliseReplyTarget(reply) {
+    if (!reply || typeof reply !== 'object') return null;
+    const sender = String(reply.sender || '').trim().slice(0, 64);
+    const preview = String(reply.preview || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+    const id = String(reply.id || '').trim().slice(0, 80);
+    return sender && preview ? { id, sender, preview } : null;
+}
+
+function renderReplySnippet(reply) {
+    const target = normaliseReplyTarget(reply);
+    if (!target) return '';
+    return '<div class="msg-reply"><strong>' + esc(target.sender) + '</strong><span>' + esc(target.preview) + '</span></div>';
+}
+
 function renderMessageBody(plainJson) {
     if (plainJson === null) return '<span class="decrypt-err">' + esc(chatText('oldMessage')) + '</span>';
     const parsed = safeJsonParse(plainJson, { t: 'txt', v: String(plainJson || '') });
-    return renderContent(parsed);
+    return renderReplySnippet(parsed?.replyTo) + renderContent(parsed);
 }
 
 function ticTacToeChallengeFrom(plainJson) {
@@ -2090,6 +2105,7 @@ function messagePreviewText(message) {
     if (plain === null) return chatText('oldMessage');
     const parsed = safeJsonParse(plain, { t: 'txt', v: String(plain || '') });
     if (parsed?.t === 'txt') return String(parsed.v || '').replace(/\s+/g, ' ').trim() || chatText('message');
+    if (parsed?.t === 'img' && String(parsed.caption || '').trim()) return String(parsed.caption).replace(/\s+/g, ' ').trim();
     const labels = { img: chatText('photo'), vid: chatText('video'), aud: chatText('audio'), file: chatText('file'), pro_sticker: chatText('sticker'), tic_tac_toe: '🎮 Tic-Tac-Toe' };
     return labels[parsed?.t] || chatText('message');
 }
@@ -2121,6 +2137,64 @@ function updatePinnedMessageBanner(message) {
     };
 }
 
+function replyTargetForMessage(message, plainJson) {
+    if (!message || isDeletedMessage(message, plainJson)) return null;
+    const id = String(message.id || '').trim();
+    const sender = String(message.sender || '').trim();
+    const preview = messagePreviewText(message).slice(0, 180);
+    return id && sender && preview ? { id, sender, preview } : null;
+}
+
+function updateReplyPreview() {
+    const preview = document.getElementById('replyPreview');
+    const author = document.getElementById('replyPreviewAuthor');
+    const text = document.getElementById('replyPreviewText');
+    if (!preview || !author || !text) return;
+    const target = normaliseReplyTarget(_replyingTo);
+    preview.style.display = target ? 'flex' : 'none';
+    if (!target) return;
+    author.textContent = target.sender;
+    text.textContent = target.preview;
+}
+
+function startReplyToMessage(message, plainJson) {
+    const target = replyTargetForMessage(message, plainJson);
+    if (!target) return;
+    _replyingTo = target;
+    updateReplyPreview();
+    document.getElementById('msgInput')?.focus();
+}
+
+function clearReplyTo() {
+    _replyingTo = null;
+    updateReplyPreview();
+}
+
+function currentReplyTarget() {
+    return normaliseReplyTarget(_replyingTo);
+}
+
+function enableMessageReplySwipe(row, message, plainJson) {
+    let pointerId = null, startX = 0, startY = 0;
+    row.addEventListener('pointerdown', (event) => {
+        if (!['touch', 'pen'].includes(event.pointerType) || !replyTargetForMessage(message, plainJson)) return;
+        pointerId = event.pointerId;
+        startX = event.clientX;
+        startY = event.clientY;
+    });
+    row.addEventListener('pointerup', (event) => {
+        if (event.pointerId !== pointerId) return;
+        const movedRight = event.clientX - startX;
+        const movedVertical = Math.abs(event.clientY - startY);
+        pointerId = null;
+        if (movedRight >= 64 && movedVertical < 48) {
+            try { navigator.vibrate?.(16); } catch {}
+            startReplyToMessage(message, plainJson);
+        }
+    });
+    row.addEventListener('pointercancel', () => { pointerId = null; });
+}
+
 function appendMessage(m, plainJson) {
     const area = document.getElementById('messagesArea');
     if (!area) return;
@@ -2147,6 +2221,7 @@ function appendMessage(m, plainJson) {
             ${(!own && senderName !== 'ehoser AI') ? '<span class="' + senderClass + '">' + esc(senderName) + senderBadge + '</span>' : ''}
             <div class="msg-bubble"><div class="msg-content">${content}</div><span class="msg-meta"><span class="msg-time">${timeStr}</span>${own ? '<span class="msg-ticks" aria-label="Beim Server angekommen" title="Beim Server angekommen">✓</span>' : ''}</span></div>
         </div>`;
+    enableMessageReplySwipe(row, m, plainJson);
     const lastVisibleMessage = area.querySelector('.msg-row:last-of-type');
     if (!lastVisibleMessage || lastVisibleMessage.dataset.dateKey !== row.dataset.dateKey) {
         const separator = document.createElement('div');
@@ -2221,7 +2296,11 @@ function renderContent(p) {
     switch (p.t) {
         case 'deleted': return '<span class="message-deleted">🚫 ' + esc(chatText('deletedMessage')) + '</span>';
         case 'txt': return esc(p.v || '').replace(/\n/g, '<br>');
-        case 'img': return `<img class="msg-img" src="${esc(p.url)}" alt="${esc(p.name||'Bild')}" loading="lazy" onclick="viewImg(this.src)">`;
+        case 'img': {
+            const caption = String(p.caption || '').trim();
+            return '<img class="msg-img" src="' + esc(p.url) + '" alt="' + esc(p.name || 'Bild') + '" loading="lazy" onclick="viewImg(this.src)">'
+                + (caption ? '<div class="msg-caption">' + esc(caption).replace(/\n/g, '<br>') + '</div>' : '');
+        }
         case 'vid': return `<video class="msg-video" src="${esc(p.url)}" controls preload="metadata"></video>`;
         case 'aud': return renderAudio(p);
         case 'fw':  return `<img class="msg-img" src="${esc(p.url)}" alt="Face Warp" loading="lazy" onclick="viewImg(this.src)"><div class="msg-fw-label">🎭 Face Warp</div>`;
@@ -2568,7 +2647,8 @@ async function sendMessage() {
     inp.value = ''; inp.style.height = ''; inp.disabled = true;
     const ticTacToeTest = String(_me?.username || '').toLowerCase() === 'meisterlool_707' && text === '/test';
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-    const plainContent = JSON.stringify({ t:'txt', v:text });
+    const replyTo = currentReplyTarget();
+    const plainContent = JSON.stringify({ t:'txt', v:text, ...(replyTo ? { replyTo } : {}) });
     const storedContent = await encryptChatContent(_activeGroupId, plainContent);
     const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
     if (!ticTacToeTest) {
@@ -2588,6 +2668,7 @@ async function sendMessage() {
         // finalize optimistic message (upgrade pending element or append if missing)
         finalizePendingMessage(tempId, id, created_at, storedContent, plainContent);
         _lastMsgId[_activeGroupId] = id;
+        clearReplyTo();
         if (_summaryAiEnabled && _meProfile?.isPro) {
             setTimeout(() => triggerChatAiSummary(), 300);
         }
@@ -2597,10 +2678,12 @@ async function sendMessage() {
 }
 
 async function sendMediaMessage(payload) {
-    if (!enforceNotificationPermission()) return;
-    if (!_activeGroupId) return;
+    if (!enforceNotificationPermission()) return false;
+    if (!_activeGroupId) return false;
+    const replyTo = currentReplyTarget();
+    const messagePayload = replyTo ? { ...payload, replyTo } : payload;
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
-    const plainContent = JSON.stringify(payload);
+    const plainContent = JSON.stringify(messagePayload);
     const storedContent = await encryptChatContent(_activeGroupId, plainContent);
     const tempMessage = { id: tempId, sender: _me.username, created_at: new Date().toISOString(), content: storedContent };
     // Store ciphertext, but render the local plaintext immediately.
@@ -2611,8 +2694,10 @@ async function sendMediaMessage(payload) {
         replaceCachedMessage(_activeGroupId, tempId, { id, sender: _me.username, created_at, content: storedContent });
         finalizePendingMessage(tempId, id, created_at, storedContent, plainContent);
         _lastMsgId[_activeGroupId] = id;
+        clearReplyTo();
         const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight;
-    } catch (e) { const el = document.querySelector(`[data-tempid="${tempId}"]`); if (el) el.classList.add('send-failed'); toast('Senden fehlgeschlagen: ' + e.message, 'err'); }
+        return true;
+    } catch (e) { const el = document.querySelector(`[data-tempid="${tempId}"]`); if (el) el.classList.add('send-failed'); toast('Senden fehlgeschlagen: ' + e.message, 'err'); return false; }
 }
 
 function finalizePendingMessage(tempId, realId, created_at, content, plainJson) {
@@ -2708,10 +2793,18 @@ async function handleFilePick(input, kind) {
         const res = await uploadFile(file, 'Wird hochgeladen… ' + file.name);
         let payload;
         const mime = res.mime || '';
-        if (mime.startsWith('image/'))      payload = { t:'img',  url:res.url, name:res.name, size:res.size };
+        const isImage = mime.startsWith('image/');
+        const inputCaption = isImage ? String(document.getElementById('msgInput')?.value || '').trim() : '';
+        if (isImage)                         payload = { t:'img', url:res.url, name:res.name, size:res.size, ...(inputCaption ? { caption: inputCaption } : {}) };
         else if (mime.startsWith('video/')) payload = { t:'vid',  url:res.url, name:res.name, size:res.size };
         else                                payload = { t:'file', url:res.url, name:res.name, size:res.size };
-        await sendMediaMessage(payload);
+        const sent = await sendMediaMessage(payload);
+        if (sent && inputCaption) {
+            const messageInput = document.getElementById('msgInput');
+            messageInput.value = '';
+            autoResize(messageInput);
+            stopChatTyping();
+        }
     } catch (e) { toast('Upload: ' + e.message, 'err'); }
 }
 
