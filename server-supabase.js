@@ -1050,7 +1050,8 @@ async function getProfile(username) {
     premiumUntil: premiumUntil || null,
     isPremium,
     isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
-    ps_account: psAccount || false,
+    // PS ist für jeden angemeldeten ehoser-Account verfügbar.
+    ps_account: true,
     credits: Number((settings || mem?.settings || {})?.credits?.balance || 0)
   };
 }
@@ -1951,14 +1952,16 @@ app.post('/api/auth/google', async (req, res) => {
     let user = null;
 
     try {
-      const { data } = await supabase.from('users').select('*').eq('email', email).single();
+      const { data } = await supabaseAdmin.from('users').select('*').eq('email', email).maybeSingle();
       user = data || null;
     } catch {}
 
     if (!user) {
       const username = await createAvailableGoogleUsername(email, name);
       const loginCode = createLoginCode();
-      const { data, error } = await supabase
+      // Das Google-Token wurde oben serverseitig geprüft. Der Service-Client
+      // ist nur für dieses kontrollierte Anlegen eines neuen Kontos nötig.
+      const { data, error } = await supabaseAdmin
         .from('users')
         .insert([{ username, email, access_code: loginCode, verified: 1 }])
         .select()
