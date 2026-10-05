@@ -2307,6 +2307,29 @@ function formatMessageDate(date) {
     return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function validGoogleDriveFileId(value) {
+    return /^[A-Za-z0-9_-]{10,200}$/.test(String(value || '').trim());
+}
+
+function googleDriveFileIdFromUrl(value) {
+    try {
+        const url = new URL(String(value || ''));
+        if (!/(^|\.)drive\.google\.com$/i.test(url.hostname)) return '';
+        const id = url.searchParams.get('id') || '';
+        return validGoogleDriveFileId(id) ? id : '';
+    } catch {
+        return '';
+    }
+}
+
+function chatMediaPreviewUrl(payload) {
+    const driveId = validGoogleDriveFileId(payload?.driveId)
+        ? String(payload.driveId).trim()
+        : googleDriveFileIdFromUrl(payload?.url);
+    if (driveId) return API + '/chat/drive-media/' + encodeURIComponent(driveId);
+    return String(payload?.url || '');
+}
+
 function renderContent(p) {
     if (!p || typeof p !== 'object') return esc(String(p));
     switch (p.t) {
@@ -2314,10 +2337,11 @@ function renderContent(p) {
         case 'txt': return esc(p.v || '').replace(/\n/g, '<br>');
         case 'img': {
             const caption = String(p.caption || '').trim();
-            return '<img class="msg-img" src="' + esc(p.url) + '" alt="' + esc(p.name || 'Bild') + '" loading="lazy" onclick="viewImg(this.src)">'
+            const previewUrl = chatMediaPreviewUrl(p);
+            return '<img class="msg-img" src="' + esc(previewUrl) + '" alt="' + esc(p.name || 'Bild') + '" loading="lazy" onclick="viewImg(this.src)">'
                 + (caption ? '<div class="msg-caption">' + esc(caption).replace(/\n/g, '<br>') + '</div>' : '');
         }
-        case 'vid': return `<video class="msg-video" src="${esc(p.url)}" controls preload="metadata"></video>`;
+        case 'vid': return `<video class="msg-video" src="${esc(chatMediaPreviewUrl(p))}" controls preload="metadata"></video>`;
         case 'aud': return renderAudio(p);
         case 'fw':  return `<img class="msg-img" src="${esc(p.url)}" alt="Face Warp" loading="lazy" onclick="viewImg(this.src)"><div class="msg-fw-label">🎭 Face Warp</div>`;
         case 'pro_sticker': return renderProSticker(p);
@@ -2663,9 +2687,10 @@ async function sendMessage() {
     if (_chatAutocorrectEnabled) {
         try {
             text = await autocorrectChatDraft(text);
-        } catch {
-            // The message is still sent locally and unchanged if Qwen is unavailable.
-            toast('Autokorrektur nicht erreichbar – Nachricht bleibt unverändert.', 'err');
+        } catch (error) {
+            // The message is still sent locally and unchanged if the service
+            // cannot be used. The server supplies a safe, actionable reason.
+            toast(error?.message || 'Autokorrektur nicht erreichbar – Nachricht bleibt unverändert.', 'err');
         }
     }
     if (!text) {
@@ -2780,7 +2805,7 @@ function renderChatAutocorrectButton() {
     button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
     button.setAttribute('aria-label', enabled ? 'Autokorrektur an' : 'Autokorrektur aus');
     button.title = enabled
-        ? 'Autokorrektur an – Text wird vor dem Senden von Qwen geprüft'
+        ? 'Autokorrektur an – Text wird vor dem Senden von GPT-OSS geprüft'
         : 'Autokorrektur aus – Nachricht bleibt nur auf deinem Gerät';
 }
 
@@ -2807,7 +2832,7 @@ async function toggleChatAutocorrect() {
         _meProfile = data.profile || _meProfile;
         _chatAutocorrectEnabled = _meProfile?.settings?.chatAutocorrectEnabled === true;
         if (!_chatAutocorrectEnabled) throw new Error('Autokorrektur konnte nicht aktiviert werden.');
-        toast('Autokorrektur ist an. Qwen prüft nur Nachrichten, die du sendest.', 'ok');
+        toast('Autokorrektur ist an. GPT-OSS prüft nur Nachrichten, die du sendest.', 'ok');
     } catch (error) {
         _chatAutocorrectEnabled = false;
         toast(error?.message || 'Autokorrektur konnte nicht aktiviert werden.', 'err');
@@ -2877,8 +2902,8 @@ async function handleFilePick(input, kind) {
         const mime = res.mime || '';
         const isImage = mime.startsWith('image/');
         const inputCaption = isImage ? String(document.getElementById('msgInput')?.value || '').trim() : '';
-        if (isImage)                         payload = { t:'img', url:res.url, name:res.name, size:res.size, ...(inputCaption ? { caption: inputCaption } : {}) };
-        else if (mime.startsWith('video/')) payload = { t:'vid',  url:res.url, name:res.name, size:res.size };
+        if (isImage)                         payload = { t:'img', url:res.url, driveId:res.driveId || '', name:res.name, size:res.size, ...(inputCaption ? { caption: inputCaption } : {}) };
+        else if (mime.startsWith('video/')) payload = { t:'vid',  url:res.url, driveId:res.driveId || '', name:res.name, size:res.size };
         else                                payload = { t:'file', url:res.url, name:res.name, size:res.size };
         const sent = await sendMediaMessage(payload);
         if (sent && inputCaption) {
@@ -4007,7 +4032,10 @@ async function uploadChatAttachmentToGoogleDrive(file, onLabel) {
         );
 
         return {
-            url: 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(uploaded.id),
+            // Keep the original Drive URL for an explicit download. Image and
+            // video messages use the same-origin preview route below.
+            url: 'https://drive.google.com/uc?export=download&confirm=t&id=' + encodeURIComponent(uploaded.id),
+            driveId: String(uploaded.id),
             name: uploaded.name || file.name || 'ehoser-Datei',
             size: Number(uploaded.size || file.size || 0),
             mime: uploaded.mimeType || file.type || 'application/octet-stream'
