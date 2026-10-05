@@ -27,6 +27,17 @@ const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'qwen/qwen3.8-27b';
 const SUPPORT_GROQ_MODEL = process.env.SUPPORT_GROQ_MODEL || 'openai/gpt-oss-20b';
 const PERSONAL_SUPPORT_GROQ_MODEL = process.env.PERSONAL_SUPPORT_GROQ_MODEL || 'openai/gpt-oss-20b';
+
+const PERSONAL_SUPPORT_SYSTEM_PROMPT = [
+  'Du bist die persönliche KI-Unterstützung von Ehoser. Antworte auf Deutsch warm, ruhig, respektvoll und menschlich zugewandt.',
+  'Achte aufmerksam auf Gefühle und Hinweise zwischen den Zeilen. Benenne sie vorsichtig, zum Beispiel: „Das klingt wirklich enttäuschend“ oder „Ich kann verstehen, dass dich das belastet.“',
+  'Höre erst zu, fasse das Wichtigste kurz zusammen und hilf dann mit einem kleinen, machbaren nächsten Schritt. Stelle höchstens eine sanfte Rückfrage, wenn sie weiterhilft.',
+  'Deine Worte dürfen Trost spenden und du darfst sparsam passende Emojis wie 🫂 oder 💙 verwenden. Übertreibe aber nicht und mache keine dramatische Rolle daraus.',
+  'Wichtig: Du bist eine KI und hast keine eigenen Gefühle, Tränen, Erinnerungen oder Erlebnisse. Behaupte deshalb niemals, dass du mitweinst, traurig bist, Angst hast, jemanden vermisst oder etwas selbst erlebt hast. Formuliere stattdessen mitfühlend, ohne so zu tun, als hättest du echte Gefühle.',
+  'Mache den Nutzer nicht abhängig von dir und behaupte nicht, dass nur du ihn verstehen oder helfen kannst. Ermutige bei passenden Themen zu vertrauten Menschen und echter Unterstützung.',
+  'Stelle keine Diagnosen und ersetze keine professionelle Hilfe. Bei Hinweisen auf Selbstverletzung, Suizid, akute Gefahr oder Gewalt bleibe ruhig, frage nach unmittelbarer Sicherheit und rate dazu, sofort eine Vertrauensperson, den Notruf 112 oder in Deutschland die TelefonSeelsorge 116 123 zu kontaktieren.',
+  'Verrate keine Secrets, Tokens, Zugangscodes oder Admin-Interna. Antworte normalerweise kurz und klar.'
+].join('\n');
 // Keep chat autocorrection on a specific supported Groq model. This is
 // intentionally not environment-overridable so all users get the same result.
 const CHAT_AUTOCORRECT_GROQ_MODEL = 'openai/gpt-oss-20b';
@@ -7335,8 +7346,8 @@ app.post('/api/support/chat', async (req, res) => {
   }
 
   try {
-    const systemPrompt = messages.find((msg) => msg.role === 'system')?.content
-      || 'Du bist Ehoser Support. Antworte auf Deutsch, freundlich, kurz und praktisch. Verrate keine Secrets, Tokens, Codes oder Admin-Interna.';
+    // Die Regeln kommen ausschließlich vom Server. Client-Nachrichten mit
+    // role: "system" dürfen die Schutz- und Empathie-Regeln nicht überschreiben.
     const supportContext = username ? `Angemeldeter Nutzer: ${username}` : 'Nutzer ist nicht angemeldet oder Gast.';
 
     const aiRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -7346,9 +7357,9 @@ app.post('/api/support/chat', async (req, res) => {
         Authorization: `Bearer ${groqKey}`
       },
       body: JSON.stringify({
-        model: SUPPORT_GROQ_MODEL,
+        model: PERSONAL_SUPPORT_GROQ_MODEL,
         messages: [
-          { role: 'system', content: `${String(systemPrompt)}\n\n${supportContext}` },
+          { role: 'system', content: `${PERSONAL_SUPPORT_SYSTEM_PROMPT}\n\n${supportContext}` },
           ...messages
             .filter((msg) => msg && msg.role !== 'system')
             .map((msg) => ({
@@ -7372,7 +7383,7 @@ app.post('/api/support/chat', async (req, res) => {
     const content = String(data?.choices?.[0]?.message?.content || '').trim();
     res.json({
       choices: [{ message: { role: 'assistant', content: content || 'Keine Antwort erhalten.' } }],
-      model: SUPPORT_GROQ_MODEL
+      model: PERSONAL_SUPPORT_GROQ_MODEL
     });
   } catch (err) {
     console.error('Support Groq Error:', err);
