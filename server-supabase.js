@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const { Readable } = require('stream');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
@@ -26,8 +27,9 @@ const PREMIUM_BONUS_MS = 30 * 24 * 60 * 60 * 1000;
 const PREMIUM_OPENAI_MODEL = process.env.PREMIUM_OPENAI_MODEL || 'qwen/qwen3.8-27b';
 const SUPPORT_GROQ_MODEL = process.env.SUPPORT_GROQ_MODEL || 'openai/gpt-oss-20b';
 const PERSONAL_SUPPORT_GROQ_MODEL = process.env.PERSONAL_SUPPORT_GROQ_MODEL || 'openai/gpt-oss-20b';
-// Override this if Groq changes the Qwen model identifier in the future.
-const CHAT_AUTOCORRECT_GROQ_MODEL = process.env.CHAT_AUTOCORRECT_GROQ_MODEL || 'qwen/qwen3-32b';
+// Keep chat autocorrection on a specific supported Groq model. This is
+// intentionally not environment-overridable so all users get the same result.
+const CHAT_AUTOCORRECT_GROQ_MODEL = 'openai/gpt-oss-20b';
 const PLAN_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAN_CREDIT_GRANTS = { free: 30, pro: 200, premium: 1000 };
 const OASIS_DAILY_LIMIT_MS = Math.max(1000, Number(process.env.OASIS_DAILY_LIMIT_MS || 60000));
@@ -473,7 +475,11 @@ function isPublicApiPath(pathname) {
     || pathname.startsWith('/api/pixabay')
     || pathname === '/api/online-users'
     || pathname === '/api/guest-heartbeat'
-    || pathname === '/api/vote/status';
+    || pathname === '/api/vote/status'
+    // Google Drive files shared by chat are already explicitly configured as
+    // "anyone with the link". The random file ID is all this narrow preview
+    // route accepts; it never accepts an arbitrary external URL.
+    || pathname.startsWith('/api/chat/drive-media/');
 }
 
 const createLoginCode = () => {
@@ -2748,7 +2754,7 @@ app.put('/api/me/settings', async (req, res) => {
   }
 });
 
-// ─── Chat-Autokorrektur (freiwillig, Qwen über Groq) ───────────────────────
+// ─── Chat-Autokorrektur (freiwillig, GPT-OSS über Groq) ──────────────────
 app.post('/api/chat/autocorrect', async (req, res) => {
   const auth = readAuthUser(req, res);
   if (!auth) return;
@@ -2764,7 +2770,7 @@ app.post('/api/chat/autocorrect', async (req, res) => {
   }
 
   const groqKey = process.env.GROQ_API_KEY;
-  if (!groqKey) return res.status(503).json({ error: 'Autokorrektur ist noch nicht eingerichtet.' });
+  if (!groqKey) return res.status(503).json({ error: 'Autokorrektur ist noch nicht eingerichtet: GROQ_API_KEY fehlt in Vercel.' });
 
   try {
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -2781,11 +2787,19 @@ app.post('/api/chat/autocorrect', async (req, res) => {
       })
     });
     const data = await groqResponse.json().catch(() => ({}));
-    if (!groqResponse.ok) return res.status(502).json({ error: 'Autokorrektur ist gerade nicht erreichbar.' });
+    if (!groqResponse.ok) {
+      const providerMessage = String(data?.error?.message || '').trim();
+      console.error('Chat autocorrect upstream failed:', groqResponse.status, providerMessage);
+      if (groqResponse.status === 401) return res.status(503).json({ error: 'Autokorrektur ist nicht eingerichtet: Der GROQ_API_KEY in Vercel ist ungültig.' });
+      if (groqResponse.status === 429) return res.status(503).json({ error: 'Autokorrektur ist gerade ausgelastet. Bitte versuche es gleich noch einmal.' });
+      if (groqResponse.status === 400 || groqResponse.status === 404) return res.status(503).json({ error: 'Das Autokorrektur-Modell GPT-OSS ist bei Groq gerade nicht verfügbar.' });
+      return res.status(502).json({ error: 'Autokorrektur ist bei Groq gerade nicht erreichbar.' });
+    }
     const corrected = String(data?.choices?.[0]?.message?.content || '').trim();
     return res.json({ text: corrected || text, model: CHAT_AUTOCORRECT_GROQ_MODEL });
-  } catch {
-    return res.status(502).json({ error: 'Autokorrektur ist gerade nicht erreichbar.' });
+  } catch (error) {
+    console.error('Chat autocorrect request failed:', error?.message || error);
+    return res.status(502).json({ error: 'Autokorrektur ist bei Groq gerade nicht erreichbar.' });
   }
 });
 
@@ -4982,6 +4996,54 @@ async function ensureChatUploadBucket() {
     error: createErr?.message || mainErr?.message || 'Kein Upload-Bucket verfügbar'
   };
 }
+
+// GET /api/chat/drive-media/:fileId — narrow proxy for chat previews.
+// Drive download URLs correctly download files, but browsers may not render
+// them as image/video sources. This accepts only an ID and only follows Google
+// Drive/Googleusercontent redirects; it is never an open external proxy.
+const GOOGLE_DRIVE_MEDIA_HOSTS = new Set(['drive.google.com', 'drive.usercontent.google.com']);
+function isGoogleDriveMediaHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  return GOOGLE_DRIVE_MEDIA_HOSTS.has(host) || host.endsWith('.googleusercontent.com');
+}
+function validGoogleDriveMediaId(value) {
+  return /^[A-Za-z0-9_-]{10,200}$/.test(String(value || ''));
+}
+async function fetchPublicGoogleDriveMedia(fileId, range) {
+  let url = new URL('https://drive.google.com/uc?export=download&confirm=t&id=' + encodeURIComponent(fileId));
+  for (let redirectCount = 0; redirectCount < 5; redirectCount += 1) {
+    const response = await fetch(url, { headers: range ? { Range: range } : {}, redirect: 'manual' });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get('location');
+    if (!location) throw new Error('Google Drive hat keine Download-Adresse geliefert.');
+    url = new URL(location, url);
+    if (!isGoogleDriveMediaHost(url.hostname)) throw new Error('Ungültige Google-Drive-Weiterleitung.');
+  }
+  throw new Error('Zu viele Google-Drive-Weiterleitungen.');
+}
+app.get('/api/chat/drive-media/:fileId', async (req, res) => {
+  const fileId = String(req.params.fileId || '').trim();
+  if (!validGoogleDriveMediaId(fileId)) return res.status(400).json({ error: 'Ungültige Google-Drive-Datei.' });
+  try {
+    const upstream = await fetchPublicGoogleDriveMedia(fileId, String(req.headers.range || ''));
+    if (!upstream.ok && upstream.status !== 206) {
+      console.warn('Google Drive preview failed:', upstream.status, fileId);
+      return res.status(upstream.status === 404 ? 404 : 502).json({ error: 'Vorschau aus Google Drive konnte nicht geladen werden.' });
+    }
+    res.status(upstream.status === 206 ? 206 : 200);
+    for (const header of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+      const value = upstream.headers.get(header);
+      if (value) res.setHeader(header, value);
+    }
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (!upstream.body) return res.end();
+    return Readable.fromWeb(upstream.body).pipe(res);
+  } catch (error) {
+    console.error('Google Drive preview failed:', error?.message || error);
+    return res.status(502).json({ error: 'Vorschau aus Google Drive konnte nicht geladen werden.' });
+  }
+});
 
 // POST /api/chat/upload — Mediendatei hochladen (Bild / Video / Audio)
 app.post('/api/chat/upload', chatUpload.single('file'), async (req, res) => {
