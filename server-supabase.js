@@ -2781,7 +2781,7 @@ app.post('/api/chat/autocorrect', async (req, res) => {
         temperature: 0,
         max_tokens: 700,
         messages: [
-          { role: 'system', content: 'Du bist ausschließlich eine deutsche Autokorrektur. Gib NUR den korrigierten Originaltext zurück – ohne Erklärung, Anführungszeichen oder Markdown. Korrigiere Rechtschreibung, Groß-/Kleinschreibung und offensichtliche Grammatikfehler. Ändere niemals Bedeutung, Namen, Links, Emojis, Zahlen, Datenschutzangaben oder private Inhalte. Erfinde nichts und entferne nichts.' },
+          { role: 'system', content: 'Du bist eine sorgfältige deutsche Schreibassistenz für einzelne Chatnachrichten. Gib NUR den überarbeiteten Originaltext zurück – ohne Erklärung, Anführungszeichen oder Markdown. Korrigiere Rechtschreibung auch bei offensichtlichen Tippfehlern (zum Beispiel „grot“ zu „Brot“), Grammatik, Satzzeichen sowie Groß-/Kleinschreibung von Nomen. Formuliere unklare oder holprige Sätze natürlich und einfach, behalte dabei den lockeren Stil, die Sprache und die beabsichtigte Aussage bei. Ändere niemals Namen, Links, Emojis, Zahlen, Datenschutzangaben oder private Inhalte. Erfinde keine Informationen und entferne keine wichtigen Inhalte.' },
           { role: 'user', content: text }
         ]
       })
