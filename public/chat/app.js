@@ -174,6 +174,10 @@ let _onlineListRefreshTimer = null;
 let _messagePollBusy = false;
 let _lastGroupRefreshAt = 0;
 let _lastReadSent = {};
+let _lastDeliveredSent = {};
+let _chatLiveController = null;
+let _chatLiveGroupId = null;
+let _chatLiveTask = null;
 let _topbarMemberText = '';
 let _typingGroupId = null;
 let _typingLastSentAt = 0;
@@ -403,6 +407,7 @@ function forgetPermanentlyDeletedChat(groupId, showNotice = false) {
     const gid = String(groupId || '');
     if (!gid) return;
     stopChatTyping(gid);
+    if (_activeGroupId === gid) stopChatLiveUpdates(gid);
 
     for (const kind of ['messages', 'messageSync', 'unread', 'unread-activity']) {
         const cache = readChatCache(kind, {});
@@ -1808,7 +1813,10 @@ async function selectGroup(gid) {
         return;
     }
     const previousGroupId = _activeGroupId;
-    if (previousGroupId && previousGroupId !== gid) stopChatTyping(previousGroupId);
+    if (previousGroupId && previousGroupId !== gid) {
+        stopChatTyping(previousGroupId);
+        stopChatLiveUpdates(previousGroupId);
+    }
     _activeGroupId = gid;
     markGroupNotificationsRead(gid);
     const chatApp = document.getElementById('chatApp');
@@ -1865,6 +1873,7 @@ async function selectGroup(gid) {
     updateCallButtons();
     if (!cachedMessages.length) _lastMsgId[gid] = 0;
     await loadMessages(gid, true);
+    if (gid === _activeGroupId) startChatLiveUpdates(gid);
     document.getElementById('msgInput').focus();
     updateAiSummaryToggle();
 }
@@ -1958,6 +1967,59 @@ function updateCallButtons() {
     });
 }
 
+async function requestChatLiveUpdate(groupId, cursor, signal) {
+    const query = cursor ? '?cursor=' + encodeURIComponent(cursor) : '';
+    const response = await fetch(API + '/chat/groups/' + encodeURIComponent(groupId) + '/live' + query, {
+        method: 'GET',
+        headers: { Accept: 'application/json', Authorization: 'Bearer ' + _token },
+        cache: 'no-store',
+        signal
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || 'Live-Chat konnte nicht verbunden werden.');
+    return data;
+}
+
+function stopChatLiveUpdates(groupId = _chatLiveGroupId) {
+    if (groupId && _chatLiveGroupId && String(groupId) !== String(_chatLiveGroupId)) return;
+    _chatLiveController?.abort();
+    _chatLiveController = null;
+    _chatLiveGroupId = null;
+    _chatLiveTask = null;
+}
+
+function startChatLiveUpdates(groupId) {
+    const gid = String(groupId || '');
+    if (!gid || !_token || (_chatLiveController && _chatLiveGroupId === gid)) return;
+    stopChatLiveUpdates();
+    const controller = new AbortController();
+    _chatLiveController = controller;
+    _chatLiveGroupId = gid;
+
+    _chatLiveTask = (async () => {
+        let cursor = '';
+        while (!controller.signal.aborted && _activeGroupId === gid) {
+            try {
+                const update = await requestChatLiveUpdate(gid, cursor, controller.signal);
+                cursor = String(update?.cursor || cursor || '');
+                if (update?.changed && _activeGroupId === gid) await loadMessages(gid, false);
+            } catch (error) {
+                if (controller.signal.aborted) return;
+                // The regular three-second poll remains the reliable fallback.
+                console.warn('Live-Chat-Verbindung wird erneut aufgebaut:', error?.message || error);
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+                cursor = '';
+            }
+        }
+    })().finally(() => {
+        if (_chatLiveController === controller) {
+            _chatLiveController = null;
+            _chatLiveGroupId = null;
+            _chatLiveTask = null;
+        }
+    });
+}
+
 async function pollMessages() {
     if (_messagePollBusy) return;
     _messagePollBusy = true;
@@ -2007,6 +2069,7 @@ async function loadMessages(gid, initial) {
             updatePinnedMessageBanner(response.pinnedMessage || null);
             updateMessageReceipts(activity);
             updateTypingIndicator(activity.typing || []);
+            await markGroupDelivered(gid);
             markActiveGroupRead(gid);
             return;
         }
@@ -2034,6 +2097,7 @@ async function loadMessages(gid, initial) {
         }
         updateMessageReceipts(activity);
         updateTypingIndicator(activity.typing || []);
+        await markGroupDelivered(gid);
         markActiveGroupRead(gid);
         updatePinnedMessageBanner(response.pinnedMessage || null);
         if (gid === _activeGroupId) { const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight; }
@@ -2086,6 +2150,19 @@ function updateTypingIndicator(usernames = []) {
             ? typing[0] + (chatLanguage() === 'de' ? ' und ' : ' and ') + typing[1] + ' ' + chatText('typingMany')
             : chatText('typingGroup');
     meta.classList.add('typing');
+}
+
+async function markGroupDelivered(gid = _activeGroupId) {
+    if (!gid || gid !== _activeGroupId) return;
+    const upTo = Math.max(0, Number(_lastMsgId[gid]) || 0);
+    if (!upTo || (_lastDeliveredSent[gid] || 0) >= upTo) return;
+    const previous = _lastDeliveredSent[gid] || 0;
+    _lastDeliveredSent[gid] = upTo;
+    try {
+        await api('/chat/groups/' + gid + '/delivered', 'POST', { upTo });
+    } catch {
+        _lastDeliveredSent[gid] = previous;
+    }
 }
 
 async function markActiveGroupRead(gid = _activeGroupId) {
