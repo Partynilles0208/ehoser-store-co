@@ -5515,39 +5515,79 @@ app.delete('/api/chat/groups/:id/members/:username', async (req, res) => {
   res.json({ ok: true });
 });
 
-// DELETE /api/chat/groups/:id — Gruppe löschen (Admin)
+// Permanent deletion removes the complete live chat record for everyone.
+// Private chats may be deleted by either participant; groups require an admin.
+function isMissingOptionalChatTable(error) {
+  const message = String(error?.message || '');
+  return error?.code === '42P01' || /relation .* does not exist|could not find the table/i.test(message);
+}
+
+async function permanentlyDeleteChatGroup(groupId) {
+  const { data: reports, error: reportReadError } = await supabaseAdmin
+    .from('chat_reports')
+    .select('id')
+    .eq('group_id', groupId);
+  if (reportReadError && !isMissingOptionalChatTable(reportReadError)) throw reportReadError;
+
+  const reportIds = (reports || []).map((report) => report.id).filter((id) => Number.isFinite(Number(id)));
+  if (reportIds.length) {
+    const { error } = await supabaseAdmin.from('moderation_actions').delete().in('report_id', reportIds);
+    if (error && !isMissingOptionalChatTable(error)) throw error;
+  }
+  const reportDelete = await supabaseAdmin.from('chat_reports').delete().eq('group_id', groupId);
+  if (reportDelete.error && !isMissingOptionalChatTable(reportDelete.error)) throw reportDelete.error;
+
+  // Delete content before memberships. This ensures a failed deletion never
+  // first locks users out while leaving their messages behind.
+  const cleanupSteps = [
+    () => supabaseAdmin.from('chat_messages').delete().eq('group_id', groupId),
+    () => supabaseAdmin.from('chat_group_admins').delete().eq('group_id', groupId),
+    () => supabaseAdmin.from('chat_group_meta').delete().eq('group_id', groupId),
+    () => supabaseAdmin.from('chat_group_members').delete().eq('group_id', groupId),
+    () => supabaseAdmin.from('chat_groups').delete().eq('id', groupId)
+  ];
+  for (const run of cleanupSteps) {
+    const { error } = await run();
+    if (error) throw error;
+  }
+  chatGroupMetaMemory.delete(groupId);
+  chatGroupAdminsMemory.delete(groupId);
+}
+
+// DELETE /api/chat/groups/:id — Chat für alle endgültig löschen
 app.delete('/api/chat/groups/:id', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
   const { id } = req.params;
+  if (req.body?.confirmation !== 'DELETE') {
+    return res.status(400).json({ error: 'Bitte bestätige die endgültige Löschung.' });
+  }
 
-  const { data: groupRow } = await supabaseAdmin
-    .from('chat_groups')
-    .select('id,created_by')
-    .eq('id', id)
-    .maybeSingle();
-  if (!groupRow) return res.status(404).json({ error: 'Gruppe nicht gefunden' });
+  const [{ data: groupRow }, { data: membership }] = await Promise.all([
+    supabaseAdmin.from('chat_groups').select('id,created_by').eq('id', id).maybeSingle(),
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', id).eq('username', user.username).maybeSingle()
+  ]);
+  if (!groupRow) return res.status(404).json({ error: 'Chat wurde bereits gelöscht.' });
+  if (!membership) return res.status(403).json({ error: 'Nicht Mitglied dieses Chats.' });
 
-  const admin = await isGroupAdmin(id, user.username, groupRow.created_by);
-  if (!admin) return res.status(403).json({ error: 'Nur Admins dürfen Gruppen löschen' });
+  const { data: members, error: membersError } = await supabaseAdmin
+    .from('chat_group_members')
+    .select('username')
+    .eq('group_id', id);
+  if (membersError) return res.status(500).json({ error: 'Chat-Mitglieder konnten nicht geprüft werden.' });
 
-  const deleteTasks = [
-    supabaseAdmin.from('chat_messages').delete().eq('group_id', id),
-    supabaseAdmin.from('chat_group_members').delete().eq('group_id', id),
-    supabaseAdmin.from('chat_group_admins').delete().eq('group_id', id),
-    supabaseAdmin.from('chat_group_meta').delete().eq('group_id', id),
-    supabaseAdmin.from('chat_groups').delete().eq('id', id)
-  ];
+  const meta = await getGroupMeta(id, { type: (members || []).length <= 2 ? 'private' : 'group' });
+  const isPrivateChat = meta.type === 'private' || (members || []).length <= 2;
+  if (!isPrivateChat && !await isGroupAdmin(id, user.username, groupRow.created_by)) {
+    return res.status(403).json({ error: 'Nur Gruppenadmins dürfen diesen Gruppenchat für alle löschen.' });
+  }
 
-  const results = await Promise.allSettled(deleteTasks);
-  const rejected = results.find(r => r.status === 'rejected');
-  if (rejected) return res.status(500).json({ error: 'Gruppe konnte nicht gelöscht werden' });
-  const firstErr = results.find(r => r.status === 'fulfilled' && r.value?.error)?.value?.error;
-  if (firstErr) return res.status(500).json({ error: 'Gruppe konnte nicht gelöscht werden: ' + firstErr.message });
-
-  chatGroupMetaMemory.delete(id);
-  chatGroupAdminsMemory.delete(id);
-
-  res.json({ ok: true });
+  try {
+    await permanentlyDeleteChatGroup(id);
+    return res.json({ ok: true, deletedForAll: true });
+  } catch (error) {
+    console.error('Permanent chat deletion failed:', error?.message || error);
+    return res.status(500).json({ error: 'Chat konnte nicht vollständig gelöscht werden. Es wurde nichts als erfolgreich bestätigt.' });
+  }
 });
 
 // POST /api/chat/groups/:id/report — Gruppe melden (letzte 10 Nachrichten)
