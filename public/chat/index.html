@@ -56,29 +56,31 @@
 <div id="loginWall" class="login-wall" style="display:none">
   <div class="login-wall-box">
     <div class="lw-brand">
-      <div class="lw-logo">E</div>
+      <div class="lw-logo" aria-hidden="true">E</div>
       <span class="lw-name">ehoser</span>
     </div>
-    <h2>Direkt in deinen Chat</h2>
-    <p>ehoser ist jetzt vollständig auf Chat, Gruppen und Anrufe ausgerichtet.</p>
+    <div class="login-wall-kicker"><span aria-hidden="true"></span> Chat</div>
+    <h2>Willkommen zurück</h2>
+    <p class="login-wall-lead">Melde dich an und mach genau dort weiter, wo dein Gespräch aufgehört hat.</p>
     <div class="chat-auth-tabs" role="tablist" aria-label="Anmeldung auswählen">
       <button id="chatLoginTab" class="active" type="button" onclick="setChatAuthMode('login')">Anmelden</button>
       <button id="chatRegisterTab" type="button" onclick="setChatAuthMode('register')">Registrieren</button>
     </div>
     <form id="chatLoginForm" class="chat-auth-form" onsubmit="submitChatLogin(event)">
-      <label>Zugangscode<input id="chatLoginUnlockCode" type="password" minlength="6" autocomplete="off" required></label>
-      <label>Benutzername<input id="chatLoginUsername" type="text" minlength="3" autocomplete="username" required></label>
-      <label>Passwort<input id="chatLoginPassword" type="password" minlength="6" autocomplete="current-password" placeholder="Oder Login-Code verwenden"></label>
-      <label>Login-Code <span>(für ältere Konten)</span><input id="chatLoginCode" type="password" minlength="6" autocomplete="one-time-code"></label>
-      <button id="chatLoginSubmit" class="btn-primary" type="submit">Chat öffnen</button>
+      <label class="chat-auth-field"><span>Zugangscode</span><input id="chatLoginUnlockCode" type="password" minlength="6" autocomplete="off" placeholder="Dein Zugangscode" required></label>
+      <label class="chat-auth-field"><span>Benutzername</span><input id="chatLoginUsername" type="text" minlength="3" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Dein Benutzername" required></label>
+      <label class="chat-auth-field"><span>Passwort</span><input id="chatLoginPassword" type="password" minlength="6" autocomplete="current-password" placeholder="Dein Passwort"></label>
+      <label class="chat-auth-field"><span>Login-Code <em>(für ältere Konten)</em></span><input id="chatLoginCode" type="password" minlength="6" autocomplete="one-time-code" inputmode="numeric" placeholder="Dein Login-Code"></label>
+      <p class="chat-auth-help">Gib dein Passwort <strong>oder</strong> deinen Login-Code ein.</p>
+      <button id="chatLoginSubmit" class="btn-primary" type="submit">Chat öffnen <span aria-hidden="true">→</span></button>
     </form>
     <form id="chatRegisterForm" class="chat-auth-form" style="display:none" onsubmit="submitChatRegister(event)">
-      <label>Zugangscode<input id="chatRegisterUnlockCode" type="password" minlength="6" autocomplete="off" required></label>
-      <label>Benutzername<input id="chatRegisterUsername" type="text" minlength="3" autocomplete="username" required></label>
+      <label class="chat-auth-field"><span>Zugangscode</span><input id="chatRegisterUnlockCode" type="password" minlength="6" autocomplete="off" placeholder="Dein Zugangscode" required></label>
+      <label class="chat-auth-field"><span>Benutzername</span><input id="chatRegisterUsername" type="text" minlength="3" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Wähle einen Benutzernamen" required></label>
       <p class="chat-auth-note">Deine echte <strong>@ehoser.de</strong>-Adresse wählst du direkt nach der Anmeldung.</p>
-      <label>Passwort<input id="chatRegisterPassword" type="password" minlength="6" autocomplete="new-password" required></label>
-      <label>Passwort wiederholen<input id="chatRegisterPasswordConfirm" type="password" minlength="6" autocomplete="new-password" required></label>
-      <button id="chatRegisterSubmit" class="btn-primary" type="submit">Account erstellen</button>
+      <label class="chat-auth-field"><span>Passwort</span><input id="chatRegisterPassword" type="password" minlength="6" autocomplete="new-password" placeholder="Mindestens 6 Zeichen" required></label>
+      <label class="chat-auth-field"><span>Passwort wiederholen</span><input id="chatRegisterPasswordConfirm" type="password" minlength="6" autocomplete="new-password" placeholder="Passwort erneut eingeben" required></label>
+      <button id="chatRegisterSubmit" class="btn-primary" type="submit">Account erstellen <span aria-hidden="true">→</span></button>
     </form>
     <div class="chat-auth-divider"><span>oder</span></div>
     <div id="chatGoogleSignIn" class="chat-google-sign-in"></div>
