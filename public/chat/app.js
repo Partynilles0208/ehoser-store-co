@@ -2543,8 +2543,11 @@ function showMessageContextMenu(row, x, y) {
     menu.setAttribute('role', 'menu');
 
     addMessageContextAction(menu, row.dataset.pinned === 'true' ? 'Nicht mehr anpinnen' : '📌 Anpinnen', () => togglePinnedMessage(row));
-    if (canEditMessage(row)) addMessageContextAction(menu, 'Bearbeiten', () => startEditMessage(row));
-    if (canDeleteMessage(row)) addMessageContextAction(menu, 'Löschen', () => deleteMessage(row), 'danger');
+    // Löschen braucht den Nachrichtentyp nicht zu lesen. Es steht bewusst vor
+    // „Text bearbeiten“, damit auf dem Handy nicht versehentlich die Bearbeitung
+    // gewählt wird und die irreführende Textnachrichten-Meldung erscheint.
+    if (canDeleteMessage(row)) addMessageContextAction(menu, '🗑 Für alle löschen', () => deleteMessage(row), 'danger');
+    if (canEditMessage(row)) addMessageContextAction(menu, '✏️ Text bearbeiten', () => startEditMessage(row));
     document.body.appendChild(menu);
 
     const margin = 8;
@@ -2580,7 +2583,9 @@ async function startEditMessage(row) {
     try {
         const plain = plainEnc ? decodeURIComponent(plainEnc) : null;
         const payload = safeJsonParse(plain, null);
-        if (!payload || payload.t !== 'txt') return alert('Nur Textnachrichten können bearbeitet werden');
+        if (!payload || payload.t !== 'txt') {
+            return alert('Diese Nachricht kann nicht bearbeitet werden. Zum Entfernen nutze bitte „🗑 Für alle löschen“.');
+        }
         currText = payload.v || '';
     } catch { return alert('Fehler beim Lesen der Nachricht'); }
     const newText = prompt('Bearbeite Nachricht:', currText);
