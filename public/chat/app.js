@@ -173,6 +173,8 @@ let _onlineListRequestId = 0;
 let _onlineListRefreshTimer = null;
 let _messagePollBusy = false;
 let _lastGroupRefreshAt = 0;
+let _lastSafetyMessageSyncAt = 0;
+const _messageLoadQueues = {};
 let _lastReadSent = {};
 let _lastDeliveredSent = {};
 let _chatLiveController = null;
@@ -1000,6 +1002,19 @@ function initHoldOnlineList() {
         } else {
             sendChatHeartbeat(true);
             markActiveGroupRead(_activeGroupId);
+            if (_activeGroupId) {
+                loadMessages(_activeGroupId, false).catch(() => {});
+                stopChatLiveUpdates();
+                startChatLiveUpdates(_activeGroupId);
+            }
+        }
+    });
+    window.addEventListener('online', () => {
+        sendChatHeartbeat(true);
+        if (_activeGroupId) {
+            loadMessages(_activeGroupId, false).catch(() => {});
+            stopChatLiveUpdates();
+            startChatLiveUpdates(_activeGroupId);
         }
     });
 }
@@ -2024,7 +2039,13 @@ async function pollMessages() {
     if (_messagePollBusy) return;
     _messagePollBusy = true;
     try {
-        if (_activeGroupId) await loadMessages(_activeGroupId, false);
+        // Long-poll delivers messages immediately. Keep a lightweight safety
+        // sync so the chat recovers even if a mobile browser drops a request.
+        const hasLiveConnection = Boolean(_activeGroupId && _chatLiveController && _chatLiveGroupId === String(_activeGroupId));
+        if (_activeGroupId && (!hasLiveConnection || Date.now() - _lastSafetyMessageSyncAt > 8_000)) {
+            _lastSafetyMessageSyncAt = Date.now();
+            await loadMessages(_activeGroupId, false);
+        }
         // Also reconcile inactive chats: the server is the source of truth
         // when a chat was permanently deleted on another device.
         if (Date.now() - _lastGroupRefreshAt > 12_000) {
@@ -2054,7 +2075,21 @@ async function pollMessageNotifications(initial = false) {
     }
 }
 
-async function loadMessages(gid, initial) {
+function loadMessages(gid, initial = false) {
+    const key = String(gid || '');
+    if (!key) return Promise.resolve();
+    // A long-poll update and the fallback poll can finish out of order. Queue
+    // loads for each chat so an older response never overwrites a newer view.
+    const previous = _messageLoadQueues[key] || Promise.resolve();
+    const task = previous.catch(() => {}).then(() => loadMessagesNow(key, Boolean(initial)));
+    const tracked = task.finally(() => {
+        if (_messageLoadQueues[key] === tracked) delete _messageLoadQueues[key];
+    });
+    _messageLoadQueues[key] = tracked;
+    return tracked;
+}
+
+async function loadMessagesNow(gid, initial) {
     try {
         // The first load is an authoritative history rebuild. A stale local
         // cursor must not hide older server messages until the chat is reopened.
@@ -2078,7 +2113,7 @@ async function loadMessages(gid, initial) {
             updatePinnedMessageBanner(response.pinnedMessage || null);
             updateMessageReceipts(activity);
             updateTypingIndicator(activity.typing || []);
-            await markGroupDelivered(gid);
+            void markGroupDelivered(gid);
             markActiveGroupRead(gid);
             return;
         }
@@ -2105,7 +2140,7 @@ async function loadMessages(gid, initial) {
         }
         updateMessageReceipts(activity);
         updateTypingIndicator(activity.typing || []);
-        await markGroupDelivered(gid);
+        void markGroupDelivered(gid);
         markActiveGroupRead(gid);
         updatePinnedMessageBanner(response.pinnedMessage || null);
         if (gid === _activeGroupId) { const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight; }
