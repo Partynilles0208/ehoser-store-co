@@ -5875,6 +5875,131 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   }
 });
 
+// Near-realtime long-poll cursor. It watches both user messages and the
+// lightweight receipt/typing rows, without exposing the Supabase service key
+// or making the chat tables public to browser clients.
+const CHAT_LIVE_WAIT_MS = 25_000;
+const CHAT_LIVE_RECHECK_MS = 350;
+const waitForChatLiveChange = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function getChatLiveCursor(groupId) {
+  let newestResult = await supabaseAdmin
+    .from('chat_messages')
+    .select('id,updated_at')
+    .eq('group_id', groupId)
+    .neq('sender', CHAT_CALL_EVENT_SENDER)
+    .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .order('updated_at', { ascending: false })
+    .limit(1);
+  if (newestResult.error && isMissingChatMessageMetadata(newestResult.error)) {
+    newestResult = await supabaseAdmin
+      .from('chat_messages')
+      .select('id')
+      .eq('group_id', groupId)
+      .neq('sender', CHAT_CALL_EVENT_SENDER)
+      .neq('sender', GROUP_CALL_EVENT_SENDER)
+      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+      .order('id', { ascending: false })
+      .limit(1);
+  }
+  if (newestResult.error) throw newestResult.error;
+
+  const { data: stateRows, error: stateError } = await supabaseAdmin
+    .from('chat_messages')
+    .select('id,encrypted_content')
+    .eq('group_id', groupId)
+    .like('sender', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .order('id', { ascending: true })
+    .limit(500);
+  if (stateError) throw stateError;
+
+  const newest = newestResult.data?.[0] || {};
+  const stateSignature = (stateRows || []).map((row) => String(row.id) + ':' + String(row.encrypted_content || '')).join('|');
+  return crypto.createHash('sha256')
+    .update(String(newest.id || 0) + ':' + String(newest.updated_at || '') + ':' + stateSignature)
+    .digest('hex');
+}
+
+// GET /api/chat/groups/:groupId/live?cursor= — waits briefly for a message,
+// delivery/read tick, edit or typing state change. The browser immediately
+// reloads the regular authenticated message endpoint once it changes.
+app.get('/api/chat/groups/:groupId/live', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId } = req.params;
+  const requestedCursor = String(req.query.cursor || '').trim().slice(0, 128);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  const belongsToGroup = async () => {
+    const { data, error } = await supabaseAdmin
+      .from('chat_group_members')
+      .select('username')
+      .eq('group_id', groupId)
+      .eq('username', user.username)
+      .maybeSingle();
+    if (error) throw error;
+    return Boolean(data);
+  };
+
+  try {
+    if (!await belongsToGroup()) return res.status(403).json({ error: 'Nicht Mitglied' });
+    let cursor = await getChatLiveCursor(groupId);
+    if (!requestedCursor) return res.json({ changed: false, cursor });
+
+    const deadline = Date.now() + CHAT_LIVE_WAIT_MS;
+    let checks = 0;
+    while (Date.now() < deadline) {
+      await waitForChatLiveChange(CHAT_LIVE_RECHECK_MS);
+      checks += 1;
+      if (checks % 8 === 0 && !await belongsToGroup()) {
+        return res.status(403).json({ error: 'Nicht Mitglied' });
+      }
+      cursor = await getChatLiveCursor(groupId);
+      if (cursor !== requestedCursor) return res.json({ changed: true, cursor });
+    }
+    return res.json({ changed: false, cursor });
+  } catch (error) {
+    console.error('Chat live update failed:', error?.message || error);
+    return res.status(500).json({ error: 'Live-Chat konnte nicht aktualisiert werden' });
+  }
+});
+
+async function highestVisibleChatMessageId(groupId, requestedId) {
+  const { data: latest, error } = await supabaseAdmin
+    .from('chat_messages')
+    .select('id')
+    .eq('group_id', groupId)
+    .neq('sender', CHAT_CALL_EVENT_SENDER)
+    .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .lte('id', requestedId)
+    .order('id', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return Number(latest?.[0]?.id) || 0;
+}
+
+// A delivery receipt is sent as soon as this device has fetched a message,
+// even when the chat is not currently focused. Read receipts stay separate.
+app.post('/api/chat/groups/:groupId/delivered', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId } = req.params;
+  const requestedId = Math.max(0, Number.parseInt(req.body?.upTo, 10) || 0);
+  if (!requestedId) return res.status(400).json({ error: 'Ungültige Nachrichten-ID' });
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  try {
+    const deliveredMessageId = await highestVisibleChatMessageId(groupId, requestedId);
+    if (!deliveredMessageId) return res.json({ ok: true });
+    await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
+    return res.json({ ok: true, deliveredMessageId });
+  } catch (error) {
+    console.error('Save chat delivery receipt failed:', error?.message || error);
+    return res.status(500).json({ error: 'Zustellstatus konnte nicht gespeichert werden' });
+  }
+});
+
 // Read receipts: the greatest message id that is actually visible to this member.
 app.post('/api/chat/groups/:groupId/read', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
