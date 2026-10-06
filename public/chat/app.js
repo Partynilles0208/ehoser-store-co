@@ -172,6 +172,7 @@ let _onlineListOpen = false;
 let _onlineListRequestId = 0;
 let _onlineListRefreshTimer = null;
 let _messagePollBusy = false;
+let _lastGroupRefreshAt = 0;
 let _lastReadSent = {};
 let _topbarMemberText = '';
 let _typingGroupId = null;
@@ -396,6 +397,47 @@ function persistMessages(groupId, messages) {
         .slice(-180);
     writeChatCache('messages', cache);
     if (_groups.length && document.getElementById('groupList')) renderGroupList();
+}
+
+function forgetPermanentlyDeletedChat(groupId, showNotice = false) {
+    const gid = String(groupId || '');
+    if (!gid) return;
+    stopChatTyping(gid);
+
+    for (const kind of ['messages', 'messageSync', 'unread', 'unread-activity']) {
+        const cache = readChatCache(kind, {});
+        if (cache && typeof cache === 'object') {
+            delete cache[gid];
+            writeChatCache(kind, cache);
+        }
+    }
+    delete _lastMsgId[gid];
+    delete _lastMessageSyncAt[gid];
+    delete _seenMessageIds[gid];
+    delete _unreadByGroup[gid];
+    delete _unreadActivityAtByGroup[gid];
+    _e2eeGroupKeys.delete(gid);
+    _e2eeReady.delete(gid);
+    _e2eeMigrated.delete(gid);
+
+    _groups = _groups.filter((group) => String(group?.id || '') !== gid);
+    writeChatCache('groups', _groups.filter((group) => !group?.is_contact));
+    if (_activeGroupId === gid) {
+        _activeGroupId = null;
+        _activeMembers = [];
+        document.getElementById('messagesArea')?.replaceChildren();
+        document.getElementById('activeChat').style.display = 'none';
+        document.getElementById('noGroup').style.display = 'flex';
+        updatePinnedMessageBanner(null);
+        updateCallButtons();
+    }
+    renderGroupList();
+    if (showNotice) toast('Dieser Chat wurde für alle endgültig gelöscht.', 'ok');
+}
+
+function isUnavailableChatError(error) {
+    const message = String(error?.message || '');
+    return /Nicht Mitglied|Chat wurde bereits gelöscht|Gruppe nicht gefunden/i.test(message);
 }
 
 function normaliseUnreadCounts(value) {
@@ -1591,8 +1633,13 @@ async function loadGroups() {
         const groups = groupsResult.value.groups || [];
         _contacts = contactsResult.status === 'fulfilled' ? (contactsResult.value.contacts || []) : _contacts;
         rememberChatProfiles(_contacts);
+        const previousServerGroupIds = new Set(_groups.filter((group) => !group?.is_contact).map((group) => String(group.id)));
+        const currentServerGroupIds = new Set(groups.map((group) => String(group.id)));
         _groups = mergeGroupsWithContacts(groups, _contacts);
         writeChatCache('groups', groups);
+        for (const groupId of previousServerGroupIds) {
+            if (!currentServerGroupIds.has(groupId)) forgetPermanentlyDeletedChat(groupId);
+        }
         renderGroupList();
     } catch (e) { toast('Fehler: ' + e.message, 'err'); }
 }
@@ -1779,6 +1826,28 @@ async function selectGroup(gid) {
     setConversationAvatar(document.getElementById('topbarGroupIcon'), g);
     _topbarMemberText = chatText('loadingMembers');
     updateTypingIndicator([]);
+    _activeMembers = [];
+    updateCallButtons();
+
+    // Verify server membership before showing locally cached messages. A chat
+    // deleted on another device must never reopen from this browser's cache.
+    try {
+        const { members } = await api('/chat/groups/' + gid + '/members');
+        if (gid !== _activeGroupId) return;
+        _activeMembers = members || [];
+        _topbarMemberText = g.type === 'private'
+            ? lastSeenLabel(g.last_seen, g.presence_override)
+            : _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
+        updateTypingIndicator([]);
+    } catch (error) {
+        if (isUnavailableChatError(error)) {
+            forgetPermanentlyDeletedChat(gid, true);
+        } else {
+            toast('Chat konnte nicht geöffnet werden: ' + (error?.message || 'Unbekannter Fehler'), 'err');
+        }
+        return;
+    }
+
     const cachedMessages = getCachedMessages(gid);
     let e2eeReady = true;
     try {
@@ -1789,23 +1858,10 @@ async function selectGroup(gid) {
         e2eeReady = false;
         const area = document.getElementById('messagesArea');
         if (area) area.innerHTML = '<div class="msg-loading">Sicherer Schlüssel wird vorbereitet…</div>';
-        // Continue loading group members: calls must stay available even while
-        // encrypted messages are temporarily waiting for their key.
         console.warn('E2EE-Vorbereitung wartet:', error?.message || error);
     }
     if (e2eeReady && cachedMessages.length) renderCachedMessages(gid, cachedMessages);
     else document.getElementById('messagesArea').innerHTML = '<div class="msg-loading">Nachrichten werden geladen…</div>';
-    _activeMembers = [];
-    updateCallButtons();
-    try {
-        const { members } = await api('/chat/groups/' + gid + '/members');
-        if (gid !== _activeGroupId) return;
-        _activeMembers = members || [];
-        _topbarMemberText = g.type === 'private'
-            ? lastSeenLabel(g.last_seen, g.presence_override)
-            : _activeMembers.length + ' ' + (_activeMembers.length === 1 ? chatText('member') : chatText('members'));
-        updateTypingIndicator([]);
-    } catch {}
     updateCallButtons();
     if (!cachedMessages.length) _lastMsgId[gid] = 0;
     await loadMessages(gid, true);
@@ -1907,6 +1963,12 @@ async function pollMessages() {
     _messagePollBusy = true;
     try {
         if (_activeGroupId) await loadMessages(_activeGroupId, false);
+        // Also reconcile inactive chats: the server is the source of truth
+        // when a chat was permanently deleted on another device.
+        if (Date.now() - _lastGroupRefreshAt > 12_000) {
+            _lastGroupRefreshAt = Date.now();
+            await loadGroups();
+        }
         await pollMessageNotifications(false);
     } finally {
         _messagePollBusy = false;
@@ -1976,6 +2038,10 @@ async function loadMessages(gid, initial) {
         updatePinnedMessageBanner(response.pinnedMessage || null);
         if (gid === _activeGroupId) { const a = document.getElementById('messagesArea'); a.scrollTop = a.scrollHeight; }
     } catch (e) {
+        if (isUnavailableChatError(e)) {
+            forgetPermanentlyDeletedChat(gid, true);
+            return;
+        }
         if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#c05050">Fehler: ' + esc(e.message) + '</div>';
     }
 }
@@ -2618,6 +2684,40 @@ async function deleteMessage(row) {
         updatePinnedMessageBanner(null);
         toast('Nachricht gelöscht', 'ok');
     } catch (error) { toast('Löschen fehlgeschlagen: ' + error.message, 'err'); }
+}
+
+async function deleteActiveChatPermanently() {
+    const gid = String(_activeGroupId || '');
+    const group = _groups.find((item) => String(item?.id || '') === gid);
+    if (!gid || !group) return;
+    const isPrivate = group.type === 'private';
+    if (!isPrivate && !group.is_admin) {
+        toast('Nur Gruppenadmins können diesen Gruppenchat für alle endgültig löschen.', 'err');
+        return;
+    }
+    const chatName = String(group.name || 'diesen Chat');
+    const firstConfirmation = isPrivate
+        ? 'Diesen Chat für beide Personen endgültig löschen? Alle Nachrichten verschwinden vom Server.'
+        : 'Diesen Gruppenchat für alle endgültig löschen? Alle Nachrichten verschwinden vom Server.';
+    if (!confirm(firstConfirmation)) return;
+    const confirmation = prompt('Zum endgültigen Löschen „LÖSCHEN“ eingeben:');
+    if (confirmation !== 'LÖSCHEN') {
+        toast('Löschung abgebrochen.', 'err');
+        return;
+    }
+
+    const button = document.getElementById('deleteChatButton');
+    if (button) button.disabled = true;
+    try {
+        await api('/chat/groups/' + encodeURIComponent(gid), 'DELETE', { confirmation: 'DELETE' });
+        forgetPermanentlyDeletedChat(gid);
+        await loadGroups();
+        toast('„' + chatName + '“ wurde für alle endgültig gelöscht.', 'ok');
+    } catch (error) {
+        toast('Chat konnte nicht gelöscht werden: ' + (error?.message || 'Unbekannter Fehler'), 'err');
+    } finally {
+        if (button && _activeGroupId) button.disabled = false;
+    }
 }
 
 async function togglePinnedMessage(row) {
