@@ -2056,7 +2056,9 @@ async function pollMessageNotifications(initial = false) {
 
 async function loadMessages(gid, initial) {
     try {
-        const after = _lastMsgId[gid] || 0;
+        // The first load is an authoritative history rebuild. A stale local
+        // cursor must not hide older server messages until the chat is reopened.
+        const after = initial ? 0 : (_lastMsgId[gid] || 0);
         const changedAfter = getMessageSyncAt(gid);
         const response = await api('/chat/messages/' + gid + '?after=' + after + '&changedAfter=' + encodeURIComponent(changedAfter));
         const messages = response.messages || [];
@@ -2064,8 +2066,15 @@ async function loadMessages(gid, initial) {
         if (gid !== _activeGroupId) return;
         setMessageSyncAt(gid, response.syncedAt || new Date().toISOString());
         updatePinnedMessageBanner(response.pinnedMessage || null);
+        if (initial) {
+            // renderCachedMessages() may have filled the DOM and seen-set from an
+            // incomplete cache. Reset both before rebuilding the server history.
+            document.getElementById('messagesArea').innerHTML = '';
+            _seenMessageIds[gid] = new Set();
+            _lastMsgId[gid] = 0;
+        }
         if (!messages.length) {
-            if (initial && !document.querySelector('#messagesArea .msg-row')) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#8696a0">Noch keine Nachrichten.</div>';
+            if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#8696a0">Noch keine Nachrichten.</div>';
             updatePinnedMessageBanner(response.pinnedMessage || null);
             updateMessageReceipts(activity);
             updateTypingIndicator(activity.typing || []);
@@ -2078,7 +2087,6 @@ async function loadMessages(gid, initial) {
         persistMessages(gid, messages);
         await fetchProBadges(messages.map((m) => m.sender));
         if (gid !== _activeGroupId) return;
-        if (initial) document.getElementById('messagesArea').innerHTML = '';
         for (const m of messages) {
             if (gid !== _activeGroupId) break;
             // Try to find an existing DOM element for this message
