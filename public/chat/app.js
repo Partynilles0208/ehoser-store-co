@@ -188,6 +188,7 @@ let _typingStopTimer = null;
 let _chatSettingsLoginCode = null;
 let _settingsOnlineRequestId = 0;
 let _settingsOnlineRefreshTimer = null;
+let _settingsOnlineRefreshBusy = false;
 const _chatProfiles = new Map();
 
 // E2EE: private RSA keys stay only in this browser's IndexedDB. The server stores
@@ -4380,6 +4381,10 @@ async function openChatSettings() {
     document.getElementById('settingsRevealCode').textContent = 'Anzeigen';
     document.getElementById('settingsSaveStatus').textContent = '';
     _chatSettingsLoginCode = null;
+    // A stale request from a previously closed settings dialog must never
+    // prevent the freshly opened presence list from updating.
+    _settingsOnlineRequestId += 1;
+    _settingsOnlineRefreshBusy = false;
     openModal('chatSettingsModal');
     loadSettingsOnlineList();
     startSettingsOnlineRefresh();
@@ -4431,15 +4436,18 @@ function startSettingsOnlineRefresh() {
 async function loadSettingsOnlineList(silent = false) {
     const list = document.getElementById('settingsOnlineList');
     const count = document.getElementById('settingsOnlineCount');
-    if (!list || !count) return;
+    if (!list || !count || _settingsOnlineRefreshBusy) return;
     const requestId = ++_settingsOnlineRequestId;
+    _settingsOnlineRefreshBusy = true;
     if (!silent) {
         count.textContent = 'Kontakte werden geladen…';
         list.innerHTML = '<li class="settings-online-loading">Online-Liste wird geladen…</li>';
     }
     try {
-        await sendChatHeartbeat();
-        const data = await api('/chat/contacts');
+        // A slow heartbeat must never hold this settings panel on “Lädt…”.
+        // It updates separately while the contact request starts immediately.
+        void sendChatHeartbeat(true);
+        const data = await apiWithTimeout('/chat/contacts', 8_000);
         if (requestId !== _settingsOnlineRequestId) return;
         const contacts = Array.isArray(data.contacts) ? data.contacts : [];
         const ownUsername = String(_me?.username || '').trim();
@@ -4480,8 +4488,10 @@ async function loadSettingsOnlineList(silent = false) {
         }).join('');
     } catch (error) {
         if (requestId !== _settingsOnlineRequestId) return;
-        count.textContent = 'Online-Liste nicht verfügbar';
-        list.innerHTML = '<li class="settings-online-empty">' + esc(error?.message || 'Die Online-Liste konnte nicht geladen werden.') + '</li>';
+        count.textContent = 'Online-Liste vorübergehend nicht erreichbar';
+        list.innerHTML = '<li class="settings-online-empty">Die Liste konnte gerade nicht geladen werden. Sie versucht es automatisch erneut.</li>';
+    } finally {
+        _settingsOnlineRefreshBusy = false;
     }
 }
 
