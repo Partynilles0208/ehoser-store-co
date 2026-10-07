@@ -693,6 +693,166 @@ function applyPresenceOverride(username, lastSeen, settings) {
   return lastSeen || null;
 }
 
+// ─── Entwicklerplattform & ehoser Sites ─────────────────────────────────────
+const DEVELOPER_API_KEY_PREFIX = 'eh_live_';
+const DEVELOPER_API_RATE_LIMIT = 60;
+const developerApiRateBuckets = new Map();
+
+function developerId(prefix) {
+  return prefix + crypto.randomBytes(12).toString('hex');
+}
+function developerHash(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
+function developerIso(value) {
+  const ms = Date.parse(value || '');
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : new Date().toISOString();
+}
+function developerSlug(value) {
+  return String(value || '').toLowerCase().normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+}
+function developerHttpsUrl(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    return parsed.protocol === 'https:' ? parsed.toString().slice(0, 3000) : '';
+  } catch { return ''; }
+}
+function normalizeDeveloperSiteBlocks(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 60).map((block) => {
+    const type = String(block?.type || '');
+    if (type === 'text') return { id: String(block.id || developerId('block_')).slice(0, 64), type, text: String(block.text || '').slice(0, 6000), style: ['title', 'paragraph', 'button'].includes(block.style) ? block.style : 'paragraph' };
+    if (type === 'image' || type === 'audio') return { id: String(block.id || developerId('block_')).slice(0, 64), type, url: developerHttpsUrl(block.url), alt: String(block.alt || block.name || '').slice(0, 180) };
+    if (type === 'drawing') {
+      const image = String(block.image || '');
+      return { id: String(block.id || developerId('block_')).slice(0, 64), type, image: /^data:image\/(png|jpeg|webp);base64,/i.test(image) && image.length <= 1_500_000 ? image : '' };
+    }
+    if (['ai', 'chat', 'call'].includes(type)) return { id: String(block.id || developerId('block_')).slice(0, 64), type, title: String(block.title || '').slice(0, 80) };
+    return null;
+  }).filter(Boolean);
+}
+function normalizeDeveloperPlatform(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const projects = Array.isArray(src.projects) ? src.projects.slice(0, 30).map((project) => ({
+    id: String(project?.id || developerId('proj_')).slice(0, 80),
+    name: String(project?.name || 'Unbenanntes Projekt').trim().slice(0, 80) || 'Unbenanntes Projekt',
+    description: String(project?.description || '').trim().slice(0, 300),
+    createdAt: developerIso(project?.createdAt),
+    updatedAt: developerIso(project?.updatedAt || project?.createdAt)
+  })) : [];
+  const projectIds = new Set(projects.map((project) => project.id));
+  const keys = Array.isArray(src.keys) ? src.keys.slice(0, 50).map((key) => ({
+    id: String(key?.id || developerId('key_')).slice(0, 80),
+    projectId: projectIds.has(String(key?.projectId || '')) ? String(key.projectId) : (projects[0]?.id || ''),
+    name: String(key?.name || 'Standard-Schlüssel').trim().slice(0, 80) || 'Standard-Schlüssel',
+    prefix: String(key?.prefix || '').slice(0, 40),
+    hash: /^[a-f0-9]{64}$/i.test(String(key?.hash || '')) ? String(key.hash) : '',
+    scopes: Array.isArray(key?.scopes) ? key.scopes.filter((scope) => ['ai', 'chat', 'calls', 'sites'].includes(scope)).slice(0, 4) : ['ai'],
+    createdAt: developerIso(key?.createdAt),
+    lastUsedAt: key?.lastUsedAt ? developerIso(key.lastUsedAt) : null,
+    revokedAt: key?.revokedAt ? developerIso(key.revokedAt) : null
+  })).filter((key) => key.projectId && key.hash) : [];
+  const usedSlugs = new Set();
+  const sites = Array.isArray(src.sites) ? src.sites.slice(0, 20).map((site) => {
+    const slug = developerSlug(site?.slug || site?.name);
+    if (!slug || usedSlugs.has(slug)) return null;
+    usedSlugs.add(slug);
+    return {
+      id: String(site?.id || developerId('site_')).slice(0, 80),
+      name: String(site?.name || slug).trim().slice(0, 80) || slug,
+      slug,
+      published: site?.published === true,
+      blocks: normalizeDeveloperSiteBlocks(site?.blocks),
+      createdAt: developerIso(site?.createdAt),
+      updatedAt: developerIso(site?.updatedAt || site?.createdAt)
+    };
+  }).filter(Boolean) : [];
+  return { projects, keys, sites };
+}
+function publicDeveloperPlatform(platform) {
+  const value = normalizeDeveloperPlatform(platform);
+  return {
+    projects: value.projects,
+    keys: value.keys.map((key) => ({ id: key.id, projectId: key.projectId, name: key.name, prefix: key.prefix, scopes: key.scopes, createdAt: key.createdAt, lastUsedAt: key.lastUsedAt, revokedAt: key.revokedAt })),
+    sites: value.sites.map((site) => ({ ...site, publishedUrl: site.published ? 'https://ehoser.de/sites/' + encodeURIComponent(site.slug) : null, subdomainUrl: site.published ? 'https://' + site.slug + '.ehoser.de' : null }))
+  };
+}
+async function developerPlatformFor(username) {
+  const profile = await getProfile(username);
+  return normalizeDeveloperPlatform(profile?.settings?.developerPlatform);
+}
+async function saveDeveloperPlatform(username, platform) {
+  const profile = await getProfile(username);
+  return upsertProfile(username, { settings: { ...(profile.settings || {}), developerPlatform: normalizeDeveloperPlatform(platform) } });
+}
+async function findDeveloperSiteBySlug(slug) {
+  const cleanSlug = developerSlug(slug);
+  if (!cleanSlug) return null;
+  const { data, error } = await supabaseAdmin.from('user_profiles').select('username,settings').limit(1000);
+  if (error) throw error;
+  for (const row of data || []) {
+    const site = normalizeDeveloperPlatform(row.settings?.developerPlatform).sites.find((entry) => entry.slug === cleanSlug && entry.published);
+    if (site) return { username: row.username, site };
+  }
+  return null;
+}
+async function findDeveloperApiKey(rawKey) {
+  const secret = String(rawKey || '').trim();
+  if (!secret.startsWith(DEVELOPER_API_KEY_PREFIX) || secret.length < 30) return null;
+  const hash = developerHash(secret);
+  const { data, error } = await supabaseAdmin.from('user_profiles').select('username,settings').limit(1000);
+  if (error) throw error;
+  for (const row of data || []) {
+    const platform = normalizeDeveloperPlatform(row.settings?.developerPlatform);
+    const key = platform.keys.find((entry) => entry.hash === hash && !entry.revokedAt);
+    if (key) return { username: row.username, platform, key, hash };
+  }
+  return null;
+}
+function developerApiSecret(req) {
+  const direct = String(req.get('x-api-key') || '').trim();
+  const auth = String(req.get('authorization') || '');
+  return direct || (auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '');
+}
+function developerRateLimit(hash) {
+  const now = Date.now();
+  const bucket = developerApiRateBuckets.get(hash) || { startedAt: now, count: 0 };
+  if (now - bucket.startedAt >= 60_000) { bucket.startedAt = now; bucket.count = 0; }
+  bucket.count += 1;
+  developerApiRateBuckets.set(hash, bucket);
+  return bucket.count <= DEVELOPER_API_RATE_LIMIT;
+}
+async function developerApiAuth(req, res, scope) {
+  let found;
+  try { found = await findDeveloperApiKey(developerApiSecret(req)); }
+  catch (error) { res.status(503).json({ error: 'Entwicklerplattform-Datenbank nicht erreichbar' }); return null; }
+  if (!found) { res.status(401).json({ error: 'Ungültiger API-Schlüssel' }); return null; }
+  if (!developerRateLimit(found.hash)) { res.status(429).json({ error: 'Zu viele Anfragen. Bitte warte kurz.' }); return null; }
+  if (scope && !found.key.scopes.includes(scope)) { res.status(403).json({ error: 'Dieser API-Schlüssel hat keine Berechtigung für ' + scope }); return null; }
+  found.key.lastUsedAt = new Date().toISOString();
+  saveDeveloperPlatform(found.username, found.platform).catch(() => {});
+  return found;
+}
+function escapeDeveloperHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+function renderPublishedSite(site) {
+  const blocks = normalizeDeveloperSiteBlocks(site.blocks).map((block) => {
+    if (block.type === 'text') {
+      if (block.style === 'title') return '<h1>' + escapeDeveloperHtml(block.text) + '</h1>';
+      if (block.style === 'button') return '<a class="button" href="#">' + escapeDeveloperHtml(block.text || 'Mehr erfahren') + '</a>';
+      return '<p>' + escapeDeveloperHtml(block.text).replace(/\n/g, '<br>') + '</p>';
+    }
+    if (block.type === 'image' && block.url) return '<img src="' + escapeDeveloperHtml(block.url) + '" alt="' + escapeDeveloperHtml(block.alt || '') + '">';
+    if (block.type === 'audio' && block.url) return '<audio controls src="' + escapeDeveloperHtml(block.url) + '"></audio>';
+    if (block.type === 'drawing' && block.image) return '<img src="' + escapeDeveloperHtml(block.image) + '" alt="Zeichnung">';
+    const labels = { ai: '✨ KI-Funktion', chat: '💬 Chat-Funktion', call: '📹 Anruf-Funktion' };
+    return '<section class="widget"><strong>' + labels[block.type] + '</strong><span>Dieser Baustein wird über die ehoser Developer API verbunden.</span></section>';
+  }).join('') || '<p>Diese Seite wird gerade eingerichtet.</p>';
+  return '<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escapeDeveloperHtml(site.name) + '</title><style>body{margin:0;min-height:100vh;background:#08141b;color:#edf8f5;font-family:system-ui,sans-serif}main{max-width:780px;margin:auto;padding:56px 22px}h1{font-size:clamp(2rem,8vw,4.5rem);line-height:1.05}p{font-size:1.08rem;line-height:1.7;color:#c0d5d1}img,audio{display:block;max-width:100%;margin:20px 0;border-radius:18px}.button{display:inline-block;padding:13px 18px;border-radius:12px;background:#41d8ac;color:#062119;text-decoration:none;font-weight:800}.widget{display:grid;gap:7px;margin:20px 0;padding:18px;border:1px solid #24483e;border-radius:16px;background:#102820}.widget span{color:#a8c8bf;font-size:.9rem}</style></head><body><main>' + blocks + '<p style="margin-top:56px;font-size:.75rem">Erstellt mit ehoser Sites</p></main></body></html>';
+}
+
 function normalizeSettings(raw) {
   const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
   const rawAvatarUrl = typeof src.avatarUrl === 'string' ? src.avatarUrl.trim().slice(0, 2048) : '';
@@ -739,6 +899,7 @@ function normalizeSettings(raw) {
     // Öffentliche E2EE-Schlüssel sind absichtlich profilweit abrufbar; private Schlüssel werden nie gespeichert.
     e2eePublicKey: (src.e2eePublicKey && typeof src.e2eePublicKey === 'object' && src.e2eePublicKey.kty === 'RSA') ? src.e2eePublicKey : undefined,
     e2eeKeyUpdatedAt: typeof src.e2eeKeyUpdatedAt === 'string' ? src.e2eeKeyUpdatedAt : undefined,
+    developerPlatform: normalizeDeveloperPlatform(src.developerPlatform),
     ownerConsole
   };
 }
@@ -1721,7 +1882,19 @@ app.get(['/control-center', '/control-center/'], (req, res) => {
 });
 
 const chatOnlyRedirectPaths = ['/', '/index.html'];
-app.get(chatOnlyRedirectPaths, (req, res) => res.redirect(302, '/chat/'));
+app.get(chatOnlyRedirectPaths, async (req, res) => {
+  const host = String(req.hostname || '').toLowerCase();
+  const suffix = '.ehoser.de';
+  const label = host.endsWith(suffix) ? host.slice(0, -suffix.length) : '';
+  const reserved = new Set(['', 'www', 'api', 'chat', 'control-center']);
+  if (label && !reserved.has(label)) {
+    try {
+      const found = await findDeveloperSiteBySlug(label);
+      if (found) return res.type('html').send(renderPublishedSite(found.site));
+    } catch {}
+  }
+  return res.redirect(302, '/chat/');
+});
 
 require('./lib/earthdrive').mountEarthDrive(app, { readAuthUser, getProfile });
 
@@ -7913,6 +8086,116 @@ app.get('/api/ki/image', async (req, res) => {
     res.send(Buffer.from(buffer));
   } catch (err) {
     res.status(502).json({ error: 'Bildgenerierung fehlgeschlagen' });
+  }
+});
+
+// ─── ehoser Developer Platform ─────────────────────────────────────────────
+app.get('/api/developer/overview', async (req, res) => {
+  const auth = readAuthUser(req, res); if (!auth) return;
+  const platform = await developerPlatformFor(auth.username);
+  res.json(publicDeveloperPlatform(platform));
+});
+app.post('/api/developer/projects', async (req, res) => {
+  const auth = readAuthUser(req, res); if (!auth) return;
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: 'Projektname fehlt' });
+  const platform = await developerPlatformFor(auth.username);
+  if (platform.projects.length >= 30) return res.status(400).json({ error: 'Maximal 30 Projekte pro Konto' });
+  const now = new Date().toISOString();
+  const project = { id: developerId('proj_'), name, description: String(req.body?.description || '').trim().slice(0, 300), createdAt: now, updatedAt: now };
+  platform.projects.unshift(project);
+  await saveDeveloperPlatform(auth.username, platform);
+  res.status(201).json({ project });
+});
+app.post('/api/developer/keys', async (req, res) => {
+  const auth = readAuthUser(req, res); if (!auth) return;
+  const platform = await developerPlatformFor(auth.username);
+  const projectId = String(req.body?.projectId || '');
+  if (!platform.projects.some((project) => project.id === projectId)) return res.status(404).json({ error: 'Projekt nicht gefunden' });
+  const scopes = Array.isArray(req.body?.scopes) ? req.body.scopes.filter((scope) => ['ai', 'chat', 'calls', 'sites'].includes(scope)).slice(0, 4) : ['ai'];
+  if (!scopes.length) return res.status(400).json({ error: 'Wähle mindestens eine Berechtigung' });
+  const secret = DEVELOPER_API_KEY_PREFIX + crypto.randomBytes(28).toString('base64url');
+  const now = new Date().toISOString();
+  const key = {
+    id: developerId('key_'), projectId, name: String(req.body?.name || 'Standard-Schlüssel').trim().slice(0, 80) || 'Standard-Schlüssel',
+    prefix: secret.slice(0, 16) + '…', hash: developerHash(secret), scopes, createdAt: now, lastUsedAt: null, revokedAt: null
+  };
+  platform.keys.unshift(key);
+  await saveDeveloperPlatform(auth.username, platform);
+  res.status(201).json({ key: publicDeveloperPlatform({ projects: [], keys: [key], sites: [] }).keys[0], secret });
+});
+app.delete('/api/developer/keys/:id', async (req, res) => {
+  const auth = readAuthUser(req, res); if (!auth) return;
+  const platform = await developerPlatformFor(auth.username);
+  const key = platform.keys.find((entry) => entry.id === req.params.id);
+  if (!key) return res.status(404).json({ error: 'API-Schlüssel nicht gefunden' });
+  key.revokedAt = new Date().toISOString();
+  await saveDeveloperPlatform(auth.username, platform);
+  res.json({ ok: true });
+});
+app.post('/api/sites', async (req, res) => {
+  const auth = readAuthUser(req, res); if (!auth) return;
+  const platform = await developerPlatformFor(auth.username);
+  const id = String(req.body?.id || '');
+  const existing = platform.sites.find((site) => site.id === id) || null;
+  const slug = developerSlug(req.body?.slug || req.body?.name);
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!slug || !name) return res.status(400).json({ error: 'Projektname und Subdomain fehlen' });
+  const ownConflict = platform.sites.some((site) => site.slug === slug && site.id !== id);
+  if (ownConflict) return res.status(409).json({ error: 'Diese Subdomain wird bereits in deinem Konto verwendet' });
+  const found = await findDeveloperSiteBySlug(slug).catch(() => null);
+  if (found && found.username !== auth.username) return res.status(409).json({ error: 'Diese Subdomain ist bereits vergeben' });
+  const now = new Date().toISOString();
+  const site = {
+    id: existing?.id || developerId('site_'), name, slug, published: req.body?.published === true,
+    blocks: normalizeDeveloperSiteBlocks(req.body?.blocks), createdAt: existing?.createdAt || now, updatedAt: now
+  };
+  if (existing) Object.assign(existing, site); else platform.sites.unshift(site);
+  await saveDeveloperPlatform(auth.username, platform);
+  res.status(existing ? 200 : 201).json({ site: publicDeveloperPlatform({ projects: [], keys: [], sites: [site] }).sites[0] });
+});
+app.delete('/api/sites/:id', async (req, res) => {
+  const auth = readAuthUser(req, res); if (!auth) return;
+  const platform = await developerPlatformFor(auth.username);
+  const before = platform.sites.length;
+  platform.sites = platform.sites.filter((site) => site.id !== req.params.id);
+  if (before === platform.sites.length) return res.status(404).json({ error: 'Site nicht gefunden' });
+  await saveDeveloperPlatform(auth.username, platform);
+  res.json({ ok: true });
+});
+app.get('/api/v1/status', async (req, res) => {
+  const access = await developerApiAuth(req, res); if (!access) return;
+  const project = access.platform.projects.find((entry) => entry.id === access.key.projectId);
+  res.json({ ok: true, platform: 'ehoser Developer API', project: project?.name || 'Unbekannt', scopes: access.key.scopes });
+});
+app.post('/api/v1/ai/chat', async (req, res) => {
+  const access = await developerApiAuth(req, res, 'ai'); if (!access) return;
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages
+    .filter((message) => message && ['system', 'user', 'assistant'].includes(message.role) && typeof message.content === 'string')
+    .slice(-12).map((message) => ({ role: message.role, content: message.content.slice(0, 6000) })) : [];
+  if (!messages.some((message) => message.role === 'user')) return res.status(400).json({ error: 'messages braucht mindestens eine User-Nachricht' });
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(503).json({ error: 'Die KI-API ist noch nicht in Vercel eingerichtet' });
+  try {
+    const upstream = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + groqKey },
+      body: JSON.stringify({ model: process.env.DEVELOPER_GROQ_MODEL || 'openai/gpt-oss-20b', messages, temperature: Number.isFinite(Number(req.body?.temperature)) ? Math.max(0, Math.min(1.5, Number(req.body.temperature))) : 0.7, max_tokens: Math.max(32, Math.min(1200, Number(req.body?.max_tokens) || 500)) })
+    });
+    const data = await upstream.json().catch(() => ({}));
+    if (!upstream.ok) return res.status(502).json({ error: 'KI-Anbieter nicht erreichbar', providerStatus: upstream.status });
+    return res.json({ id: data.id || developerId('chatcmpl_'), object: 'chat.completion', model: data.model || 'openai/gpt-oss-20b', choices: data.choices || [] });
+  } catch {
+    return res.status(502).json({ error: 'KI-Anbieter nicht erreichbar' });
+  }
+});
+app.get('/sites/:slug', async (req, res) => {
+  try {
+    const found = await findDeveloperSiteBySlug(req.params.slug);
+    if (!found) return res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+    return res.type('html').send(renderPublishedSite(found.site));
+  } catch {
+    return res.status(503).send('Site konnte gerade nicht geladen werden.');
   }
 });
 
