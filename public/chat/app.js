@@ -171,6 +171,7 @@ let _lastPresenceHeartbeatAt = 0;
 let _onlineListOpen = false;
 let _onlineListRequestId = 0;
 let _onlineListRefreshTimer = null;
+let _onlineListRefreshBusy = false;
 let _messagePollBusy = false;
 let _lastGroupRefreshAt = 0;
 let _lastSafetyMessageSyncAt = 0;
@@ -1116,10 +1117,12 @@ async function showOnlineHoldList() {
     overlay.setAttribute('aria-hidden', 'false');
     list.innerHTML = '<li class="online-hold-loading">Online-Liste wird geladen…</li>';
     count.textContent = 'Online-Liste wird geladen…';
-    await sendChatHeartbeat(true);
-    await refreshOnlineHoldList();
+    // A delayed heartbeat must never hold the list on the loading screen.
+    // Refresh the list immediately and let the heartbeat finish separately.
+    void sendChatHeartbeat(true);
     clearInterval(_onlineListRefreshTimer);
     _onlineListRefreshTimer = setInterval(refreshOnlineHoldList, PRESENCE_REFRESH_INTERVAL_MS);
+    await refreshOnlineHoldList();
 }
 
 function renderOnlineHoldList(users) {
@@ -1143,23 +1146,27 @@ function renderOnlineHoldList(users) {
 }
 
 async function refreshOnlineHoldList() {
-    if (!_onlineListOpen) return;
+    if (!_onlineListOpen || _onlineListRefreshBusy) return;
     const requestId = ++_onlineListRequestId;
+    _onlineListRefreshBusy = true;
     try {
-        const data = await api('/online-users');
+        const data = await apiWithTimeout('/online-users', 8_000);
         if (!_onlineListOpen || requestId !== _onlineListRequestId) return;
         renderOnlineHoldList(Array.isArray(data) ? data : (data.users || []));
     } catch {
         if (!_onlineListOpen || requestId !== _onlineListRequestId) return;
         const list = document.getElementById('onlineHoldList');
         const count = document.getElementById('onlineHoldCount');
-        if (count) count.textContent = 'Verbindung fehlgeschlagen';
-        if (list) list.innerHTML = '<li class="online-hold-empty">Die Online-Liste konnte nicht geladen werden.</li>';
+        if (count) count.textContent = 'Online-Liste vorübergehend nicht erreichbar';
+        if (list) list.innerHTML = '<li class="online-hold-empty">Die Online-Liste konnte gerade nicht geladen werden. Sie versucht es automatisch erneut.</li>';
+    } finally {
+        _onlineListRefreshBusy = false;
     }
 }
 
 function hideOnlineHoldList() {
     _onlineListOpen = false;
+    _onlineListRefreshBusy = false;
     _onlineListRequestId += 1;
     clearInterval(_onlineListRefreshTimer);
     _onlineListRefreshTimer = null;
@@ -1350,6 +1357,17 @@ async function api(path, method = 'GET', body = null) {
     }
     if (!r.ok) throw new Error(data?.error || 'HTTP ' + r.status);
     return data;
+}
+
+// Keep individual UI panels responsive if a network request gets stuck.
+// The original request may still finish in the background, but callers get a
+// useful error instead of leaving a permanent loading indicator on screen.
+function apiWithTimeout(path, timeoutMs = 8_000) {
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Die Verbindung reagiert gerade nicht.')), timeoutMs);
+    });
+    return Promise.race([api(path), timeout]).finally(() => clearTimeout(timeoutId));
 }
 
 // ─── Reales @ehoser.de-Postfach ─────────────────────────────────────────────
