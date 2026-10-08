@@ -16,3 +16,8 @@ body.ehoser-majestic .topbar,body.ehoser-majestic .chat-header,body.ehoser-majes
 .ehoser-note-card{border-color:rgba(111,175,255,.42);background:linear-gradient(145deg,#10264a,#0b1322)}
 .ehoser-note-actions .primary{background:#4b91e8;color:#07111e}
 body.ehoser-sleep-mode::after{content:"";position:fixed;inset:0;z-index:2147483000;pointer-events:none;background:rgba(48,116,255,.17);mix-blend-mode:screen}
+
+/* The chat menu follows the gold chat controls without tinting the whole page. */
+#chatApp .ehoser-more-menu{border-color:rgba(245,203,101,.42);background:linear-gradient(145deg,rgba(48,32,7,.98),rgba(14,11,7,.99))}
+#chatApp .ehoser-more-head{border-bottom-color:rgba(255,223,139,.18);color:#ffe097}
+#chatApp .ehoser-more-item:hover{background:rgba(249,204,90,.14)}
