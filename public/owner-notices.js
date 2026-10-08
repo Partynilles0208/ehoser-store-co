@@ -140,3 +140,17 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 })();
+
+/* Loads the mobile Sites launcher without changing the Control Center markup. */
+(function loadEhoserControlTools() {
+  if (!/Control Center/i.test(document.title) || document.getElementById('ehoserExtrasLoader')) return;
+  const styles = document.createElement('link');
+  styles.rel = 'stylesheet';
+  styles.href = '/ehoser-extras.css?v=1';
+  document.head.appendChild(styles);
+  const script = document.createElement('script');
+  script.id = 'ehoserExtrasLoader';
+  script.src = '/ehoser-extras.js?v=1';
+  script.defer = true;
+  document.head.appendChild(script);
+})();
