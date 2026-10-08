@@ -155,11 +155,15 @@
           <button id="videoCallBtn" class="call-icon-btn" onclick="startCall('video')" title="Videoanruf starten" aria-label="Videoanruf starten" disabled>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8.5V6.8A1.8 1.8 0 0 0 13.2 5H4.8A1.8 1.8 0 0 0 3 6.8v10.4A1.8 1.8 0 0 0 4.8 19h8.4a1.8 1.8 0 0 0 1.8-1.8v-1.7l4.1 2.55a1.25 1.25 0 0 0 1.9-1.06V7.01a1.25 1.25 0 0 0-1.9-1.06Z"/></svg>
           </button>
+          <details class="topbar-more"><summary class="topbar-btn topbar-icon-btn" aria-label="Weitere Chat-Optionen" title="Weitere Optionen">⋮</summary>
+            <div class="topbar-extra-actions">
           <button id="chatLockButton" class="topbar-btn topbar-btn-ghost topbar-icon-btn" type="button" onclick="openChatLock()" title="Chat sperren" aria-label="Chat sperren">🔒</button>
           <button id="chatAiSummaryToggle" class="topbar-btn topbar-btn-ghost ai-summary-toggle" onclick="toggleEhoserAiSummary()">🤖 ehoser AI</button>
           <button class="topbar-btn topbar-icon-btn" onclick="openAddMemberModal()" title="Mitglied hinzufügen" aria-label="Mitglied hinzufügen">＋</button>
           <button class="topbar-btn topbar-btn-ghost topbar-icon-btn" onclick="openMembersModal()" title="Mitglieder anzeigen" aria-label="Mitglieder anzeigen">👥</button>
           <button id="deleteChatButton" class="topbar-btn topbar-btn-ghost topbar-icon-btn" type="button" onclick="deleteActiveChatPermanently()" title="Chat für alle endgültig löschen" aria-label="Chat für alle endgültig löschen">🗑</button>
+            </div>
+          </details>
         </div>
       </div>
 
