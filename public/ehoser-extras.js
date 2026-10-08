@@ -34,9 +34,7 @@
   }
 
   function openGenerator() {
-    const idea = window.prompt('Beschreibe deine Website. Zum Beispiel: „Eine goldene Fan-Seite für Minecraft-Bauten mit Galerie und Kontakt.“');
-    if (!idea || !idea.trim()) return;
-    window.location.href = '/sites/?generate=' + encodeURIComponent(idea.trim());
+    window.location.href = '/sitesgenerator/';
   }
 
   function clickPicker(id) {

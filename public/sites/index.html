@@ -70,8 +70,11 @@ function generateStarterSite(description){
     try{history.replaceState({},'',location.pathname);}catch{}
 }
 function applyGeneratorQuery(){
-    const description=new URLSearchParams(location.search).get('generate');
+    const params=new URLSearchParams(location.search);
+    const description=params.get('generate');
     if(description) generateStarterSite(description);
+    const requestedSlug=params.get('slug');
+    if(requestedSlug) $('siteSlug').value=slug(requestedSlug);
 }
 
 clearDrawing();renderPalette();render();applyGeneratorQuery();load();
