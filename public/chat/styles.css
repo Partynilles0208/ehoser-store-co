@@ -393,11 +393,8 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 
 /* ── Main ────────────────────────────────────────────────────────────────── */
 .chat-main {
-    flex: 1; display: flex; flex-direction: column; overflow: hidden; background-color: #0b141a;
-    background-image:
-        radial-gradient(circle at 15px 15px, rgba(134,150,160,.055) 1px, transparent 1.5px),
-        radial-gradient(circle at 42px 34px, rgba(134,150,160,.035) 1px, transparent 1.5px);
-    background-size: 58px 58px;
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    background: #0b141a;
 }
 
 /* Empty state */
@@ -443,7 +440,11 @@ body.ehoser-android-app textarea { touch-action: manipulation; }
 .topbar-name { font-family: var(--font); font-weight: 600; font-size: .98rem; color: #e9edef; }
 .topbar-meta { font-size: .75rem; color: var(--muted); }
 .topbar-meta.typing { color: #25d366; font-weight: 600; }
-.chat-topbar-right { display: flex; align-items: center; gap: 8px; }
+.chat-topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.chat-topbar-left { min-width: 0; }
+.topbar-more { display: contents; }
+.topbar-more > summary { display: none; list-style: none; }
+.topbar-extra-actions { display: flex; align-items: center; gap: 8px; }
 .call-icon-btn {
     width: 38px; height: 38px; padding: 0; border-radius: 50%;
     display: grid; place-items: center; flex-shrink: 0;
@@ -1207,7 +1208,36 @@ button.secret-card:hover { transform: translateY(-2px); border-color: #818cf8; b
         margin-left: auto;
         justify-content: flex-end;
         flex-wrap: nowrap;
+        position: relative;
+        gap: 2px;
     }
+
+    /* Keep call buttons clear of the profile picture on phones. */
+    .chat-topbar-left { flex: 1; min-width: 0; }
+    .chat-topbar-right .call-icon-btn { width: 34px; height: 34px; }
+    .chat-topbar-right .call-icon-btn svg { width: 17px; height: 17px; }
+
+    .topbar-more { display: block; position: relative; }
+    .topbar-more > summary {
+        width: 34px; height: 34px; display: grid; place-items: center;
+        list-style: none; border-radius: 50%; background: transparent;
+        color: #aebac1; font-size: 1.4rem; line-height: 1; cursor: pointer;
+    }
+    .topbar-more > summary::-webkit-details-marker { display: none; }
+    .topbar-more[open] > summary { background: #2a3942; color: #e9edef; }
+    .topbar-extra-actions {
+        display: none; position: absolute; z-index: 80; top: calc(100% + 8px); right: 0;
+        min-width: 172px; padding: 8px; border: 1px solid #3a4d5a; border-radius: 13px;
+        background: #202c33; box-shadow: 0 15px 34px rgba(0,0,0,.42);
+    }
+    .topbar-more[open] > .topbar-extra-actions { display: grid; gap: 3px; }
+    .topbar-extra-actions .topbar-btn {
+        width: 100%; min-height: 38px; padding: 0 10px; display: flex; align-items: center;
+        justify-content: flex-start; gap: 8px; border-radius: 9px; text-align: left;
+    }
+    .topbar-extra-actions .topbar-btn::after { content: attr(title); font-size: .76rem; }
+    .topbar-extra-actions .ai-summary-toggle { width: 100%; justify-content: flex-start; }
+
 
     .mobile-back-btn {
         width: 32px; height: 40px; display: grid; place-items: center; flex-shrink: 0;
