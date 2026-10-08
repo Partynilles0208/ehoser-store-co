@@ -50,6 +50,30 @@ async function load(){if(!token){$('mySites').textContent='Bitte melde dich zuer
 const zone=$('dropZone');zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('over')});zone.addEventListener('dragleave',()=>zone.classList.remove('over'));zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('over');const type=e.dataTransfer.getData('application/x-ehoser-block');if(type)addBlock(type);else if(dragIndex!==null){moveBlock(dragIndex,blocks.length);dragIndex=null}});
 $('drawerToggle').addEventListener('click',()=>{const drawer=$('drawer');drawer.classList.toggle('closed');$('drawerToggle').classList.toggle('active',!drawer.classList.contains('closed'))});
 const canvas=$('draw'),ctx=canvas.getContext('2d');ctx.lineWidth=5;ctx.lineCap='round';ctx.strokeStyle='#172554';let painting=false,last;function point(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height}}canvas.addEventListener('pointerdown',e=>{painting=true;last=point(e)});canvas.addEventListener('pointermove',e=>{if(!painting)return;const p=point(e);ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p});['pointerup','pointerleave'].forEach(t=>canvas.addEventListener(t,()=>painting=false));function clearDrawing(){ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height)}function saveDrawing(){blocks.push({id:id(),type:'drawing',image:canvas.toDataURL('image/png')});render()}
-clearDrawing();renderPalette();render();load();
+function generateStarterSite(description){
+    const clean=String(description||'').trim().slice(0,240);
+    if(!clean)return;
+    const words=clean.replace(/[^a-zA-Z0-9äöüÄÖÜß ]/g,' ').trim().split(/\s+/).filter(Boolean);
+    const title=(words.slice(0,5).join(' ')||'Meine neue Seite').replace(/\b\w/g,function(letter){return letter.toUpperCase()});
+    current=null;
+    blocks=[
+      {id:id(),type:'text',style:'title',text:title},
+      {id:id(),type:'text',style:'paragraph',text:clean},
+      {id:id(),type:'text',style:'paragraph',text:'Willkommen auf meiner ehoser Site. Diese Seite wurde mit dem Webseiten-Generator vorbereitet und kann jetzt weiter bearbeitet werden.'},
+      {id:id(),type:'chat',title:'Kontakt & Chat'}
+    ];
+    $('siteName').value=title;
+    $('siteSlug').value=slug(title);
+    $('editorTitle').textContent=title;
+    $('saveState').textContent='Generator-Entwurf – vor dem Veröffentlichen prüfen';
+    render();
+    try{history.replaceState({},'',location.pathname);}catch{}
+}
+function applyGeneratorQuery(){
+    const description=new URLSearchParams(location.search).get('generate');
+    if(description) generateStarterSite(description);
+}
+
+clearDrawing();renderPalette();render();applyGeneratorQuery();load();
 </script>
 </body></html>
