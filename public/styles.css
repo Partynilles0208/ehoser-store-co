@@ -8929,3 +8929,16 @@ body[data-section="auth"] .support-launcher {
         grid-template-columns: 1fr;
     }
 }
+
+
+/* ── Ehoser Gold Edition: shared Control Center and online surfaces ─────── */
+:root{--bg:#0b0804;--bg-soft:#151006;--card:rgba(28,20,9,.94);--card-dark:#171005;--text:#fff3cf;--text-main:#fff3cf;--muted:#c5ad79;--text-soft:#c5ad79;--line:rgba(247,207,111,.2);--brand:#f4ca63;--brand-2:#a86d12;--surface-1:rgba(34,24,9,.9);--surface-2:rgba(45,31,9,.94);--surface-3:rgba(255,220,139,.08);--shadow:0 22px 70px rgba(0,0,0,.45)}
+html{background:#0b0804}
+body{background:radial-gradient(circle at 16% -5%,rgba(242,192,80,.18),transparent 33rem),radial-gradient(circle at 92% 10%,rgba(155,99,9,.16),transparent 29rem),linear-gradient(145deg,#0b0804,#171005 54%,#0b0905)}
+body::before{background:linear-gradient(120deg,rgba(255,224,147,.045),transparent 33%),linear-gradient(255deg,rgba(202,142,27,.08),transparent 35%),linear-gradient(180deg,transparent,rgba(0,0,0,.28))}
+.navbar,.online-widget,.mode-card,.app-card,.game-card,.experience-card,.workspace-chip,.update-card,.tool-card,.news-card,.profile-card,.settings-card{border-color:rgba(248,207,105,.2)!important;background:linear-gradient(145deg,rgba(38,28,10,.94),rgba(17,13,7,.96))!important;box-shadow:inset 0 1px 0 rgba(255,236,177,.07),0 16px 42px rgba(0,0,0,.22)}
+.logo-icon,.mode-card-icon,.app-icon,.game-icon{background:linear-gradient(135deg,#ffe39a,#b27616)!important;color:#2d1b04!important;box-shadow:0 9px 23px rgba(175,112,12,.24)}
+.btn-primary,.btn-small,.login-btn,.mobile-install-btn,.mode-card-action,.tool-btn-primary{background:linear-gradient(135deg,#ffe29a,#b87917)!important;color:#2d1b04!important;box-shadow:0 10px 26px rgba(177,111,11,.2)}
+.nav-link:hover,.nav-pill:hover,.filter-btn.active,.mode-card:hover,.app-card:hover,.game-card:hover{border-color:rgba(255,220,131,.55)!important;background:rgba(104,70,13,.28)!important}
+.mode-title,.hero-copy h2,.store-header h2,#my-apps h2,.section-header h2,.mode-card-body h3,.app-card h3,.game-card h3{color:#fff1c5!important;text-shadow:0 0 22px rgba(246,199,90,.12)}
+.online-widget{color:#fff1c5}.online-widget strong,.online-widget b{color:#ffe19a}
