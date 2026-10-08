@@ -3,6 +3,18 @@
   const isChat = Boolean(document.getElementById('chatApp'));
   const isControlCenter = /Control Center/i.test(document.title);
   document.body.classList.add('ehoser-majestic');
+  const sleepModeKey = 'ehoserSleepMode';
+  function setSleepMode(enabled) {
+    document.body.classList.toggle('ehoser-sleep-mode', Boolean(enabled));
+    try { localStorage.setItem(sleepModeKey, enabled ? '1' : '0'); } catch (error) {}
+    document.querySelectorAll('[data-sleep-mode-toggle]').forEach(function (button) {
+      button.textContent = enabled ? '☀️' : '🌙';
+      button.title = enabled ? 'Sleep Mode ausschalten' : 'Sleep Mode einschalten';
+      button.setAttribute('aria-label', button.title);
+    });
+  }
+  function toggleSleepMode() { setSleepMode(!document.body.classList.contains('ehoser-sleep-mode')); }
+  try { setSleepMode(localStorage.getItem(sleepModeKey) === '1'); } catch (error) {}
 
   function makeItem(icon, title, subtitle, action) {
     const button = document.createElement('button');
@@ -69,6 +81,7 @@
         picker.click();
       }));
     }
+    menu.appendChild(makeItem('🌙', 'Sleep Mode', 'Blaulicht-Filter für abends', toggleSleepMode));
     menu.appendChild(makeItem('📝', 'Notizen-Editor', 'Schnelle Notiz auf diesem Gerät', openNotes));
     menu.appendChild(makeItem('✨', 'Webseiten-Generator', 'Eigene Seite mit ehoser Sites erstellen', openGenerator));
     menu.appendChild(makeItem('🌐', 'Meine Sites', 'Veröffentlichen, teilen und Subdomain wählen', function () { window.location.href = '/sites/'; }));
@@ -124,4 +137,5 @@
   if (isChat) installChatTools();
   if (isControlCenter) installControlTools();
   window.ehoserOpenSiteGenerator = openGenerator;
+  window.ehoserToggleSleepMode = toggleSleepMode;
 })();
