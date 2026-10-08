@@ -718,6 +718,24 @@ function developerHttpsUrl(value) {
     return parsed.protocol === 'https:' ? parsed.toString().slice(0, 3000) : '';
   } catch { return ''; }
 }
+function developerExternalId(value, prefix) {
+  const clean = String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+  return clean || developerId(prefix || 'ext_');
+}
+function developerHasScope(key, scope) {
+  const scopes = Array.isArray(key?.scopes) ? key.scopes : [];
+  return scopes.includes(scope) || ((scope === 'voice' || scope === 'video') && scopes.includes('calls'));
+}
+function developerApiProject(access) {
+  return access.platform.projects.find((project) => project.id === access.key.projectId) || null;
+}
+function developerJsonPayload(value, limit) {
+  try {
+    const raw = JSON.stringify(value == null ? {} : value);
+    if (raw.length > (limit || 12000)) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
 function normalizeDeveloperSiteBlocks(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.slice(0, 60).map((block) => {
@@ -748,7 +766,7 @@ function normalizeDeveloperPlatform(raw) {
     name: String(key?.name || 'Standard-Schlüssel').trim().slice(0, 80) || 'Standard-Schlüssel',
     prefix: String(key?.prefix || '').slice(0, 40),
     hash: /^[a-f0-9]{64}$/i.test(String(key?.hash || '')) ? String(key.hash) : '',
-    scopes: Array.isArray(key?.scopes) ? key.scopes.filter((scope) => ['ai', 'chat', 'calls', 'sites'].includes(scope)).slice(0, 4) : ['ai'],
+    scopes: Array.isArray(key?.scopes) ? key.scopes.filter((scope) => ['ai', 'chat', 'voice', 'video', 'calls', 'sites'].includes(scope)).slice(0, 5) : ['ai'],
     createdAt: developerIso(key?.createdAt),
     lastUsedAt: key?.lastUsedAt ? developerIso(key.lastUsedAt) : null,
     revokedAt: key?.revokedAt ? developerIso(key.revokedAt) : null
@@ -768,7 +786,33 @@ function normalizeDeveloperPlatform(raw) {
       updatedAt: developerIso(site?.updatedAt || site?.createdAt)
     };
   }).filter(Boolean) : [];
-  return { projects, keys, sites };
+  const apiChats = Array.isArray(src.apiChats) ? src.apiChats.slice(-20).map((chat) => {
+    const projectId = String(chat?.projectId || '');
+    const id = developerExternalId(chat?.id, 'chat_');
+    if (!projectIds.has(projectId)) return null;
+    const messages = Array.isArray(chat?.messages) ? chat.messages.slice(-120).map((message) => ({
+      id: developerExternalId(message?.id, 'msg_'),
+      author: String(message?.author || 'guest').trim().slice(0, 64) || 'guest',
+      content: String(message?.content || '').trim().slice(0, 2000),
+      createdAt: developerIso(message?.createdAt)
+    })).filter((message) => message.content) : [];
+    return { id, projectId, createdAt: developerIso(chat?.createdAt), updatedAt: developerIso(chat?.updatedAt || chat?.createdAt), messages };
+  }).filter(Boolean) : [];
+  const apiCalls = Array.isArray(src.apiCalls) ? src.apiCalls.slice(-30).map((call) => {
+    const projectId = String(call?.projectId || '');
+    const kind = call?.kind === 'video' ? 'video' : 'voice';
+    const expiresAt = developerIso(call?.expiresAt);
+    if (!projectIds.has(projectId) || Date.parse(expiresAt) < Date.now() - 60_000) return null;
+    const signals = Array.isArray(call?.signals) ? call.signals.slice(-120).map((signal) => ({
+      id: developerExternalId(signal?.id, 'sig_'),
+      sender: String(signal?.sender || 'client').trim().slice(0, 64) || 'client',
+      type: ['offer', 'answer', 'ice', 'hangup'].includes(signal?.type) ? signal.type : 'ice',
+      payload: developerJsonPayload(signal?.payload, 12000) || {},
+      createdAt: developerIso(signal?.createdAt)
+    })) : [];
+    return { id: developerExternalId(call?.id, 'call_'), projectId, kind, createdAt: developerIso(call?.createdAt), expiresAt, signals };
+  }).filter(Boolean) : [];
+  return { projects, keys, sites, apiChats, apiCalls };
 }
 function publicDeveloperPlatform(platform) {
   const value = normalizeDeveloperPlatform(platform);
@@ -829,7 +873,7 @@ async function developerApiAuth(req, res, scope) {
   catch (error) { res.status(503).json({ error: 'Entwicklerplattform-Datenbank nicht erreichbar' }); return null; }
   if (!found) { res.status(401).json({ error: 'Ungültiger API-Schlüssel' }); return null; }
   if (!developerRateLimit(found.hash)) { res.status(429).json({ error: 'Zu viele Anfragen. Bitte warte kurz.' }); return null; }
-  if (scope && !found.key.scopes.includes(scope)) { res.status(403).json({ error: 'Dieser API-Schlüssel hat keine Berechtigung für ' + scope }); return null; }
+  if (scope && !developerHasScope(found.key, scope)) { res.status(403).json({ error: 'Dieser API-Schlüssel hat keine Berechtigung für ' + scope }); return null; }
   found.key.lastUsedAt = new Date().toISOString();
   saveDeveloperPlatform(found.username, found.platform).catch(() => {});
   return found;
@@ -8112,7 +8156,7 @@ app.post('/api/developer/keys', async (req, res) => {
   const platform = await developerPlatformFor(auth.username);
   const projectId = String(req.body?.projectId || '');
   if (!platform.projects.some((project) => project.id === projectId)) return res.status(404).json({ error: 'Projekt nicht gefunden' });
-  const scopes = Array.isArray(req.body?.scopes) ? req.body.scopes.filter((scope) => ['ai', 'chat', 'calls', 'sites'].includes(scope)).slice(0, 4) : ['ai'];
+  const scopes = Array.isArray(req.body?.scopes) ? req.body.scopes.filter((scope) => ['ai', 'chat', 'voice', 'video', 'calls', 'sites'].includes(scope)).slice(0, 5) : ['ai'];
   if (!scopes.length) return res.status(400).json({ error: 'Wähle mindestens eine Berechtigung' });
   const secret = DEVELOPER_API_KEY_PREFIX + crypto.randomBytes(28).toString('base64url');
   const now = new Date().toISOString();
@@ -8189,6 +8233,81 @@ app.post('/api/v1/ai/chat', async (req, res) => {
     return res.status(502).json({ error: 'KI-Anbieter nicht erreichbar' });
   }
 });
+// ─── External Chat and WebRTC APIs ───────────────────────────────────────────
+app.post('/api/v1/chat/messages', async (req, res) => {
+  const access = await developerApiAuth(req, res, 'chat'); if (!access) return;
+  const conversationId = String(req.body?.conversation_id || req.body?.conversationId || '').trim();
+  const content = String(req.body?.content || '').trim().slice(0, 2000);
+  const author = String(req.body?.author || 'guest').trim().slice(0, 64) || 'guest';
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(conversationId)) return res.status(400).json({ error: 'conversation_id darf nur Buchstaben, Zahlen, _ und - enthalten' });
+  if (!content) return res.status(400).json({ error: 'content fehlt' });
+  const project = developerApiProject(access); if (!project) return res.status(403).json({ error: 'Projekt für diesen Schlüssel nicht gefunden' });
+  let conversation = access.platform.apiChats.find((entry) => entry.projectId === project.id && entry.id === conversationId);
+  const now = new Date().toISOString();
+  if (!conversation) {
+    conversation = { id: conversationId, projectId: project.id, createdAt: now, updatedAt: now, messages: [] };
+    access.platform.apiChats.push(conversation);
+  }
+  const message = { id: developerId('msg_'), author, content, createdAt: now };
+  conversation.messages.push(message);
+  conversation.messages = conversation.messages.slice(-120);
+  conversation.updatedAt = now;
+  access.platform.apiChats = access.platform.apiChats.slice(-20);
+  try { await saveDeveloperPlatform(access.username, access.platform); }
+  catch { return res.status(503).json({ error: 'Chatdaten konnten nicht gespeichert werden' }); }
+  res.status(201).json({ conversation_id: conversationId, message });
+});
+app.get('/api/v1/chat/messages', async (req, res) => {
+  const access = await developerApiAuth(req, res, 'chat'); if (!access) return;
+  const conversationId = String(req.query?.conversation_id || req.query?.conversationId || '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(conversationId)) return res.status(400).json({ error: 'conversation_id fehlt oder ist ungültig' });
+  const project = developerApiProject(access); if (!project) return res.status(403).json({ error: 'Projekt für diesen Schlüssel nicht gefunden' });
+  const conversation = access.platform.apiChats.find((entry) => entry.projectId === project.id && entry.id === conversationId);
+  const limit = Math.max(1, Math.min(120, Number(req.query?.limit) || 50));
+  res.json({ conversation_id: conversationId, messages: (conversation?.messages || []).slice(-limit) });
+});
+app.post('/api/v1/calls/sessions', async (req, res) => {
+  const kind = req.body?.kind === 'video' ? 'video' : 'voice';
+  const access = await developerApiAuth(req, res, kind); if (!access) return;
+  const project = developerApiProject(access); if (!project) return res.status(403).json({ error: 'Projekt für diesen Schlüssel nicht gefunden' });
+  const ttlSeconds = Math.max(60, Math.min(900, Number(req.body?.ttl_seconds || req.body?.ttlSeconds) || 600));
+  const now = new Date();
+  const session = { id: developerId('call_'), projectId: project.id, kind, createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + ttlSeconds * 1000).toISOString(), signals: [] };
+  access.platform.apiCalls = access.platform.apiCalls.filter((entry) => Date.parse(entry.expiresAt) > Date.now() - 60_000).slice(-29);
+  access.platform.apiCalls.push(session);
+  try { await saveDeveloperPlatform(access.username, access.platform); }
+  catch { return res.status(503).json({ error: 'Anruf-Sitzung konnte nicht gespeichert werden' }); }
+  res.status(201).json({ session: { id: session.id, kind: session.kind, expires_at: session.expiresAt, signaling_url: '/api/v1/calls/sessions/' + encodeURIComponent(session.id) + '/signals' } });
+});
+app.post('/api/v1/calls/sessions/:id/signals', async (req, res) => {
+  const access = await developerApiAuth(req, res); if (!access) return;
+  const sessionId = String(req.params.id || '');
+  if (!/^call_[a-f0-9]{24}$/i.test(sessionId)) return res.status(400).json({ error: 'Ungültige Sitzungs-ID' });
+  const session = access.platform.apiCalls.find((entry) => entry.id === sessionId && entry.projectId === access.key.projectId);
+  if (!session || Date.parse(session.expiresAt) < Date.now()) return res.status(404).json({ error: 'Anruf-Sitzung nicht gefunden oder abgelaufen' });
+  if (!developerHasScope(access.key, session.kind)) return res.status(403).json({ error: 'Dieser Schlüssel hat keine Berechtigung für diese Anruf-Art' });
+  const type = ['offer', 'answer', 'ice', 'hangup'].includes(req.body?.type) ? req.body.type : '';
+  const sender = String(req.body?.sender || 'client').trim().slice(0, 64) || 'client';
+  const payload = developerJsonPayload(req.body?.payload, 12000);
+  if (!type || payload === null) return res.status(400).json({ error: 'type oder payload ist ungültig bzw. zu groß' });
+  const signal = { id: developerId('sig_'), sender, type, payload, createdAt: new Date().toISOString() };
+  session.signals.push(signal); session.signals = session.signals.slice(-120);
+  try { await saveDeveloperPlatform(access.username, access.platform); }
+  catch { return res.status(503).json({ error: 'WebRTC-Signal konnte nicht gespeichert werden' }); }
+  res.status(201).json({ signal });
+});
+app.get('/api/v1/calls/sessions/:id/signals', async (req, res) => {
+  const access = await developerApiAuth(req, res); if (!access) return;
+  const sessionId = String(req.params.id || '');
+  if (!/^call_[a-f0-9]{24}$/i.test(sessionId)) return res.status(400).json({ error: 'Ungültige Sitzungs-ID' });
+  const session = access.platform.apiCalls.find((entry) => entry.id === sessionId && entry.projectId === access.key.projectId);
+  if (!session || Date.parse(session.expiresAt) < Date.now()) return res.status(404).json({ error: 'Anruf-Sitzung nicht gefunden oder abgelaufen' });
+  if (!developerHasScope(access.key, session.kind)) return res.status(403).json({ error: 'Dieser Schlüssel hat keine Berechtigung für diese Anruf-Art' });
+  const since = Date.parse(String(req.query?.since || ''));
+  const signals = Number.isFinite(since) ? session.signals.filter((signal) => Date.parse(signal.createdAt) > since) : session.signals;
+  res.json({ session_id: session.id, kind: session.kind, expires_at: session.expiresAt, signals });
+});
+
 app.get('/sites/:slug', async (req, res) => {
   try {
     const found = await findDeveloperSiteBySlug(req.params.slug);
