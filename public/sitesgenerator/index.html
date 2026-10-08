@@ -1,54 +1,210 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ehoser Sites Generator</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ehoser Sites Generator</title>
 <style>
-:root{--bg:#08090d;--panel:#11151e;--panel2:#171c28;--line:#2b3548;--gold:#e7ba4d;--goldInk:#2b1b00;--ink:#f6f8fd;--muted:#aeb8c9;--blue:#77a9ff;--green:#6ee7ae;--danger:#fa9b93}*{box-sizing:border-box}body{margin:0;min-height:100dvh;color:var(--ink);font-family:Outfit,Inter,ui-sans-serif,system-ui,sans-serif;background:radial-gradient(circle at 7% 0,#5a4310a0,transparent 32rem),radial-gradient(circle at 98% 18%,#173e7e7a,transparent 32rem),var(--bg)}header{height:68px;display:flex;align-items:center;justify-content:space-between;padding:0 max(18px,calc((100vw - 1500px)/2));border-bottom:1px solid #473a20;background:#0b0d13de;backdrop-filter:blur(12px);position:sticky;top:0;z-index:5}.brand{font-weight:900;letter-spacing:-.035em;display:flex;align-items:center;gap:9px}.mark{width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(145deg,#ffe69a,#ab700e);color:#2f1e00}.nav{display:flex;gap:15px}.nav a{color:#dce4ef;text-decoration:none;font-size:.88rem;font-weight:750}.shell{width:min(1500px,100%);margin:auto;padding:22px 18px 45px}.topline{display:flex;justify-content:space-between;gap:18px;align-items:end;margin-bottom:16px}.eyebrow{font-size:.73rem;color:var(--gold);font-weight:900;letter-spacing:.14em;text-transform:uppercase}h1{font-size:clamp(2rem,4vw,3.5rem);margin:7px 0 0;line-height:1;letter-spacing:-.055em}p{line-height:1.55;color:var(--muted)}.studio{display:grid;grid-template-columns:minmax(330px,.72fr) minmax(0,1.28fr);gap:17px;align-items:start}.card{border:1px solid var(--line);border-radius:19px;background:linear-gradient(150deg,#171b25,#0c1018);box-shadow:0 22px 55px #0007}.aiPanel{overflow:hidden;position:sticky;top:86px}.panelHead{padding:16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.panelHead h2{font-size:1.05rem;margin:0}.online{font-size:.72rem;color:var(--green);font-weight:800}.chatLog{height:360px;overflow:auto;padding:15px;display:flex;flex-direction:column;gap:10px}.bubble{max-width:92%;padding:10px 12px;border-radius:14px;line-height:1.45;font-size:.88rem;white-space:pre-wrap}.bubble.assistant{align-self:flex-start;background:#20293a;border:1px solid #37445e;color:#e7edf8;border-bottom-left-radius:4px}.bubble.user{align-self:flex-end;background:linear-gradient(135deg,#e7ba4d,#a46a0e);color:#2a1900;border-bottom-right-radius:4px;font-weight:650}.bubble.error{align-self:flex-start;background:#3a1f23;border:1px solid #7c3a43;color:#ffdadd}.composer{padding:14px;border-top:1px solid var(--line)}.chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.chip{border:1px solid #4c5a76;background:#1b2230;color:#e9eef7;border-radius:99px;padding:7px 9px;font:inherit;font-size:.76rem;font-weight:800;cursor:pointer}.chip.active{border-color:var(--gold);background:#4a3610;color:#ffeab2}.prompt{width:100%;min-height:100px;resize:vertical;border:1px solid #3e4e68;border-radius:13px;background:#0a0e16;color:#fff;padding:11px;font:inherit}.prompt:focus,input:focus{outline:2px solid #557fca;outline-offset:1px}.composerActions{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:9px}.tiny{font-size:.74rem;color:var(--muted)}button{border:0;border-radius:10px;padding:10px 12px;font:inherit;font-weight:850;cursor:pointer}.primary{background:linear-gradient(135deg,#ffe58c,#b5760e);color:#2b1900}.secondary{background:#202836;color:#eff4fb;border:1px solid #45536b}.formGrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:0 14px 14px}.field{display:grid;gap:6px}.field label{font-size:.75rem;color:#d7e0ed;font-weight:800}.field input{width:100%;border:1px solid #3f4c63;border-radius:9px;padding:9px;background:#0c1018;color:#fff;font:inherit}.previewCard{overflow:hidden}.previewHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}.previewHead strong{font-size:1rem}.previewStatus{font-size:.74rem;color:#c9d3e0}.preview{height:478px;background:#fff}.preview iframe{width:100%;height:100%;border:0;background:#fff}.codeCard{margin-top:16px;overflow:hidden}.tabs{display:flex;gap:7px;padding:12px 13px 0}.tab{background:#1d2533;color:#d4dce8;border:1px solid #43516a}.tab.active{background:#e7ba4d;border-color:#e7ba4d;color:#2b1900}.codeTop{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 13px;border-bottom:1px solid var(--line)}.codeTop code{color:#f7cd72}.code{margin:0;min-height:250px;max-height:520px;overflow:auto;padding:14px;background:#090c12;color:#dceaff;font:12px/1.58 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap}.publishBar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:13px 15px;border-top:1px solid var(--line);background:#121823}.publishBar span{font-size:.78rem;color:#c5d1e2}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:20;padding:9px 12px;border-radius:99px;background:#1d2635;border:1px solid #7799d3;color:#edf5ff;font-size:.82rem;font-weight:800;box-shadow:0 12px 35px #0008}@media(max-width:960px){.studio{grid-template-columns:1fr}.aiPanel{position:static}.chatLog{height:270px}.preview{height:400px}}@media(max-width:580px){header{height:60px}.nav a:not(:last-child){display:none}.shell{padding:19px 12px 34px}.topline{align-items:flex-start;flex-direction:column}.formGrid{grid-template-columns:1fr}.preview{height:345px}.composerActions{align-items:stretch;flex-direction:column}.composerActions button{width:100%}.code{min-height:210px;font-size:11px}}
+:root{--bg:#090c13;--panel:#111724;--panel2:#151d2c;--line:#263144;--text:#f7f9ff;--muted:#a8b4c8;--gold:#d9ae52;--gold2:#f7d985;--accent:#72e6c2;--danger:#ff7f90;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(1000px 480px at 75% -5%,#203252 0%,transparent 60%),var(--bg);min-height:100vh}button,input,textarea{font:inherit}button{cursor:pointer;border:0}.shell{max-width:1440px;margin:auto;padding:24px}.top{height:54px;display:flex;align-items:center;justify-content:space-between;gap:15px}.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.4px}.brand b{display:grid;place-items:center;width:31px;height:31px;border-radius:10px;background:linear-gradient(135deg,var(--gold2),#9f7224);color:#10131a}.rightActions{display:flex;gap:10px;align-items:center}.ghost,.secondary{background:#192234;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 13px}.primary{background:linear-gradient(135deg,var(--gold2),var(--gold));color:#1a160d;font-weight:800;border-radius:10px;padding:11px 15px;box-shadow:0 8px 28px #d9ae522e}.view{display:none}.view.active{display:block}
+.hero{display:flex;justify-content:space-between;align-items:end;gap:25px;padding:64px 4px 36px}.eyebrow{color:var(--gold2);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px}.hero h1{font-size:clamp(32px,5vw,58px);letter-spacing:-2.5px;margin:9px 0 9px;max-width:720px}.hero p{color:var(--muted);margin:0;font-size:16px}.projectToolbar{display:flex;gap:12px;align-items:center;margin:6px 0 20px}.projectToolbar .count{color:var(--muted);font-size:14px}.projectGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:16px}.projectCard{background:linear-gradient(145deg,#172033,#101620);border:1px solid var(--line);border-radius:17px;min-height:190px;padding:20px;display:flex;flex-direction:column;transition:.18s transform,.18s border-color}.projectCard:hover{transform:translateY(-3px);border-color:#71603b}.cardTop{display:flex;justify-content:space-between;gap:8px}.badge{font-size:11px;font-weight:800;background:#25334c;color:#b8c6df;border-radius:999px;padding:5px 8px}.badge.live{background:#14382f;color:#8af2cf}.projectCard h3{font-size:20px;letter-spacing:-.5px;margin:22px 0 5px}.projectCard p{margin:0;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.projectCard footer{margin-top:auto;padding-top:18px;display:flex;justify-content:space-between;align-items:center;color:#8291aa;font-size:12px}.open{color:var(--gold2);background:none;padding:7px 0;font-weight:800}.empty{padding:42px 24px;border:1px dashed #31415b;border-radius:16px;background:#0d131e;color:var(--muted);grid-column:1/-1}.modalShade{display:none;position:fixed;inset:0;z-index:5;background:#02040ab8;backdrop-filter:blur(7px);align-items:center;justify-content:center;padding:20px}.modalShade.open{display:flex}.modal{width:min(480px,100%);background:#121a29;border:1px solid #33425b;border-radius:19px;padding:25px;box-shadow:0 25px 90px #000}.modal h2{margin:0 0 8px;letter-spacing:-.8px}.modal p{margin:0 0 22px;color:var(--muted);font-size:14px}.field{display:block;color:#d8dfec;font-size:13px;font-weight:700;margin:14px 0 6px}.field input,.prompt{width:100%;border:1px solid #2e3a50;background:#0a0f19;color:var(--text);outline:0;border-radius:10px;padding:12px}.field input:focus,.prompt:focus{border-color:var(--gold)}.domainPreview{font-size:13px;color:var(--gold2);margin:8px 1px 0}.modalActions{display:flex;justify-content:end;gap:9px;margin-top:24px}
+.studioTop{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:3px 0 17px;margin-bottom:18px}.projectIdentity{min-width:0}.projectIdentity strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.projectIdentity span{font-size:12px;color:var(--gold2)}.studio{display:grid;grid-template-columns:minmax(300px,.88fr) minmax(410px,1.42fr);gap:16px;min-height:calc(100vh - 112px)}.aiPanel,.previewPanel{border:1px solid var(--line);border-radius:17px;background:linear-gradient(160deg,#131b2a,#0c111a);min-height:0}.aiPanel{display:flex;flex-direction:column}.panelHead{padding:18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:start;gap:8px}.panelHead h2{font-size:17px;margin:0}.panelHead p{margin:4px 0 0;color:var(--muted);font-size:12px}.status{color:var(--accent);font-size:12px;font-weight:800}.chatLog{padding:18px;overflow:auto;flex:1;min-height:250px}.welcome{color:#dbe4f4;font-size:15px;line-height:1.55}.suggestions{display:flex;flex-wrap:wrap;gap:8px;margin-top:19px}.chip{border:1px solid #35445d;background:#192336;color:#cad6ea;border-radius:999px;padding:7px 10px;font-size:12px}.chip.selected{background:#543f18;border-color:var(--gold);color:#ffe9ab}.bubble{border-radius:13px;padding:12px 13px;margin:10px 0;font-size:13px;line-height:1.42;max-width:94%}.bubble.user{margin-left:auto;background:#3a2d18;color:#ffedbd}.bubble.assistant{background:#1a2538;color:#dfe8fa}.composer{padding:15px;border-top:1px solid var(--line)}.composer textarea{resize:vertical;min-height:94px}.composeFoot{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:10px}.composeFoot small{color:#8c9ab0}.generate{display:flex;gap:8px;align-items:center}.previewPanel{overflow:hidden;display:flex;flex-direction:column}.previewTop{padding:12px 13px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}.tabs{display:flex;gap:4px;overflow:auto}.tab{background:transparent;color:#aebbd0;border-radius:8px;padding:8px 10px;font-size:12px}.tab.active{background:#27334a;color:white}.previewButtons{display:flex;gap:7px}.mini{padding:7px 9px;font-size:12px}.stage{position:relative;flex:1;min-height:380px;background:#e9eef7}.stage iframe{border:0;width:100%;height:100%;position:absolute;inset:0;background:white}.code{display:none;margin:0;flex:1;min-height:380px;overflow:auto;background:#0b1019;color:#d8e3f5;padding:18px;white-space:pre-wrap;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}.code.active{display:block}.loading{position:absolute;inset:0;z-index:2;display:none;place-items:center;background:#09101ad9;color:#fff;text-align:center;padding:25px}.loading.active{display:grid}.spinner{width:28px;height:28px;border:3px solid #d9ae5244;border-top-color:var(--gold2);border-radius:50%;animation:spin .8s linear infinite;margin:auto}@keyframes spin{to{transform:rotate(360deg)}}.toast{position:fixed;right:20px;bottom:20px;z-index:9;opacity:0;transform:translateY(8px);pointer-events:none;background:#24344d;color:white;border:1px solid #536986;border-radius:10px;padding:11px 13px;font-size:13px;transition:.2s}.toast.show{opacity:1;transform:none}.toast.error{background:#4d2330;border-color:#8f3d51}
+@media(max-width:820px){.shell{padding:15px}.top{height:48px}.rightActions .ghost{display:none}.hero{padding:38px 2px 28px;display:block}.hero h1{letter-spacing:-1.6px}.hero .primary{margin-top:20px}.studio{display:flex;flex-direction:column}.aiPanel{min-height:500px}.previewPanel{min-height:520px}.previewTop{align-items:start;flex-direction:column}.previewButtons{align-self:flex-end}.studioTop .secondary{padding:8px 9px}.chatLog{max-height:340px}.projectGrid{grid-template-columns:1fr}.modal{padding:20px}}
 </style>
 </head>
 <body>
-<header><div class="brand"><span class="mark">E</span> ehoser <span style="font-weight:650;color:#b8c3d4">Sites Generator</span></div><nav class="nav"><a href="/control-center/">Control Center</a><a href="/sites/">Meine Sites</a><a href="/developer/">Developer API</a><a href="/chat/">Chat</a></nav></header>
 <main class="shell">
-  <div class="topline"><div><div class="eyebrow">Echte KI-Generierung</div><h1>Sprich mit deiner Website-KI.</h1><p>Links beschreibst du, was gebaut werden soll. Rechts siehst du sofort den generierten Entwurf und darunter den HTML-, CSS- und JavaScript-Code.</p></div></div>
-  <section class="studio">
-    <aside class="card aiPanel">
-      <div class="panelHead"><h2>✨ Sites KI</h2><span class="online">● bereit</span></div>
-      <div id="chatLog" class="chatLog"><div class="bubble assistant">Hi! Beschreibe deine Seite – zum Beispiel „eine goldene Minecraft-Teamseite mit Galerie“. Du kannst unten auch Funktionen auswählen.</div></div>
-      <div class="composer">
-        <div id="chips" class="chips">
-          <button class="chip" data-feature="ai" type="button">✨ KI einbauen</button>
-          <button class="chip" data-feature="chat" type="button">💬 Chat einbauen</button>
-          <button class="chip" data-feature="calls" type="button">📹 Anrufe einbauen</button>
-          <button class="chip" data-feature="server" type="button">🖥️ Eigene Server-Idee</button>
+  <header class="top">
+    <div class="brand"><b>E</b><span>Ehoser Sites</span></div>
+    <div class="rightActions"><a class="ghost" href="/sites/" style="text-decoration:none">Sites Builder</a><button class="primary" id="headerCreate">+ Create</button></div>
+  </header>
+
+  <section class="view active" id="listView">
+    <div class="hero">
+      <div><div class="eyebrow">Ehoser Sites Generator</div><h1>Baue deine nächste Website mit KI.</h1><p>Starte mit einem Projekt. Die KI erstellt dir danach Design, Text und Funktionen mit einer Live-Vorschau.</p></div>
+      <button class="primary" id="heroCreate">+ Neues Projekt</button>
+    </div>
+    <div class="projectToolbar"><strong>Projekte</strong><span class="count" id="projectCount">Lädt …</span></div>
+    <div class="projectGrid" id="projectGrid"></div>
+  </section>
+
+  <section class="view" id="studioView">
+    <div class="studioTop">
+      <button class="secondary" id="backToProjects">← Projekte</button>
+      <div class="projectIdentity"><strong id="studioProjectName">Neues Projekt</strong><span id="studioProjectDomain">projekt.ehoser.de</span></div>
+      <button class="secondary" id="renameProject">Projekt bearbeiten</button>
+    </div>
+    <div class="studio">
+      <section class="aiPanel">
+        <div class="panelHead"><div><h2>KI-Bereich</h2><p>Beschreibe, was du bauen möchtest.</p></div><span class="status" id="aiStatus">Bereit</span></div>
+        <div class="chatLog" id="chatLog">
+          <div class="welcome"><b>Was soll deine Seite können?</b><br>Zum Beispiel: „Eine moderne Portfolio-Seite für Fotografie mit Galerie und Kontaktformular.“<div class="suggestions" id="suggestions"><button class="chip" data-feature="ai">KI-Funktion</button><button class="chip" data-feature="chat">Chat einbauen</button><button class="chip" data-feature="calls">Anrufe erklären</button><button class="chip" data-feature="server">Eigene Server-Idee</button></div></div>
         </div>
-        <textarea id="prompt" class="prompt" placeholder="Beschreibe deine Website und ihre Funktionen …"></textarea>
-        <div class="composerActions"><span class="tiny">Die KI erzeugt nur Code, keine Zugangsdaten.</span><button id="generate" class="primary" type="button">Mit KI generieren</button></div>
-      </div>
-      <div class="formGrid"><div class="field"><label for="siteName">Projektname</label><input id="siteName" placeholder="Meine Website"></div><div class="field"><label for="siteSlug">Subdomain</label><input id="siteSlug" placeholder="meine-website"></div></div>
-    </aside>
-    <section>
-      <div class="card previewCard"><div class="previewHead"><strong>Live-Vorschau</strong><span id="previewStatus" class="previewStatus">Warte auf deine KI-Idee</span></div><div class="preview"><iframe id="preview" title="Vorschau" sandbox="allow-scripts allow-popups"></iframe></div></div>
-      <div class="card codeCard"><div class="tabs"><button class="tab active" data-tab="html" type="button">HTML</button><button class="tab" data-tab="css" type="button">CSS</button><button class="tab" data-tab="js" type="button">JavaScript</button></div><div class="codeTop"><code id="codeTitle">index.html</code><button id="copy" class="secondary" type="button">Code kopieren</button></div><pre id="code" class="code">Die KI-Ausgabe erscheint hier.</pre><div class="publishBar"><span>Der Entwurf kann anschließend im ehoser Sites-Baukasten gespeichert und veröffentlicht werden.</span><button id="publish" class="primary" type="button">In ehoser Sites öffnen</button></div></div>
-    </section>
+        <div class="composer">
+          <textarea class="prompt" id="prompt" placeholder="Beschreibe deine Website …"></textarea>
+          <div class="composeFoot"><small id="selectedFeatureText">Keine Extras ausgewählt</small><button class="primary generate" id="generate"><span>✨</span> Generieren</button></div>
+        </div>
+      </section>
+      <section class="previewPanel">
+        <div class="previewTop"><div class="tabs"><button class="tab active" data-tab="preview">Vorschau</button><button class="tab" data-tab="html">HTML</button><button class="tab" data-tab="css">CSS</button><button class="tab" data-tab="js">JavaScript</button></div><div class="previewButtons"><button class="ghost mini" id="download">Download</button><button class="primary mini" id="openSites">In Sites öffnen</button></div></div>
+        <div class="stage"><iframe id="preview" title="Live Vorschau" sandbox="allow-scripts"></iframe><pre class="code" id="code"></pre><div class="loading" id="loading"><div><div class="spinner"></div><p id="loadingText">Die KI gestaltet deine Website …</p></div></div></div>
+      </section>
+    </div>
   </section>
 </main>
+
+<div class="modalShade" id="projectModal" aria-hidden="true">
+  <form class="modal" id="projectForm">
+    <h2>Neues Projekt</h2><p>Dein Projekt bekommt direkt eine passende Ehoser-Subdomain. Du kannst sie später noch ändern.</p>
+    <label class="field" for="newProjectName">Projektname</label><input id="newProjectName" autocomplete="off" maxlength="48" placeholder="z. B. Nils Portfolio" required>
+    <label class="field" for="newProjectSlug">Subdomain</label><input id="newProjectSlug" autocomplete="off" maxlength="50" placeholder="nils-portfolio" required>
+    <div class="domainPreview" id="domainPreview">nils-portfolio.ehoser.de</div>
+    <div class="modalActions"><button type="button" class="ghost" id="closeModal">Abbrechen</button><button class="primary" type="submit">Projekt erstellen →</button></div>
+  </form>
+</div>
+<div class="toast" id="toast"></div>
+
 <script>
-const $=id=>document.getElementById(id);const API=location.origin+'/api';let features=new Set(),activeTab='html',generated={html:'',css:'',js:'',title:'',summary:''},busy=false;
-function esc(v){const d=document.createElement('div');d.textContent=String(v||'');return d.innerHTML}
-function slug(v){return String(v||'').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,48)}
-function addMessage(kind,text){const item=document.createElement('div');item.className='bubble '+kind;item.textContent=text;$('chatLog').appendChild(item);$('chatLog').scrollTop=$('chatLog').scrollHeight;return item}
-function toast(text){const item=document.createElement('div');item.className='toast';item.textContent=text;document.body.appendChild(item);setTimeout(()=>item.remove(),1900)}
-function api(path,method,body){const token=localStorage.getItem('token');return fetch(API+path,{method:method||'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:body?JSON.stringify(body):undefined}).then(async r=>{const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||'Anfrage fehlgeschlagen');return data})}
-function generatorMessages(data){const featureInfo={ai:'KI-Assistent mit sicherer Platzhalter-Server-URL, niemals API-Schlüssel im Browser.',chat:'Schaltfläche oder Bereich mit relativem Link /chat/.',calls:'Anruf-Schaltfläche mit relativem Link /chat/.',server:'sichtbare SERVER_URL-Konfiguration ohne Geheimnisse.'};const features=data.features.map(item=>featureInfo[item]).filter(Boolean).join('\n');return[{role:'system',content:['Du bist der Ehoser Sites Generator. Erstelle eine kleine, moderne, mobilfreundliche deutschsprachige Einseiten-Website.','Antworte AUSSCHLIESSLICH mit gültigem JSON ohne Markdown oder Codeblöcke.','Das JSON hat genau die String-Felder title, summary, html, css und js.','html enthält nur Inhalt für body, keine html/head/style/script Tags. css enthält nur CSS. js nur JavaScript ohne script Tags.','Keine API-Schlüssel, Zugangsdaten, Passwortfelder, Tracking-Skripte oder externen JavaScript-CDNs.','Keine Behauptungen über echte Adminrechte oder automatische Anrufe.','Gewünschte Funktionen:\n'+(features||'Keine Zusatzfunktion ausgewählt.')].join('\n')},{role:'user',content:'Website-Idee: '+data.prompt+'\nProjektname: '+(data.name||'frei wählen')+'\nGewünschte Subdomain: '+(data.slug||'frei wählen')}]} 
-function fullHtml(){return '<!doctype html>\n<html lang="de">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width,initial-scale=1">\n  <title>'+esc(generated.title||'Meine ehoser Site')+'</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n'+generated.html+'\n<scr'+'ipt src="app.js"><\\/scr'+'ipt>\n</body>\n</html>'}
-function previewDocument(){const scriptTag='<scr'+'ipt>'+generated.js+'<\\/scr'+'ipt>';return '<!doctype html><html><head><meta charset="utf-8"><style>'+generated.css+'</style></head><body>'+generated.html+scriptTag+'</body></html>'}
-function render(){const content=activeTab==='html'?fullHtml():(generated[activeTab]||'Die KI-Ausgabe erscheint hier.');$('code').textContent=content;$('codeTitle').textContent=activeTab==='html'?'index.html':activeTab==='css'?'style.css':'app.js';if(generated.html)$('preview').srcdoc=previewDocument()}
-function read(){return{prompt:$('prompt').value.trim(),name:$('siteName').value.trim(),slug:slug($('siteSlug').value||$('siteName').value),features:[...features]}}
-async function generate(){if(busy)return;const data=read();if(!data.prompt)return toast('Beschreibe zuerst deine Idee.');busy=true;$('generate').disabled=true;$('generate').textContent='KI denkt nach …';addMessage('user',data.prompt+(data.features.length?'\nFunktionen: '+data.features.join(', '):''));const loading=addMessage('assistant','Ich erstelle HTML, CSS und JavaScript …');try{const response=await api('/ki','POST',{messages:generatorMessages(data)});const raw=String(response?.choices?.[0]?.message?.content||'').replaceAll('\\`\\`\\`json','').replaceAll('\\`\\`\\`','').trim();const first=raw.indexOf('{'),last=raw.lastIndexOf('}');if(first<0||last<=first)throw new Error('Die KI hat keinen gültigen Code zurückgegeben. Bitte probiere eine klarere Beschreibung.');let result;try{result=JSON.parse(raw.slice(first,last+1))}catch{throw new Error('Die KI-Antwort konnte nicht gelesen werden. Bitte erneut generieren.')}if(!result.html||!result.css)throw new Error('Die KI-Antwort war unvollständig. Bitte erneut generieren.');loading.remove();generated={title:String(result.title||data.name||'Meine ehoser Site').slice(0,80),summary:String(result.summary||'Dein KI-Entwurf ist fertig.').slice(0,300),html:String(result.html).slice(0,45000),css:String(result.css).slice(0,30000),js:String(result.js||'').slice(0,30000)};$('siteName').value=generated.title;if(!$('siteSlug').value)$('siteSlug').value=slug(generated.title);$('previewStatus').textContent='KI-Entwurf bereit';addMessage('assistant',generated.summary);render()}catch(error){loading.remove();addMessage('error',error.message);$('previewStatus').textContent='KI konnte nicht generieren'}finally{busy=false;$('generate').disabled=false;$('generate').textContent='Mit KI generieren'}}
-document.querySelectorAll('.chip').forEach(button=>button.addEventListener('click',()=>{const feature=button.dataset.feature;if(features.has(feature))features.delete(feature);else features.add(feature);button.classList.toggle('active',features.has(feature));if(features.has(feature)){$('prompt').focus();$('prompt').placeholder='Beschreibe, wie '+button.textContent.trim()+' auf deiner Seite funktionieren soll …'}}));
-document.querySelectorAll('.tab').forEach(button=>button.addEventListener('click',()=>{activeTab=button.dataset.tab;document.querySelectorAll('.tab').forEach(item=>item.classList.toggle('active',item===button));render()}));
-$('siteName').addEventListener('input',()=>{if(!$('siteSlug').dataset.manual)$('siteSlug').value=slug($('siteName').value)});$('siteSlug').addEventListener('input',()=>{$('siteSlug').dataset.manual='1'});$('generate').addEventListener('click',generate);$('prompt').addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key==='Enter')generate()});$('copy').addEventListener('click',()=>navigator.clipboard.writeText(generated[activeTab]||'').then(()=>toast('Code kopiert')).catch(()=>toast('Bitte Code manuell kopieren')));$('publish').addEventListener('click',()=>{const data=read();if(!generated.html)return toast('Erstelle zuerst einen KI-Entwurf.');window.location.href='/sites/?generate='+encodeURIComponent(data.prompt)+'&slug='+encodeURIComponent(data.slug||slug(generated.title))});const start=new URLSearchParams(location.search).get('prompt');if(start)$('prompt').value=start;
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var draftKey='ehoser_sites_generator_projects_v2';
+  var current=null, modalTarget=null, selectedFeatures=new Set(), activeTab='preview', busy=false;
+  var generated={title:'',summary:'',html:'<main style="font-family:system-ui;padding:48px"><h1>Deine Vorschau erscheint hier.</h1><p>Beschreibe links deine Website und klicke auf Generieren.</p></main>',css:'',js:''};
+
+  function slugify(value){
+    return String(value||'').toLowerCase().trim().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,50)||'mein-projekt';
+  }
+  function token(){return localStorage.getItem('token')||''}
+  function readDrafts(){try{return JSON.parse(localStorage.getItem(draftKey)||'[]')}catch(e){return []}}
+  function saveDrafts(items){localStorage.setItem(draftKey,JSON.stringify(items))}
+  function toast(message,isError){var n=$('toast');n.textContent=message;n.className='toast show'+(isError?' error':'');clearTimeout(toast.timer);toast.timer=setTimeout(function(){n.className='toast'},3500)}
+  async function api(path,method,body){
+    var auth=token(); if(!auth) throw new Error('Bitte melde dich an, um gespeicherte Ehoser-Projekte zu laden.');
+    var response=await fetch('/api'+path,{method:method||'GET',headers:{'Content-Type':'application/json','Authorization':'Bearer '+auth},body:body?JSON.stringify(body):undefined});
+    var data=await response.json().catch(function(){return {}});
+    if(!response.ok) throw new Error(data.error||'Die Anfrage ist fehlgeschlagen.');
+    return data;
+  }
+  function setView(name){$('listView').classList.toggle('active',name==='list');$('studioView').classList.toggle('active',name==='studio');window.scrollTo(0,0)}
+  function card(project,isRemote){
+    var state=isRemote?(project.published?'Live':'Gespeichert'):'Entwurf';
+    var tag=isRemote&&project.published?' live':'';
+    var when=project.updatedAt||project.createdAt;
+    var date=when?new Date(when).toLocaleDateString('de-DE'):'Gerade erstellt';
+    return '<article class="projectCard"><div class="cardTop"><span class="badge'+tag+'">'+state+'</span><span class="badge">'+(isRemote?'Ehoser Sites':'KI-Entwurf')+'</span></div><h3>'+escapeHtml(project.name||'Unbenanntes Projekt')+'</h3><p>'+escapeHtml((project.slug||'projekt')+'.ehoser.de')+'</p><footer><span>'+date+'</span><button class="open" data-open="'+escapeAttr(project._key)+'">Öffnen →</button></footer></article>';
+  }
+  function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,function(ch){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]})}
+  function escapeAttr(value){return escapeHtml(value).replace(/"/g,'&quot;')}
+  var loadedProjects=[];
+  async function loadProjects(){
+    var drafts=readDrafts().map(function(item){item._key='draft:'+item.id;item._remote=false;return item});
+    var remote=[];
+    if(token()){
+      try{
+        var overview=await api('/developer/overview');
+        remote=(overview.sites||[]).map(function(item){item._key='remote:'+item.id;item._remote=true;return item});
+      }catch(error){toast('Gespeicherte Projekte konnten gerade nicht geladen werden.',true)}
+    }
+    loadedProjects=drafts.concat(remote);
+    $('projectCount').textContent=loadedProjects.length+' Projekt'+(loadedProjects.length===1?'':'e');
+    $('projectGrid').innerHTML=loadedProjects.length?loadedProjects.map(function(item){return card(item,item._remote)}).join(''):'<div class="empty"><b>Noch kein Projekt.</b><br><br>Erstelle dein erstes Projekt und die KI baut direkt eine Vorschau für dich.</div>';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-open]'),function(button){button.addEventListener('click',function(){var item=loadedProjects.find(function(p){return p._key===button.dataset.open});if(item) openProject(item)})});
+  }
+  function showModal(project){
+    modalTarget=project||null;
+    $('projectModal').classList.add('open');$('projectModal').setAttribute('aria-hidden','false');
+    $('newProjectName').value=project?project.name:'';
+    $('newProjectSlug').value=project?project.slug:'';
+    updateDomain();setTimeout(function(){$('newProjectName').focus()},20);
+  }
+  function hideModal(){modalTarget=null;$('projectModal').classList.remove('open');$('projectModal').setAttribute('aria-hidden','true')}
+  function updateDomain(){$('domainPreview').textContent=slugify($('newProjectSlug').value)+'.ehoser.de'}
+  function openProject(project){
+    current={id:project.id||('draft_'+Date.now()),name:project.name||'Mein Projekt',slug:slugify(project.slug||project.name),prompt:project.prompt||''};
+    $('studioProjectName').textContent=current.name;$('studioProjectDomain').textContent=current.slug+'.ehoser.de';$('prompt').value=current.prompt;setView('studio');
+  }
+  function createProject(){
+    var name=$('newProjectName').value.trim(), projectSlug=slugify($('newProjectSlug').value);
+    if(!name){$('newProjectName').focus();return}
+    if(modalTarget){
+      var edited={id:modalTarget.id,name:name,slug:projectSlug,createdAt:modalTarget.createdAt||new Date().toISOString(),prompt:modalTarget.prompt||''};
+      var drafts=readDrafts(), found=false;
+      drafts=drafts.map(function(item){if(item.id===edited.id){found=true;return edited}return item});
+      if(found)saveDrafts(drafts);
+      hideModal();openProject(edited);loadProjects();toast(found?'Projekt aktualisiert.':'Projektname für diesen KI-Entwurf aktualisiert.');return;
+    }
+    var project={id:'draft_'+Date.now(),name:name,slug:projectSlug,createdAt:new Date().toISOString(),prompt:''};
+    var allDrafts=readDrafts();allDrafts.unshift(project);saveDrafts(allDrafts);hideModal();openProject(project);loadProjects();
+  }
+  function setFeatureLabel(){var labels=[];selectedFeatures.forEach(function(value){labels.push({ai:'KI-Funktion',chat:'Chat',calls:'Anrufe',server:'Server'}[value])});$('selectedFeatureText').textContent=labels.length?labels.join(' · '):'Keine Extras ausgewählt'}
+  function addBubble(kind,text){var node=document.createElement('div');node.className='bubble '+kind;node.textContent=text;$('chatLog').appendChild(node);$('chatLog').scrollTop=$('chatLog').scrollHeight}
+  function updateTab(){
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(tab){tab.classList.toggle('active',tab.dataset.tab===activeTab)});
+    var isPreview=activeTab==='preview';$('preview').style.display=isPreview?'block':'none';$('code').classList.toggle('active',!isPreview);
+    if(!isPreview){var content=activeTab==='html'?fullHtml():generated[activeTab];$('code').textContent=content||'// Kein Code in diesem Bereich';}
+  }
+  function fullHtml(){
+    var closeScript='</scr'+'ipt>';
+    return '<!doctype html>\n<html lang="de">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>'+escapeHtml(generated.title||current.name)+'</title>\n<style>\n'+generated.css+'\n</style>\n</head>\n<body>\n'+generated.html+'\n<scr'+'ipt src="app.js">'+closeScript+'\n</body>\n</html>';
+  }
+  function renderPreview(){
+    var closeScript='</scr'+'ipt>';
+    $('preview').srcdoc='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+generated.css+'</style></head><body>'+generated.html+'<scr'+'ipt>'+generated.js+closeScript+'</body></html>';
+    updateTab();
+  }
+  function normalizeResult(data){
+    if(!data||typeof data!=='object') return null;
+    var html=data.html||data.body||data.indexHtml||'';
+    var css=data.css||data.style||data.styles||'';
+    var js=data.js||data.javascript||data.script||'';
+    if(!html) return null;
+    return {title:String(data.title||current.name||'Meine Website'),summary:String(data.summary||'Vorschau wurde erstellt.'),html:String(html),css:String(css),js:String(js)};
+  }
+  function parseGeneratorAnswer(answer){
+    var raw=String(answer||'').trim(), first=raw.indexOf('{'), last=raw.lastIndexOf('}');
+    if(first!==-1&&last>first){
+      try{var json=normalizeResult(JSON.parse(raw.slice(first,last+1)));if(json)return json}catch(error){console.warn('KI JSON konnte nicht direkt gelesen werden',error)}
+    }
+    var fence=String.fromCharCode(96)+String.fromCharCode(96)+String.fromCharCode(96);
+    var expression=new RegExp(fence+'([a-zA-Z0-9_-]*)?\\s*\\n([\\s\\S]*?)'+fence,'g');
+    var match,parts={};
+    while((match=expression.exec(raw))){
+      var language=String(match[1]||'').toLowerCase();
+      if(language==='html'||language==='htm')parts.html=match[2].trim();
+      else if(language==='css')parts.css=match[2].trim();
+      else if(language==='js'||language==='javascript')parts.js=match[2].trim();
+      else if(!parts.html&&/<[a-z][\\s\\S]*>/i.test(match[2]))parts.html=match[2].trim();
+    }
+    if(parts.html)return {title:current.name,summary:'Vorschau wurde aus der KI-Antwort erstellt.',html:parts.html,css:parts.css||'',js:parts.js||''};
+    throw new Error('Die KI-Antwort enthielt keinen lesbaren Website-Code. Bitte versuche es noch einmal.');
+  }
+  function generatorMessages(data){
+    var featureText={ai:'Eine sichtbare KI-Funktion als Demo-Interface mit klarer Beschriftung einbauen.',chat:'Ein modernes Chat-Demo-Interface einbauen.',calls:'Eine sichere Anruf-/Kontakt-Funktion als UI-Demo erklären.',server:'Eine Server/API-Idee als klar beschriftete Demo einbauen.'};
+    var extras=data.features.map(function(item){return featureText[item]}).filter(Boolean).join(' ');
+    return [{role:'system',content:'Du bist ein erstklassiger Webdesigner. Antworte NUR als valides JSON ohne Markdown. Nutze exakt die Felder title, summary, html, css, js. html ist nur der Body-Inhalt, css enthält das komplette Styling, js enthält optionales Vanilla-JavaScript. Erstelle eine hochwertige, responsive deutsche Einzelseite. Keine externen Bilder, keine externen Bibliotheken, keine echten API-Schlüssel, keine erfundenen Backend-Endpunkte. Wenn eine KI-, Chat-, Anruf- oder Serverfunktion gefordert wird, baue nur eine klar beschriftete sichere Benutzeroberflächen-Demo.'},{role:'user',content:'Projektname: '+data.name+'\nSubdomain: '+data.slug+'.ehoser.de\nWebsite-Idee: '+data.prompt+'\nZusatzwünsche: '+(extras||'Keine')}];
+  }
+  async function generate(){
+    if(busy)return;
+    var prompt=$('prompt').value.trim();
+    if(!prompt){$('prompt').focus();toast('Beschreibe zuerst deine Website.',true);return}
+    busy=true;$('loading').classList.add('active');$('generate').disabled=true;$('aiStatus').textContent='Generiert …';addBubble('user',prompt);
+    try{
+      var result=await api('/ki','POST',{messages:generatorMessages({name:current.name,slug:current.slug,prompt:prompt,features:Array.from(selectedFeatures)})});
+      generated=parseGeneratorAnswer(result&&result.choices&&result.choices[0]&&result.choices[0].message&&result.choices[0].message.content);
+      current.prompt=prompt;renderPreview();addBubble('assistant',generated.summary);$('aiStatus').textContent='Fertig';toast('Deine Vorschau ist bereit.');
+    }catch(error){console.error(error);addBubble('assistant','Das hat noch nicht geklappt. Bitte probiere es erneut oder formuliere die Idee etwas kürzer.');$('aiStatus').textContent='Erneut versuchen';toast(error.message||'Die KI-Antwort konnte nicht gelesen werden.',true)}
+    finally{busy=false;$('loading').classList.remove('active');$('generate').disabled=false}
+  }
+  function download(){
+    var blob=new Blob([fullHtml()],{type:'text/html'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=slugify(current.name)+'.html';link.click();setTimeout(function(){URL.revokeObjectURL(url)},2000);
+  }
+  $('headerCreate').onclick=function(){showModal()};$('heroCreate').onclick=function(){showModal()};$('closeModal').onclick=hideModal;$('projectModal').addEventListener('click',function(event){if(event.target===$('projectModal'))hideModal()});$('projectForm').addEventListener('submit',function(event){event.preventDefault();createProject()});
+  $('newProjectName').addEventListener('input',function(){if(!$('newProjectSlug').dataset.manual){$('newProjectSlug').value=slugify($('newProjectName').value)}updateDomain()});$('newProjectSlug').addEventListener('input',function(){$('newProjectSlug').dataset.manual='1';updateDomain()});
+  $('backToProjects').onclick=function(){setView('list');loadProjects()};$('renameProject').onclick=function(){showModal(current)};$('generate').onclick=generate;$('download').onclick=download;$('openSites').onclick=function(){var prompt=$('prompt').value.trim();location.href='/sites/?slug='+encodeURIComponent(current.slug)+'&generate='+encodeURIComponent(prompt)};
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'),function(button){button.addEventListener('click',function(){var f=button.dataset.feature;selectedFeatures.has(f)?selectedFeatures.delete(f):selectedFeatures.add(f);button.classList.toggle('selected',selectedFeatures.has(f));setFeatureLabel()})});
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(button){button.addEventListener('click',function(){activeTab=button.dataset.tab;updateTab()})});
+  renderPreview();loadProjects();
+})();
 </script>
 </body>
 </html>
