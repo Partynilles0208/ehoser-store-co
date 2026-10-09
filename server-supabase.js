@@ -4800,11 +4800,18 @@ async function getStoredChatMemberState(groupId, username, kind) {
 // Ephemeral message retention: offline members can receive messages for up to 7 days.
 // Once every other current group member acknowledges delivery, delete delivered payloads.
 const CHAT_MESSAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+let _lastGlobalEphemeralCleanupAt = 0;
+async function cleanupExpiredEphemeralChatMessagesOccasionally() {
+  if (Date.now() - _lastGlobalEphemeralCleanupAt < 5 * 60 * 1000) return;
+  _lastGlobalEphemeralCleanupAt = Date.now();
+  try { await cleanupEphemeralChatMessages(null); }
+  catch (error) { console.error('Global ephemeral chat cleanup failed:', error?.message || error); _lastGlobalEphemeralCleanupAt = 0; }
+}
 async function cleanupEphemeralChatMessages(groupId, { deliveredUpTo = 0 } = {}) {
-  if (!groupId) return;
   const cutoff = new Date(Date.now() - CHAT_MESSAGE_TTL_MS).toISOString();
-  const expiredResult = await supabaseAdmin.from('chat_messages')
-    .delete().eq('group_id', groupId).lt('created_at', cutoff)
+  let expiredQuery = supabaseAdmin.from('chat_messages').delete().lt('created_at', cutoff);
+  if (groupId) expiredQuery = expiredQuery.eq('group_id', groupId);
+  const expiredResult = await expiredQuery
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
     .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER);
@@ -6299,6 +6306,8 @@ app.post('/api/chat/groups/:groupId/typing', async (req, res) => {
 // Lightweight metadata feed for browser notifications.
 app.get('/api/chat/notifications', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
+  // Opportunistically expire old queued payloads, throttled per warm server instance.
+  await cleanupExpiredEphemeralChatMessagesOccasionally();
   const after = Math.max(0, Number.parseInt(req.query.after, 10) || 0);
   const { data: memberships, error: memberError } = await supabaseAdmin
     .from('chat_group_members')
