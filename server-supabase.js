@@ -6098,27 +6098,37 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
   // Enforce the retention deadline even on deployments without a scheduled cleanup job.
   try { await cleanupEphemeralChatMessages(groupId); } catch (cleanupError) { console.error('Ephemeral chat cleanup failed:', cleanupError?.message || cleanupError); }
+
+  // A receipt watermark is shared by the account, not by the browser. Once one
+  // device has received a message, another device must not download the old
+  // server history. Each device keeps its own history in its local cache.
+  let receiptState = null;
+  try {
+    receiptState = (await getStoredChatMemberState(groupId, user.username, 'receipt')).state;
+  } catch (receiptError) {
+    console.error('Read chat delivery watermark failed:', receiptError?.message || receiptError);
+  }
+  const receiptWatermark = Math.max(0, Number(receiptState?.deliveredMessageId) || 0);
+  const queryAfter = Math.max(after, receiptWatermark);
   let hasMessageMetadata = true;
   let query = createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS);
-  query = after
-    ? query.gt('id', after).order('id', { ascending: true }).limit(50)
-    // A fresh browser has no local cache yet. Return the same useful history
-    // window that the client keeps locally, instead of only the oldest rows.
+  query = queryAfter
+    ? query.gt('id', queryAfter).order('id', { ascending: true }).limit(50)
+    // Only the first device to open a chat without a prior delivery watermark
+    // receives a bounded bootstrap history. Later devices receive new messages only.
     : query.order('id', { ascending: false }).limit(180);
   let { data, error } = await query;
   if (error && isMissingChatMessageMetadata(error)) {
-    // Existing installations can still load all chats while the optional message-action
-    // migration has not run yet.
     hasMessageMetadata = false;
     let legacyQuery = createChatMessageQuery(groupId, LEGACY_CHAT_MESSAGE_FIELDS);
-    legacyQuery = after
-      ? legacyQuery.gt('id', after).order('id', { ascending: true }).limit(50)
+    legacyQuery = queryAfter
+      ? legacyQuery.gt('id', queryAfter).order('id', { ascending: true }).limit(50)
       : legacyQuery.order('id', { ascending: false }).limit(180);
     ({ data, error } = await legacyQuery);
   }
   if (error) return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
 
-  const initialRows = after ? (data || []) : (data || []).slice().reverse();
+  const initialRows = queryAfter ? (data || []) : (data || []).slice().reverse();
   let changedRows = [];
   if (hasMessageMetadata && changedAfter) {
     const changedResult = await createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS)
@@ -6151,7 +6161,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   try {
     if (deliveredMessageId) await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
     const activity = await getChatGroupActivity(groupId, user.username);
-    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString() });
+    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0 });
   } catch (activityError) {
     console.error('Chat activity update failed:', activityError.message);
     return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString() });
