@@ -2102,7 +2102,15 @@ async function loadMessagesNow(gid, initial) {
         const after = initial ? 0 : (_lastMsgId[gid] || 0);
         const changedAfter = getMessageSyncAt(gid);
         const response = await api('/chat/messages/' + gid + '?after=' + after + '&changedAfter=' + encodeURIComponent(changedAfter));
-        const messages = response.messages || [];
+        const responseMessages = response.messages || [];
+        // Apply edits/deletes only to messages already stored on this device;
+        // don't import older server history onto a second device.
+        const localMessageIds = new Set(getCachedMessages(gid).map((message) => String(message.id)));
+        const messages = response.localHistoryOnly
+            ? responseMessages.filter((message) =>
+                (Number(message.id) || 0) > (Number(response.deliveryWatermark) || 0) ||
+                localMessageIds.has(String(message.id)))
+            : responseMessages;
         const activity = response.activity || { deliveredUpTo: 0, readUpTo: 0, typing: [] };
         if (gid !== _activeGroupId) return;
         setMessageSyncAt(gid, response.syncedAt || new Date().toISOString());
