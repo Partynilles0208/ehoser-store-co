@@ -3,11 +3,10 @@ const API_ORIGIN = window.location.protocol === 'file:' ? 'https://ehoser.de' : 
 const API = API_ORIGIN + '/api';
 const CHAT_CACHE_VERSION = 'v3';
 const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
-// The interface is refreshed every second while an online list is visible.
-// Heartbeats are deliberately less frequent so the database is not written to
-// every second for every open chat.
-const PRESENCE_REFRESH_INTERVAL_MS = 1000;
-const PRESENCE_HEARTBEAT_INTERVAL_MS = 15000;
+// Keep presence traffic low: refresh the visible online list every 5 seconds
+// and write a heartbeat every 30 seconds instead of querying/writing constantly.
+const PRESENCE_REFRESH_INTERVAL_MS = 5000;
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 30000;
 // Kept slightly above the 60-second heartbeat used by an already-open older
 // browser tab, so it remains visible until it receives the new chat code.
 const PRESENCE_ONLINE_WINDOW_MS = 75 * 1000;
