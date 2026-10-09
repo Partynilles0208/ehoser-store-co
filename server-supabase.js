@@ -4828,6 +4828,41 @@ async function cleanupEphemeralChatMessages(groupId, { deliveredUpTo = 0 } = {})
   }
 }
 
+async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUserUpTo) {
+  const upTo = Math.max(0, Number(acknowledgedByUserUpTo) || 0);
+  if (!groupId || !upTo) return;
+  const [{ data: members, error: memberError }, { data: stateRows, error: stateError }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId),
+    supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content')
+      .eq('group_id', groupId).like('sender', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+  ]);
+  if (memberError) throw memberError;
+  if (stateError) throw stateError;
+  const deliveredBy = new Map();
+  for (const row of stateRows || []) {
+    const state = parseChatMemberState(row);
+    if (state?.kind === 'receipt') deliveredBy.set(state.username, state.deliveredMessageId || 0);
+  }
+  const { data: messages, error: messageError } = await supabaseAdmin.from('chat_messages')
+    .select('id,sender').eq('group_id', groupId).lte('id', upTo)
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
+    .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER)
+    .order('id', { ascending: true }).limit(5000);
+  if (messageError) throw messageError;
+  const memberNames = (members || []).map((member) => member.username).filter(Boolean);
+  const deletableIds = (messages || []).filter((message) => {
+    const messageId = Number(message.id) || 0;
+    return memberNames.filter((name) => name !== message.sender)
+      .every((recipient) => (deliveredBy.get(recipient) || 0) >= messageId);
+  }).map((message) => Number(message.id)).filter(Boolean);
+  for (let offset = 0; offset < deletableIds.length; offset += 100) {
+    const result = await supabaseAdmin.from('chat_messages').delete()
+      .eq('group_id', groupId).in('id', deletableIds.slice(offset, offset + 100));
+    if (result.error) throw result.error;
+  }
+}
+
 async function saveChatReceiptState(groupId, username, patch = {}) {
   const { sender, row, state } = await getStoredChatMemberState(groupId, username, 'receipt');
   const previous = state || {
@@ -6245,8 +6280,7 @@ app.post('/api/chat/groups/:groupId/delivered', async (req, res) => {
     const deliveredMessageId = await highestVisibleChatMessageId(groupId, requestedId);
     if (!deliveredMessageId) return res.json({ ok: true });
     await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
-    const activity = await getChatGroupActivity(groupId, user.username);
-    if (activity.deliveredUpTo > 0) await cleanupEphemeralChatMessages(groupId, { deliveredUpTo: activity.deliveredUpTo });
+    await cleanupConfirmedDeliveredChatMessages(groupId, deliveredMessageId);
     return res.json({ ok: true, deliveredMessageId });
   } catch (error) {
     console.error('Save chat delivery receipt failed:', error?.message || error);
