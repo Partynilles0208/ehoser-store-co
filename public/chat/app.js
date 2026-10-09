@@ -288,13 +288,9 @@ async function ensureE2eeForGroup(groupId) {
     _e2eeReady.set(groupId, work);
     try { return await work; } finally { _e2eeReady.delete(groupId); }
 }
+// E2EE disabled: new chat messages are stored as ordinary message JSON.
 async function encryptChatContent(groupId, plain) {
-    const key = await ensureE2eeForGroup(groupId);
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(String(plain)));
-    const payload = JSON.stringify({ e2ee: 1, v: 1, alg: 'A256GCM', iv: e2eeBytesToB64(iv), c: e2eeBytesToB64(cipher) });
-    _e2eePlaintexts.set(payload, String(plain));
-    return payload;
+    return String(plain);
 }
 async function decryptChatContent(groupId, stored) {
     if (!isE2eePayload(stored)) return typeof stored === 'string' ? stored : JSON.stringify(stored || '');
@@ -306,18 +302,9 @@ async function decryptChatContent(groupId, stored) {
     _e2eePlaintexts.set(stored, text);
     return text;
 }
+// E2EE disabled: do not attempt to initialize keys or block chat loading.
 async function decryptMessagesForGroup(groupId, messages) {
-    const results = await Promise.all((messages || []).map(async (message) => {
-        try {
-            await decryptChatContent(groupId, message.content);
-            return null;
-        } catch (error) {
-            _e2eePlaintexts.set(message.content, null);
-            return isE2eePayload(message.content) ? error : null;
-        }
-    }));
-    const error = results.find(Boolean);
-    if (error) throw new Error('Verschlüsselte Nachrichten konnten auf diesem Gerät nicht geöffnet werden. Bitte warte kurz und lade den Chat erneut.');
+    return;
 }
 async function migrateGroupHistory(groupId) {
     if (_e2eeMigrated.has(groupId)) return;
@@ -1582,9 +1569,8 @@ async function uploadFile(file, onLabel) {
 function readStoredMessage(value) {
     const encrypted = encryptedPayloadInfo(value);
     if (encrypted) {
-        // Old encryption from the removed system has no compatible local key.
-        // Never render its raw cipher text as if it were a chat message.
-        return encrypted.current && _e2eePlaintexts.has(value) ? _e2eePlaintexts.get(value) : null;
+        // Historical ciphertext cannot be recovered without the original private key.
+        return JSON.stringify({ t: 'txt', v: '🔒 Diese alte Nachricht ist verschlüsselt und ohne den ursprünglichen Schlüssel nicht lesbar.' });
     }
     return typeof value === 'string' ? value : JSON.stringify(value || '');
 }
@@ -2138,7 +2124,6 @@ async function loadMessagesNow(gid, initial) {
             markActiveGroupRead(gid);
             return;
         }
-        await ensureE2eeForGroup(gid);
         await decryptMessagesForGroup(gid, messages);
         persistMessages(gid, messages);
         await fetchProBadges(messages.map((m) => m.sender));
