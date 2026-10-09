@@ -2107,15 +2107,21 @@ async function loadMessagesNow(gid, initial) {
         if (gid !== _activeGroupId) return;
         setMessageSyncAt(gid, response.syncedAt || new Date().toISOString());
         updatePinnedMessageBanner(response.pinnedMessage || null);
-        if (initial) {
-            // renderCachedMessages() may have filled the DOM and seen-set from an
-            // incomplete cache. Reset both before rebuilding the server history.
+        if (initial && !response.localHistoryOnly && messages.length) {
+            // First-ever bootstrap for this account/chat: initialise local history
+            // from the bounded server window. Later devices keep their own cache.
             document.getElementById('messagesArea').innerHTML = '';
             _seenMessageIds[gid] = new Set();
             _lastMsgId[gid] = 0;
         }
         if (!messages.length) {
-            if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#8696a0">Noch keine Nachrichten.</div>';
+            const localMessages = getCachedMessages(gid);
+            if (initial && !localMessages.length) {
+                const message = response.localHistoryOnly
+                    ? 'Auf diesem Gerät ist noch kein lokaler Chatverlauf vorhanden.'
+                    : 'Noch keine Nachrichten.';
+                document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#8696a0">' + esc(message) + '</div>';
+            }
             updatePinnedMessageBanner(response.pinnedMessage || null);
             updateMessageReceipts(activity);
             updateTypingIndicator(activity.typing || []);
