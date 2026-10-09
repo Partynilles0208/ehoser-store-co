@@ -4884,7 +4884,7 @@ async function saveChatReceiptState(groupId, username, patch = {}) {
     readMessageId
   });
   const result = row
-    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content }).eq('id', row.id)
+    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content, updated_at: new Date().toISOString() }).eq('id', row.id)
     : await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender, encrypted_content });
   if (result.error) throw result.error;
   return { username, deliveredMessageId, readMessageId };
@@ -4894,7 +4894,7 @@ async function saveChatTypingState(groupId, username, typingUntil) {
   const { sender, row } = await getStoredChatMemberState(groupId, username, 'typing');
   const encrypted_content = CHAT_TYPING_CONTENT_PREFIX + JSON.stringify({ typingUntil: typingUntil || null });
   const result = row
-    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content }).eq('id', row.id)
+    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content, updated_at: new Date().toISOString() }).eq('id', row.id)
     : await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender, encrypted_content });
   if (result.error) throw result.error;
   return { username, typingUntil: typingUntil || null };
@@ -6200,7 +6200,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
 // lightweight receipt/typing rows, without exposing the Supabase service key
 // or making the chat tables public to browser clients.
 const CHAT_LIVE_WAIT_MS = 25_000;
-const CHAT_LIVE_RECHECK_MS = 350;
+const CHAT_LIVE_RECHECK_MS = 1000;
 const waitForChatLiveChange = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function getChatLiveCursor(groupId) {
@@ -6228,7 +6228,7 @@ async function getChatLiveCursor(groupId) {
 
   const { data: stateRows, error: stateError } = await supabaseAdmin
     .from('chat_messages')
-    .select('id,encrypted_content')
+    .select('id,updated_at')
     .eq('group_id', groupId)
     .like('sender', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .order('id', { ascending: true })
@@ -6236,7 +6236,10 @@ async function getChatLiveCursor(groupId) {
   if (stateError) throw stateError;
 
   const newest = newestResult.data?.[0] || {};
-  const stateSignature = (stateRows || []).map((row) => String(row.id) + ':' + String(row.encrypted_content || '')).join('|');
+  // State payloads are intentionally excluded from the live cursor. Their
+  // updated_at value changes on every receipt/typing write, so this small
+  // metadata-only query avoids repeatedly transferring the full state JSON.
+  const stateSignature = (stateRows || []).map((row) => String(row.id) + ':' + String(row.updated_at || '')).join('|');
   return crypto.createHash('sha256')
     .update(String(newest.id || 0) + ':' + String(newest.updated_at || '') + ':' + stateSignature)
     .digest('hex');
