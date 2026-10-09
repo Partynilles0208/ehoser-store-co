@@ -2101,18 +2101,43 @@ async function loadMessagesNow(gid, initial) {
         // cursor must not hide older server messages until the chat is reopened.
         const after = initial ? 0 : (_lastMsgId[gid] || 0);
         const changedAfter = getMessageSyncAt(gid);
-        const response = await api('/chat/messages/' + gid + '?after=' + after + '&changedAfter=' + encodeURIComponent(changedAfter));
+        const mutationSync = readChatCache('mutationSync', {});
+        const mutationAfter = Math.max(0, Number(mutationSync[gid]) || 0);
+        const response = await api('/chat/messages/' + gid + '?after=' + after + '&changedAfter=' + encodeURIComponent(changedAfter) + '&mutationAfter=' + mutationAfter);
         const responseMessages = response.messages || [];
         // Apply edits/deletes only to messages already stored on this device;
         // don't import older server history onto a second device.
         const localMessageIds = new Set(getCachedMessages(gid).map((message) => String(message.id)));
-        const messages = response.localHistoryOnly
+        let messages = response.localHistoryOnly
             ? responseMessages.filter((message) =>
                 (Number(message.id) || 0) > (Number(response.deliveryWatermark) || 0) ||
                 localMessageIds.has(String(message.id)))
             : responseMessages;
         const activity = response.activity || { deliveredUpTo: 0, readUpTo: 0, typing: [] };
         if (gid !== _activeGroupId) return;
+        // Durable edit/delete events survive after delivered message payloads are removed.
+        // Apply them only to messages already present on this device; never restore old history.
+        const localById = new Map(getCachedMessages(gid).map((message) => [String(message.id), message]));
+        const mutationUpdates = [];
+        let nextMutationCursor = mutationAfter;
+        for (const event of response.mutations || []) {
+            nextMutationCursor = Math.max(nextMutationCursor, Number(event.id) || 0);
+            const targetId = String(event.messageId || event.message?.id || '');
+            const existing = localById.get(targetId);
+            if (!targetId || !existing || !event.message) continue;
+            const updated = { ...existing, ...event.message, id: existing.id, group_id: gid };
+            localById.set(targetId, updated);
+            mutationUpdates.push(updated);
+        }
+        if (nextMutationCursor > mutationAfter) {
+            mutationSync[gid] = nextMutationCursor;
+            writeChatCache('mutationSync', mutationSync);
+        }
+        if (mutationUpdates.length) {
+            const combined = new Map(messages.map((message) => [String(message.id), message]));
+            for (const message of mutationUpdates) combined.set(String(message.id), message);
+            messages = [...combined.values()].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        }
         setMessageSyncAt(gid, response.syncedAt || new Date().toISOString());
         updatePinnedMessageBanner(response.pinnedMessage || null);
         if (initial && !response.localHistoryOnly && messages.length) {
