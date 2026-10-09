@@ -938,7 +938,9 @@ async function finishChatBoot() {
     await loadGroups();
     await ensureMailboxAfterLogin();
     await pollMessageNotifications(true);
-    _poll = setInterval(pollMessages, 3000);
+    // Reduce repeated message fetches while keeping chat updates near-live.
+    // Five seconds cuts polling traffic by about 40% versus a 3-second interval.
+    _poll = setInterval(pollMessages, 5000);
     _callPoll = setInterval(pollCalls, 1500);
     _groupCallInvitePoll = setInterval(pollGroupCallInvites, 2500);
     sendChatHeartbeat();
