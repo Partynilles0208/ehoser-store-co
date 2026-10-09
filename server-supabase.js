@@ -4807,7 +4807,7 @@ async function cleanupExpiredEphemeralChatMessagesOccasionally() {
   try { await cleanupEphemeralChatMessages(null); }
   catch (error) { console.error('Global ephemeral chat cleanup failed:', error?.message || error); _lastGlobalEphemeralCleanupAt = 0; }
 }
-async function cleanupEphemeralChatMessages(groupId, { deliveredUpTo = 0 } = {}) {
+async function cleanupEphemeralChatMessages(groupId) {
   const cutoff = new Date(Date.now() - CHAT_MESSAGE_TTL_MS).toISOString();
   let expiredQuery = supabaseAdmin.from('chat_messages').delete().lt('created_at', cutoff);
   if (groupId) expiredQuery = expiredQuery.eq('group_id', groupId);
@@ -4817,15 +4817,6 @@ async function cleanupEphemeralChatMessages(groupId, { deliveredUpTo = 0 } = {})
     .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER);
   if (expiredResult.error) throw expiredResult.error;
 
-  const acknowledgedId = Math.max(0, Number(deliveredUpTo) || 0);
-  if (acknowledgedId > 0) {
-    const deliveredResult = await supabaseAdmin.from('chat_messages')
-      .delete().eq('group_id', groupId).lte('id', acknowledgedId)
-      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
-      .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
-      .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER);
-    if (deliveredResult.error) throw deliveredResult.error;
-  }
 }
 
 async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUserUpTo) {
@@ -4843,15 +4834,20 @@ async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUser
     const state = parseChatMemberState(row);
     if (state?.kind === 'receipt') deliveredBy.set(state.username, state.deliveredMessageId || 0);
   }
-  const { data: messages, error: messageError } = await supabaseAdmin.from('chat_messages')
-    .select('id,sender').eq('group_id', groupId).lte('id', upTo)
-    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
-    .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
-    .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER)
-    .order('id', { ascending: true }).limit(5000);
-  if (messageError) throw messageError;
+  const messages = [];
+  for (let offset = 0; ; offset += 500) {
+    const page = await supabaseAdmin.from('chat_messages')
+      .select('id,sender').eq('group_id', groupId).lte('id', upTo)
+      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+      .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
+      .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER)
+      .order('id', { ascending: true }).range(offset, offset + 499);
+    if (page.error) throw page.error;
+    messages.push(...(page.data || []));
+    if (!page.data || page.data.length < 500) break;
+  }
   const memberNames = (members || []).map((member) => member.username).filter(Boolean);
-  const deletableIds = (messages || []).filter((message) => {
+  const deletableIds = messages.filter((message) => {
     const messageId = Number(message.id) || 0;
     return memberNames.filter((name) => name !== message.sender)
       .every((recipient) => (deliveredBy.get(recipient) || 0) >= messageId);
