@@ -6182,14 +6182,17 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
     if (pinnedError) console.warn('Angepinnte Chat-Nachricht konnte nicht geladen werden:', pinnedError.message);
     else pinnedRow = pinned;
   }
-  const deliveredMessageId = messages.reduce((max, message) => Math.max(max, Number(message.id) || 0), 0);
+  // Do not advance the delivery watermark merely because the server returned
+  // a response. The browser advances it only after it has processed and cached
+  // the messages, by calling POST /api/chat/groups/:groupId/delivered.
   try {
-    if (deliveredMessageId) await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
     const activity = await getChatGroupActivity(groupId, user.username);
     return res.json({ messages, mutations, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0, deliveryWatermark: receiptWatermark });
   } catch (activityError) {
     console.error('Chat activity update failed:', activityError.message);
-    return res.json({ messages, mutations: [], pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString() });
+    // Keep the local-history flags even if presence/receipt activity failed;
+    // otherwise the client could accidentally import old history on another device.
+    return res.json({ messages, mutations, pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0, deliveryWatermark: receiptWatermark });
   }
 });
 
