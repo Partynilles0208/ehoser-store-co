@@ -4797,6 +4797,68 @@ async function getStoredChatMemberState(groupId, username, kind) {
   return { sender, row: rows?.[0] || null, state: parseChatMemberState(rows?.[0]) };
 }
 
+// Ephemeral message retention: offline members can receive messages for up to 7 days.
+// Once every other current group member acknowledges delivery, delete delivered payloads.
+const CHAT_MESSAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+let _lastGlobalEphemeralCleanupAt = 0;
+async function cleanupExpiredEphemeralChatMessagesOccasionally() {
+  if (Date.now() - _lastGlobalEphemeralCleanupAt < 5 * 60 * 1000) return;
+  _lastGlobalEphemeralCleanupAt = Date.now();
+  try { await cleanupEphemeralChatMessages(null); }
+  catch (error) { console.error('Global ephemeral chat cleanup failed:', error?.message || error); _lastGlobalEphemeralCleanupAt = 0; }
+}
+async function cleanupEphemeralChatMessages(groupId) {
+  const cutoff = new Date(Date.now() - CHAT_MESSAGE_TTL_MS).toISOString();
+  let expiredQuery = supabaseAdmin.from('chat_messages').delete().lt('created_at', cutoff);
+  if (groupId) expiredQuery = expiredQuery.eq('group_id', groupId);
+  const expiredResult = await expiredQuery
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
+    .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER);
+  if (expiredResult.error) throw expiredResult.error;
+
+}
+
+async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUserUpTo) {
+  const upTo = Math.max(0, Number(acknowledgedByUserUpTo) || 0);
+  if (!groupId || !upTo) return;
+  const [{ data: members, error: memberError }, { data: stateRows, error: stateError }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId),
+    supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content')
+      .eq('group_id', groupId).like('sender', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+  ]);
+  if (memberError) throw memberError;
+  if (stateError) throw stateError;
+  const deliveredBy = new Map();
+  for (const row of stateRows || []) {
+    const state = parseChatMemberState(row);
+    if (state?.kind === 'receipt') deliveredBy.set(state.username, state.deliveredMessageId || 0);
+  }
+  const messages = [];
+  for (let offset = 0; ; offset += 500) {
+    const page = await supabaseAdmin.from('chat_messages')
+      .select('id,sender').eq('group_id', groupId).lte('id', upTo)
+      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+      .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
+      .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER)
+      .order('id', { ascending: true }).range(offset, offset + 499);
+    if (page.error) throw page.error;
+    messages.push(...(page.data || []));
+    if (!page.data || page.data.length < 500) break;
+  }
+  const memberNames = (members || []).map((member) => member.username).filter(Boolean);
+  const deletableIds = messages.filter((message) => {
+    const messageId = Number(message.id) || 0;
+    return memberNames.filter((name) => name !== message.sender)
+      .every((recipient) => (deliveredBy.get(recipient) || 0) >= messageId);
+  }).map((message) => Number(message.id)).filter(Boolean);
+  for (let offset = 0; offset < deletableIds.length; offset += 100) {
+    const result = await supabaseAdmin.from('chat_messages').delete()
+      .eq('group_id', groupId).in('id', deletableIds.slice(offset, offset + 100));
+    if (result.error) throw result.error;
+  }
+}
+
 async function saveChatReceiptState(groupId, username, patch = {}) {
   const { sender, row, state } = await getStoredChatMemberState(groupId, username, 'receipt');
   const previous = state || {
@@ -5987,6 +6049,8 @@ app.post('/api/chat/messages', async (req, res) => {
     return res.json({ id: data.id, created_at: data.created_at, command: 'tic_tac_toe' });
   }
 
+  // Expire stale queued payloads; successful delivery acknowledgements remove them sooner.
+  try { await cleanupEphemeralChatMessages(groupId); } catch (cleanupError) { console.error('Ephemeral chat cleanup failed:', cleanupError?.message || cleanupError); }
   // The database column keeps its legacy name so existing deployments need no destructive migration.
   const { data, error } = await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender: user.username, encrypted_content: content }).select('id,created_at').single();
   if (error) return res.status(500).json({ error: 'Fehler beim Senden' });
@@ -6032,6 +6096,8 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   // Muss Mitglied sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId).eq('username', user.username).single();
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  // Enforce the retention deadline even on deployments without a scheduled cleanup job.
+  try { await cleanupEphemeralChatMessages(groupId); } catch (cleanupError) { console.error('Ephemeral chat cleanup failed:', cleanupError?.message || cleanupError); }
   let hasMessageMetadata = true;
   let query = createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS);
   query = after
@@ -6210,6 +6276,7 @@ app.post('/api/chat/groups/:groupId/delivered', async (req, res) => {
     const deliveredMessageId = await highestVisibleChatMessageId(groupId, requestedId);
     if (!deliveredMessageId) return res.json({ ok: true });
     await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
+    await cleanupConfirmedDeliveredChatMessages(groupId, deliveredMessageId);
     return res.json({ ok: true, deliveredMessageId });
   } catch (error) {
     console.error('Save chat delivery receipt failed:', error?.message || error);
@@ -6269,6 +6336,8 @@ app.post('/api/chat/groups/:groupId/typing', async (req, res) => {
 // Lightweight metadata feed for browser notifications.
 app.get('/api/chat/notifications', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
+  // Opportunistically expire old queued payloads, throttled per warm server instance.
+  await cleanupExpiredEphemeralChatMessagesOccasionally();
   const after = Math.max(0, Number.parseInt(req.query.after, 10) || 0);
   const { data: memberships, error: memberError } = await supabaseAdmin
     .from('chat_group_members')
