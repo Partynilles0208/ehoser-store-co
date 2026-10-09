@@ -7,7 +7,7 @@ const CHAT_ACCESS_CODE_KEY = 'ehoserAccessCode';
 // Heartbeats are deliberately less frequent so the database is not written to
 // every second for every open chat.
 const PRESENCE_REFRESH_INTERVAL_MS = 1000;
-const PRESENCE_HEARTBEAT_INTERVAL_MS = 5000;
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 15000;
 // Kept slightly above the 60-second heartbeat used by an already-open older
 // browser tab, so it remains visible until it receives the new chat code.
 const PRESENCE_ONLINE_WINDOW_MS = 75 * 1000;
@@ -939,17 +939,17 @@ async function finishChatBoot() {
     await ensureMailboxAfterLogin();
     await pollMessageNotifications(true);
     // Reduce repeated message fetches while keeping chat updates near-live.
-    // Five seconds cuts polling traffic by about 40% versus a 3-second interval.
-    _poll = setInterval(pollMessages, 5000);
+    // Long-poll provides near-live delivery; slower fallback polling reduces egress.
+    _poll = setInterval(pollMessages, 8000);
     _callPoll = setInterval(pollCalls, 1500);
-    _groupCallInvitePoll = setInterval(pollGroupCallInvites, 2500);
+    _groupCallInvitePoll = setInterval(pollGroupCallInvites, 5000);
     sendChatHeartbeat();
     clearInterval(_presenceHeartbeat);
     _presenceHeartbeat = setInterval(sendChatHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
     initHoldOnlineList();
     initSecretShortcut();
     clearInterval(_mailboxRefreshTimer);
-    _mailboxRefreshTimer = setInterval(() => { loadMailbox(false).catch(() => {}); }, 15000);
+    _mailboxRefreshTimer = setInterval(() => { loadMailbox(false).catch(() => {}); }, 30000);
     pollCalls();
     pollGroupCallInvites();
     document.addEventListener('click', globalClickClose);
@@ -2063,13 +2063,13 @@ async function pollMessages() {
         // Long-poll delivers messages immediately. Keep a lightweight safety
         // sync so the chat recovers even if a mobile browser drops a request.
         const hasLiveConnection = Boolean(_activeGroupId && _chatLiveController && _chatLiveGroupId === String(_activeGroupId));
-        if (_activeGroupId && (!hasLiveConnection || Date.now() - _lastSafetyMessageSyncAt > 8_000)) {
+        if (_activeGroupId && (!hasLiveConnection || Date.now() - _lastSafetyMessageSyncAt > 20_000)) {
             _lastSafetyMessageSyncAt = Date.now();
             await loadMessages(_activeGroupId, false);
         }
         // Also reconcile inactive chats: the server is the source of truth
         // when a chat was permanently deleted on another device.
-        if (Date.now() - _lastGroupRefreshAt > 12_000) {
+        if (Date.now() - _lastGroupRefreshAt > 30_000) {
             _lastGroupRefreshAt = Date.now();
             await loadGroups();
         }
