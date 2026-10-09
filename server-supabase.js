@@ -6161,7 +6161,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   try {
     if (deliveredMessageId) await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
     const activity = await getChatGroupActivity(groupId, user.username);
-    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0 });
+    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0, deliveryWatermark: receiptWatermark });
   } catch (activityError) {
     console.error('Chat activity update failed:', activityError.message);
     return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString() });
