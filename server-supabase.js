@@ -4600,6 +4600,8 @@ const CHAT_CALL_EVENT_PREFIX = 'ehoser-call-v1:';
 const GROUP_CALL_EVENT_SENDER = '__ehoser_group_call_event__';
 const GROUP_CALL_EVENT_PREFIX = 'ehoser-group-call-v1:';
 const CHAT_MEMBER_STATE_SENDER_PREFIX = 'ehoser-chat-state:';
+const CHAT_MUTATION_EVENT_SENDER = '__ehoser_chat_mutation_event__';
+const CHAT_MUTATION_EVENT_PREFIX = 'ehoser-chat-mutation-v1:';
 const CHAT_RECEIPT_CONTENT_PREFIX = 'ehoser-chat-receipt-v1:';
 const CHAT_TYPING_CONTENT_PREFIX = 'ehoser-chat-typing-v1:';
 
@@ -4838,6 +4840,7 @@ async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUser
   for (let offset = 0; ; offset += 500) {
     const page = await supabaseAdmin.from('chat_messages')
       .select('id,sender').eq('group_id', groupId).lte('id', upTo)
+      .neq('sender', CHAT_MUTATION_EVENT_SENDER)
       .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
       .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
       .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER)
@@ -4857,6 +4860,15 @@ async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUser
       .eq('group_id', groupId).in('id', deletableIds.slice(offset, offset + 100));
     if (result.error) throw result.error;
   }
+}
+
+async function appendChatMutationEvent(groupId, event) {
+  const payload = CHAT_MUTATION_EVENT_PREFIX + JSON.stringify({ version: 1, ...event });
+  const { data, error } = await supabaseAdmin.from('chat_messages')
+    .insert({ group_id: groupId, sender: CHAT_MUTATION_EVENT_SENDER, encrypted_content: payload })
+    .select('id,created_at').single();
+  if (error) throw error;
+  return { id: Number(data.id) || 0, created_at: data.created_at };
 }
 
 async function saveChatReceiptState(groupId, username, patch = {}) {
@@ -5978,6 +5990,7 @@ function createChatMessageQuery(groupId, fields) {
     .eq('group_id', groupId)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .neq('sender', CHAT_MUTATION_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%');
 }
@@ -6091,6 +6104,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   const { groupId } = req.params;
   const after = parseInt(req.query.after) || 0;
   const changedAfterValue = String(req.query.changedAfter || '');
+  const mutationAfter = Math.max(0, Number.parseInt(req.query.mutationAfter, 10) || 0);
   const changedAfterMs = Date.parse(changedAfterValue);
   const changedAfter = Number.isNaN(changedAfterMs) ? null : new Date(changedAfterMs).toISOString();
   // Muss Mitglied sein
@@ -6143,6 +6157,17 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   const merged = new Map();
   for (const message of [...initialRows, ...changedRows]) merged.set(String(message.id), message);
   const messages = [...merged.values()].sort((a, b) => Number(a.id) - Number(b.id)).map(publicChatMessage);
+  const mutationResult = await supabaseAdmin.from('chat_messages')
+    .select('id,encrypted_content,created_at')
+    .eq('group_id', groupId).eq('sender', CHAT_MUTATION_EVENT_SENDER)
+    .gt('id', mutationAfter).order('id', { ascending: true }).limit(100);
+  if (mutationResult.error) return res.status(500).json({ error: 'Nachrichtenänderungen konnten nicht geladen werden' });
+  const mutations = (mutationResult.data || []).map((row) => {
+    const raw = String(row.encrypted_content || '');
+    if (!raw.startsWith(CHAT_MUTATION_EVENT_PREFIX)) return null;
+    try { return { id: Number(row.id) || 0, ...JSON.parse(raw.slice(CHAT_MUTATION_EVENT_PREFIX.length)) }; }
+    catch { return null; }
+  }).filter((event) => event && event.id > mutationAfter && event.version === 1 && ['edit', 'delete'].includes(event.action) && event.message && event.message.id);
   let pinnedRow = null;
   if (hasMessageMetadata) {
     const { data: pinned, error: pinnedError } = await supabaseAdmin
@@ -6161,10 +6186,10 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   try {
     if (deliveredMessageId) await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
     const activity = await getChatGroupActivity(groupId, user.username);
-    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0, deliveryWatermark: receiptWatermark });
+    return res.json({ messages, mutations, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0, deliveryWatermark: receiptWatermark });
   } catch (activityError) {
     console.error('Chat activity update failed:', activityError.message);
-    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString() });
+    return res.json({ messages, mutations: [], pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString() });
   }
 });
 
@@ -6901,6 +6926,11 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
   }
   const { data: updated, error } = updatedResult;
   if (error) return res.status(500).json({ error: 'Fehler beim Aktualisieren' });
+  try {
+    await appendChatMutationEvent(updated.group_id, { action: 'edit', messageId: Number(updated.id), actor: user.username, at: now, message: publicChatMessage(updated) });
+  } catch (mutationError) {
+    console.error('Chat edit mutation event failed:', mutationError?.message || mutationError);
+  }
   res.json({ ok: true, message: publicChatMessage(updated) });
 });
 
@@ -6946,6 +6976,11 @@ app.delete('/api/chat/messages/:id', async (req, res) => {
     .select(hasMetadata ? CHAT_MESSAGE_FIELDS : LEGACY_CHAT_MESSAGE_FIELDS)
     .single();
   if (error) return res.status(500).json({ error: 'Nachricht konnte nicht gelöscht werden' });
+  try {
+    await appendChatMutationEvent(updated.group_id, { action: 'delete', messageId: Number(updated.id), actor: user.username, at: now, message: publicChatMessage(updated) });
+  } catch (mutationError) {
+    console.error('Chat delete mutation event failed:', mutationError?.message || mutationError);
+  }
   res.json({ ok: true, message: publicChatMessage(updated) });
 });
 
