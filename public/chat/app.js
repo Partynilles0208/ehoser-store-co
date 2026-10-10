@@ -2129,10 +2129,6 @@ async function loadMessagesNow(gid, initial) {
             localById.set(targetId, updated);
             mutationUpdates.push(updated);
         }
-        if (nextMutationCursor > mutationAfter) {
-            mutationSync[gid] = nextMutationCursor;
-            writeChatCache('mutationSync', mutationSync);
-        }
         if (mutationUpdates.length) {
             const combined = new Map(messages.map((message) => [String(message.id), message]));
             for (const message of mutationUpdates) combined.set(String(message.id), message);
@@ -2158,14 +2154,22 @@ async function loadMessagesNow(gid, initial) {
             updatePinnedMessageBanner(response.pinnedMessage || null);
             updateMessageReceipts(activity);
             updateTypingIndicator(activity.typing || []);
-            if (nextMutationCursor > mutationAfter) void acknowledgeChatMutations(gid, nextMutationCursor);
+            if (nextMutationCursor > mutationAfter) {
+                mutationSync[gid] = nextMutationCursor;
+                writeChatCache('mutationSync', mutationSync);
+                void acknowledgeChatMutations(gid, nextMutationCursor);
+            }
             void markGroupDelivered(gid);
             markActiveGroupRead(gid);
             return;
         }
         await decryptMessagesForGroup(gid, messages);
         persistMessages(gid, messages);
-        if (nextMutationCursor > mutationAfter) void acknowledgeChatMutations(gid, nextMutationCursor);
+        if (nextMutationCursor > mutationAfter) {
+            mutationSync[gid] = nextMutationCursor;
+            writeChatCache('mutationSync', mutationSync);
+            void acknowledgeChatMutations(gid, nextMutationCursor);
+        }
         await fetchProBadges(messages.map((m) => m.sender));
         if (gid !== _activeGroupId) return;
         for (const m of messages) {
