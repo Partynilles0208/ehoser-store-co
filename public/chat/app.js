@@ -2101,30 +2101,75 @@ async function loadMessagesNow(gid, initial) {
         // cursor must not hide older server messages until the chat is reopened.
         const after = initial ? 0 : (_lastMsgId[gid] || 0);
         const changedAfter = getMessageSyncAt(gid);
-        const response = await api('/chat/messages/' + gid + '?after=' + after + '&changedAfter=' + encodeURIComponent(changedAfter));
-        const messages = response.messages || [];
+        const mutationSync = readChatCache('mutationSync', {});
+        const mutationAfter = Math.max(0, Number(mutationSync[gid]) || 0);
+        const response = await api('/chat/messages/' + gid + '?after=' + after + '&changedAfter=' + encodeURIComponent(changedAfter) + '&mutationAfter=' + mutationAfter);
+        const responseMessages = response.messages || [];
+        // Apply edits/deletes only to messages already stored on this device;
+        // don't import older server history onto a second device.
+        const localMessageIds = new Set(getCachedMessages(gid).map((message) => String(message.id)));
+        let messages = response.localHistoryOnly
+            ? responseMessages.filter((message) =>
+                (Number(message.id) || 0) > (Number(response.deliveryWatermark) || 0) ||
+                localMessageIds.has(String(message.id)))
+            : responseMessages;
         const activity = response.activity || { deliveredUpTo: 0, readUpTo: 0, typing: [] };
         if (gid !== _activeGroupId) return;
+        // Durable edit/delete events survive after delivered message payloads are removed.
+        // Apply them only to messages already present on this device; never restore old history.
+        const localById = new Map(getCachedMessages(gid).map((message) => [String(message.id), message]));
+        const mutationUpdates = [];
+        let nextMutationCursor = mutationAfter;
+        for (const event of response.mutations || []) {
+            nextMutationCursor = Math.max(nextMutationCursor, Number(event.id) || 0);
+            const targetId = String(event.messageId || event.message?.id || '');
+            const existing = localById.get(targetId);
+            if (!targetId || !existing || !event.message) continue;
+            const updated = { ...existing, ...event.message, id: existing.id, group_id: gid };
+            localById.set(targetId, updated);
+            mutationUpdates.push(updated);
+        }
+        if (mutationUpdates.length) {
+            const combined = new Map(messages.map((message) => [String(message.id), message]));
+            for (const message of mutationUpdates) combined.set(String(message.id), message);
+            messages = [...combined.values()].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+        }
         setMessageSyncAt(gid, response.syncedAt || new Date().toISOString());
         updatePinnedMessageBanner(response.pinnedMessage || null);
-        if (initial) {
-            // renderCachedMessages() may have filled the DOM and seen-set from an
-            // incomplete cache. Reset both before rebuilding the server history.
+        if (initial && !response.localHistoryOnly && messages.length) {
+            // First-ever bootstrap for this account/chat: initialise local history
+            // from the bounded server window. Later devices keep their own cache.
             document.getElementById('messagesArea').innerHTML = '';
             _seenMessageIds[gid] = new Set();
             _lastMsgId[gid] = 0;
         }
         if (!messages.length) {
-            if (initial) document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#8696a0">Noch keine Nachrichten.</div>';
+            const localMessages = getCachedMessages(gid);
+            if (initial && !localMessages.length) {
+                const message = response.localHistoryOnly
+                    ? 'Auf diesem Gerät ist noch kein lokaler Chatverlauf vorhanden.'
+                    : 'Noch keine Nachrichten.';
+                document.getElementById('messagesArea').innerHTML = '<div class="msg-loading" style="color:#8696a0">' + esc(message) + '</div>';
+            }
             updatePinnedMessageBanner(response.pinnedMessage || null);
             updateMessageReceipts(activity);
             updateTypingIndicator(activity.typing || []);
+            if (nextMutationCursor > mutationAfter) {
+                mutationSync[gid] = nextMutationCursor;
+                writeChatCache('mutationSync', mutationSync);
+                void acknowledgeChatMutations(gid, nextMutationCursor);
+            }
             void markGroupDelivered(gid);
             markActiveGroupRead(gid);
             return;
         }
         await decryptMessagesForGroup(gid, messages);
         persistMessages(gid, messages);
+        if (nextMutationCursor > mutationAfter) {
+            mutationSync[gid] = nextMutationCursor;
+            writeChatCache('mutationSync', mutationSync);
+            void acknowledgeChatMutations(gid, nextMutationCursor);
+        }
         await fetchProBadges(messages.map((m) => m.sender));
         if (gid !== _activeGroupId) return;
         for (const m of messages) {
@@ -2210,6 +2255,16 @@ async function markGroupDelivered(gid = _activeGroupId) {
         await api('/chat/groups/' + gid + '/delivered', 'POST', { upTo });
     } catch {
         _lastDeliveredSent[gid] = previous;
+    }
+}
+
+async function acknowledgeChatMutations(gid, upTo) {
+    const cursor = Math.max(0, Number(upTo) || 0);
+    if (!gid || !cursor) return;
+    try {
+        await api('/chat/groups/' + gid + '/mutations/ack', 'POST', { upTo: cursor });
+    } catch {
+        // Mutation acknowledgements retry naturally on the next message sync.
     }
 }
 

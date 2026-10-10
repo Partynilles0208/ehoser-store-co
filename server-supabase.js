@@ -4600,6 +4600,8 @@ const CHAT_CALL_EVENT_PREFIX = 'ehoser-call-v1:';
 const GROUP_CALL_EVENT_SENDER = '__ehoser_group_call_event__';
 const GROUP_CALL_EVENT_PREFIX = 'ehoser-group-call-v1:';
 const CHAT_MEMBER_STATE_SENDER_PREFIX = 'ehoser-chat-state:';
+const CHAT_MUTATION_EVENT_SENDER = '__ehoser_chat_mutation_event__';
+const CHAT_MUTATION_EVENT_PREFIX = 'ehoser-chat-mutation-v1:';
 const CHAT_RECEIPT_CONTENT_PREFIX = 'ehoser-chat-receipt-v1:';
 const CHAT_TYPING_CONTENT_PREFIX = 'ehoser-chat-typing-v1:';
 
@@ -4623,7 +4625,8 @@ function parseChatMemberState(row) {
         kind,
         username,
         deliveredMessageId: Math.max(0, Number.parseInt(state.deliveredMessageId, 10) || 0),
-        readMessageId: Math.max(0, Number.parseInt(state.readMessageId, 10) || 0)
+        readMessageId: Math.max(0, Number.parseInt(state.readMessageId, 10) || 0),
+        mutationMessageId: Math.max(0, Number.parseInt(state.mutationMessageId, 10) || 0)
       };
     }
     if (kind === 'typing' && raw.startsWith(CHAT_TYPING_CONTENT_PREFIX)) {
@@ -4837,52 +4840,91 @@ async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUser
   const messages = [];
   for (let offset = 0; ; offset += 500) {
     const page = await supabaseAdmin.from('chat_messages')
-      .select('id,sender').eq('group_id', groupId).lte('id', upTo)
+      .select('id,sender,encrypted_content').eq('group_id', groupId).lte('id', upTo)
+      .neq('sender', CHAT_MUTATION_EVENT_SENDER)
       .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
       .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
       .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER)
+      .not('encrypted_content', 'like', '%ehoser-ephemeral-stub-v1%')
       .order('id', { ascending: true }).range(offset, offset + 499);
     if (page.error) throw page.error;
     messages.push(...(page.data || []));
     if (!page.data || page.data.length < 500) break;
   }
   const memberNames = (members || []).map((member) => member.username).filter(Boolean);
-  const deletableIds = messages.filter((message) => {
+  const scrubIds = messages.filter((message) => {
     const messageId = Number(message.id) || 0;
+    if (String(message.encrypted_content || '') === DELETED_CHAT_MESSAGE_CONTENT) return false;
     return memberNames.filter((name) => name !== message.sender)
       .every((recipient) => (deliveredBy.get(recipient) || 0) >= messageId);
-  }).map((message) => Number(message.id)).filter(Boolean);
-  for (let offset = 0; offset < deletableIds.length; offset += 100) {
-    const result = await supabaseAdmin.from('chat_messages').delete()
-      .eq('group_id', groupId).in('id', deletableIds.slice(offset, offset + 100));
+  });
+  for (const message of scrubIds) {
+    let originalType = 'unknown';
+    try { originalType = String(JSON.parse(String(message.encrypted_content || '')).t || 'unknown').slice(0, 32); } catch {}
+    const result = await supabaseAdmin.from('chat_messages')
+      .update({ encrypted_content: JSON.stringify({ t: EPHEMERAL_CHAT_STUB_MARKER, originalType }) })
+      .eq('group_id', groupId).eq('id', message.id);
     if (result.error) throw result.error;
   }
+}
+
+async function appendChatMutationEvent(groupId, event) {
+  const payload = CHAT_MUTATION_EVENT_PREFIX + JSON.stringify({ version: 1, ...event });
+  const { data, error } = await supabaseAdmin.from('chat_messages')
+    .insert({ group_id: groupId, sender: CHAT_MUTATION_EVENT_SENDER, encrypted_content: payload })
+    .select('id,created_at').single();
+  if (error) throw error;
+  return { id: Number(data.id) || 0, created_at: data.created_at };
 }
 
 async function saveChatReceiptState(groupId, username, patch = {}) {
   const { sender, row, state } = await getStoredChatMemberState(groupId, username, 'receipt');
   const previous = state || {
     deliveredMessageId: 0,
-    readMessageId: 0
+    readMessageId: 0,
+    mutationMessageId: 0
   };
   const deliveredMessageId = Math.max(previous.deliveredMessageId, Number(patch.deliveredMessageId) || 0);
   const readMessageId = Math.max(previous.readMessageId, Number(patch.readMessageId) || 0);
+  const mutationMessageId = Math.max(previous.mutationMessageId || 0, Number(patch.mutationMessageId) || 0);
   const encrypted_content = CHAT_RECEIPT_CONTENT_PREFIX + JSON.stringify({
     deliveredMessageId,
-    readMessageId
+    readMessageId,
+    mutationMessageId
   });
   const result = row
-    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content }).eq('id', row.id)
+    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content, updated_at: new Date().toISOString() }).eq('id', row.id)
     : await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender, encrypted_content });
   if (result.error) throw result.error;
-  return { username, deliveredMessageId, readMessageId };
+  return { username, deliveredMessageId, readMessageId, mutationMessageId };
+}
+
+async function cleanupAcknowledgedChatMutationEvents(groupId) {
+  const [{ data: members, error: memberError }, { data: stateRows, error: stateError }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId),
+    supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content').eq('group_id', groupId).like('sender', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+  ]);
+  if (memberError) throw memberError;
+  if (stateError) throw stateError;
+  const ackByUser = new Map();
+  for (const row of stateRows || []) {
+    const state = parseChatMemberState(row);
+    if (state?.kind === 'receipt') ackByUser.set(state.username, state.mutationMessageId || 0);
+  }
+  const memberNames = (members || []).map((member) => member.username).filter(Boolean);
+  if (!memberNames.length || memberNames.some((name) => !ackByUser.has(name))) return;
+  const safeUpTo = Math.min(...memberNames.map((name) => ackByUser.get(name) || 0));
+  if (!safeUpTo) return;
+  const { error } = await supabaseAdmin.from('chat_messages').delete()
+    .eq('group_id', groupId).eq('sender', CHAT_MUTATION_EVENT_SENDER).lte('id', safeUpTo);
+  if (error) throw error;
 }
 
 async function saveChatTypingState(groupId, username, typingUntil) {
   const { sender, row } = await getStoredChatMemberState(groupId, username, 'typing');
   const encrypted_content = CHAT_TYPING_CONTENT_PREFIX + JSON.stringify({ typingUntil: typingUntil || null });
   const result = row
-    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content }).eq('id', row.id)
+    ? await supabaseAdmin.from('chat_messages').update({ encrypted_content, updated_at: new Date().toISOString() }).eq('id', row.id)
     : await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender, encrypted_content });
   if (result.error) throw result.error;
   return { username, typingUntil: typingUntil || null };
@@ -5956,6 +5998,13 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
 const CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at,deleted_at,deleted_by,edited_at,edited_by,hide_edit_mark,pinned_at,pinned_by,updated_at';
 const LEGACY_CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at';
 const DELETED_CHAT_MESSAGE_CONTENT = JSON.stringify({ t: 'deleted' });
+const EPHEMERAL_CHAT_STUB_MARKER = 'ehoser-ephemeral-stub-v1';
+function parseEphemeralChatStub(content) {
+  try {
+    const value = JSON.parse(String(content || ''));
+    return value?.t === EPHEMERAL_CHAT_STUB_MARKER && typeof value.originalType === 'string' ? value : null;
+  } catch { return null; }
+}
 const TICTACTOE_TEST_OWNER = 'meisterlool_707';
 
 function publicChatMessage(row) {
@@ -5978,8 +6027,10 @@ function createChatMessageQuery(groupId, fields) {
     .eq('group_id', groupId)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .neq('sender', CHAT_MUTATION_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
-    .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%');
+    .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
+    .not('encrypted_content', 'like', '%ehoser-ephemeral-stub-v1%');
 }
 
 function isTicTacToeTestCommand(username, content) {
@@ -6091,6 +6142,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   const { groupId } = req.params;
   const after = parseInt(req.query.after) || 0;
   const changedAfterValue = String(req.query.changedAfter || '');
+  const mutationAfter = Math.max(0, Number.parseInt(req.query.mutationAfter, 10) || 0);
   const changedAfterMs = Date.parse(changedAfterValue);
   const changedAfter = Number.isNaN(changedAfterMs) ? null : new Date(changedAfterMs).toISOString();
   // Muss Mitglied sein
@@ -6098,27 +6150,37 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
   // Enforce the retention deadline even on deployments without a scheduled cleanup job.
   try { await cleanupEphemeralChatMessages(groupId); } catch (cleanupError) { console.error('Ephemeral chat cleanup failed:', cleanupError?.message || cleanupError); }
+
+  // A receipt watermark is shared by the account, not by the browser. Once one
+  // device has received a message, another device must not download the old
+  // server history. Each device keeps its own history in its local cache.
+  let receiptState = null;
+  try {
+    receiptState = (await getStoredChatMemberState(groupId, user.username, 'receipt')).state;
+  } catch (receiptError) {
+    console.error('Read chat delivery watermark failed:', receiptError?.message || receiptError);
+  }
+  const receiptWatermark = Math.max(0, Number(receiptState?.deliveredMessageId) || 0);
+  const queryAfter = Math.max(after, receiptWatermark);
   let hasMessageMetadata = true;
   let query = createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS);
-  query = after
-    ? query.gt('id', after).order('id', { ascending: true }).limit(50)
-    // A fresh browser has no local cache yet. Return the same useful history
-    // window that the client keeps locally, instead of only the oldest rows.
+  query = queryAfter
+    ? query.gt('id', queryAfter).order('id', { ascending: true }).limit(50)
+    // Only the first device to open a chat without a prior delivery watermark
+    // receives a bounded bootstrap history. Later devices receive new messages only.
     : query.order('id', { ascending: false }).limit(180);
   let { data, error } = await query;
   if (error && isMissingChatMessageMetadata(error)) {
-    // Existing installations can still load all chats while the optional message-action
-    // migration has not run yet.
     hasMessageMetadata = false;
     let legacyQuery = createChatMessageQuery(groupId, LEGACY_CHAT_MESSAGE_FIELDS);
-    legacyQuery = after
-      ? legacyQuery.gt('id', after).order('id', { ascending: true }).limit(50)
+    legacyQuery = queryAfter
+      ? legacyQuery.gt('id', queryAfter).order('id', { ascending: true }).limit(50)
       : legacyQuery.order('id', { ascending: false }).limit(180);
     ({ data, error } = await legacyQuery);
   }
   if (error) return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
 
-  const initialRows = after ? (data || []) : (data || []).slice().reverse();
+  const initialRows = queryAfter ? (data || []) : (data || []).slice().reverse();
   let changedRows = [];
   if (hasMessageMetadata && changedAfter) {
     const changedResult = await createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS)
@@ -6133,6 +6195,17 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   const merged = new Map();
   for (const message of [...initialRows, ...changedRows]) merged.set(String(message.id), message);
   const messages = [...merged.values()].sort((a, b) => Number(a.id) - Number(b.id)).map(publicChatMessage);
+  const mutationResult = await supabaseAdmin.from('chat_messages')
+    .select('id,encrypted_content,created_at')
+    .eq('group_id', groupId).eq('sender', CHAT_MUTATION_EVENT_SENDER)
+    .gt('id', mutationAfter).order('id', { ascending: true }).limit(100);
+  if (mutationResult.error) return res.status(500).json({ error: 'Nachrichtenänderungen konnten nicht geladen werden' });
+  const mutations = (mutationResult.data || []).map((row) => {
+    const raw = String(row.encrypted_content || '');
+    if (!raw.startsWith(CHAT_MUTATION_EVENT_PREFIX)) return null;
+    try { return { id: Number(row.id) || 0, ...JSON.parse(raw.slice(CHAT_MUTATION_EVENT_PREFIX.length)) }; }
+    catch { return null; }
+  }).filter((event) => event && event.id > mutationAfter && event.version === 1 && ['edit', 'delete'].includes(event.action) && event.message && event.message.id);
   let pinnedRow = null;
   if (hasMessageMetadata) {
     const { data: pinned, error: pinnedError } = await supabaseAdmin
@@ -6140,6 +6213,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
       .select(CHAT_MESSAGE_FIELDS)
       .eq('group_id', groupId)
       .is('deleted_at', null)
+      .not('encrypted_content', 'like', '%ehoser-ephemeral-stub-v1%')
       .not('pinned_at', 'is', null)
       .order('pinned_at', { ascending: false })
       .limit(1)
@@ -6147,14 +6221,17 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
     if (pinnedError) console.warn('Angepinnte Chat-Nachricht konnte nicht geladen werden:', pinnedError.message);
     else pinnedRow = pinned;
   }
-  const deliveredMessageId = messages.reduce((max, message) => Math.max(max, Number(message.id) || 0), 0);
+  // Do not advance the delivery watermark merely because the server returned
+  // a response. The browser advances it only after it has processed and cached
+  // the messages, by calling POST /api/chat/groups/:groupId/delivered.
   try {
-    if (deliveredMessageId) await saveChatReceiptState(groupId, user.username, { deliveredMessageId });
     const activity = await getChatGroupActivity(groupId, user.username);
-    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString() });
+    return res.json({ messages, mutations, pinnedMessage: publicChatMessage(pinnedRow), activity, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0, deliveryWatermark: receiptWatermark });
   } catch (activityError) {
     console.error('Chat activity update failed:', activityError.message);
-    return res.json({ messages, pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString() });
+    // Keep the local-history flags even if presence/receipt activity failed;
+    // otherwise the client could accidentally import old history on another device.
+    return res.json({ messages, mutations, pinnedMessage: publicChatMessage(pinnedRow), activity: { deliveredUpTo: 0, readUpTo: 0, typing: [] }, syncedAt: new Date().toISOString(), localHistoryOnly: receiptWatermark > 0, deliveryWatermark: receiptWatermark });
   }
 });
 
@@ -6162,7 +6239,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
 // lightweight receipt/typing rows, without exposing the Supabase service key
 // or making the chat tables public to browser clients.
 const CHAT_LIVE_WAIT_MS = 25_000;
-const CHAT_LIVE_RECHECK_MS = 350;
+const CHAT_LIVE_RECHECK_MS = 1000;
 const waitForChatLiveChange = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function getChatLiveCursor(groupId) {
@@ -6190,7 +6267,7 @@ async function getChatLiveCursor(groupId) {
 
   const { data: stateRows, error: stateError } = await supabaseAdmin
     .from('chat_messages')
-    .select('id,encrypted_content')
+    .select('id,updated_at')
     .eq('group_id', groupId)
     .like('sender', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .order('id', { ascending: true })
@@ -6198,7 +6275,10 @@ async function getChatLiveCursor(groupId) {
   if (stateError) throw stateError;
 
   const newest = newestResult.data?.[0] || {};
-  const stateSignature = (stateRows || []).map((row) => String(row.id) + ':' + String(row.encrypted_content || '')).join('|');
+  // State payloads are intentionally excluded from the live cursor. Their
+  // updated_at value changes on every receipt/typing write, so this small
+  // metadata-only query avoids repeatedly transferring the full state JSON.
+  const stateSignature = (stateRows || []).map((row) => String(row.id) + ':' + String(row.updated_at || '')).join('|');
   return crypto.createHash('sha256')
     .update(String(newest.id || 0) + ':' + String(newest.updated_at || '') + ':' + stateSignature)
     .digest('hex');
@@ -6255,6 +6335,7 @@ async function highestVisibleChatMessageId(groupId, requestedId) {
     .eq('group_id', groupId)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .neq('sender', CHAT_MUTATION_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .lte('id', requestedId)
     .order('id', { ascending: false })
@@ -6284,6 +6365,31 @@ app.post('/api/chat/groups/:groupId/delivered', async (req, res) => {
   }
 });
 
+// Acknowledge processed edit/delete events; payloads are removed only after every current member has acknowledged.
+app.post('/api/chat/groups/:groupId/mutations/ack', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId } = req.params;
+  const requestedId = Math.max(0, Number.parseInt(req.body?.upTo, 10) || 0);
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username')
+    .eq('group_id', groupId).eq('username', user.username).maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  if (!requestedId) return res.json({ ok: true, acknowledged: 0 });
+  try {
+    const { data: latest, error: latestError } = await supabaseAdmin.from('chat_messages')
+      .select('id').eq('group_id', groupId).eq('sender', CHAT_MUTATION_EVENT_SENDER)
+      .lte('id', requestedId).order('id', { ascending: false }).limit(1);
+    if (latestError) throw latestError;
+    const acknowledged = Number(latest?.[0]?.id) || 0;
+    if (!acknowledged) return res.json({ ok: true, acknowledged: 0 });
+    await saveChatReceiptState(groupId, user.username, { mutationMessageId: acknowledged });
+    await cleanupAcknowledgedChatMutationEvents(groupId);
+    return res.json({ ok: true, acknowledged });
+  } catch (error) {
+    console.error('Acknowledge chat mutations failed:', error?.message || error);
+    return res.status(500).json({ error: 'Änderungen konnten nicht bestätigt werden' });
+  }
+});
+
 // Read receipts: the greatest message id that is actually visible to this member.
 app.post('/api/chat/groups/:groupId/read', async (req, res) => {
   const user = chatAuth(req, res); if (!user) return;
@@ -6298,6 +6404,7 @@ app.post('/api/chat/groups/:groupId/read', async (req, res) => {
     .eq('group_id', groupId)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .neq('sender', CHAT_MUTATION_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .lte('id', requestedId)
     .order('id', { ascending: false })
@@ -6857,6 +6964,8 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
   if (selErr) return res.status(500).json({ error: 'DB Fehler' });
   if (!msgRow) return res.status(404).json({ error: 'Nachricht nicht gefunden' });
   if (msgRow.deleted_at) return res.status(409).json({ error: 'Gelöschte Nachrichten können nicht bearbeitet werden' });
+  const ephemeralStub = parseEphemeralChatStub(msgRow.encrypted_content);
+  if (ephemeralStub && ephemeralStub.originalType !== 'txt') return res.status(409).json({ error: 'Nur ursprüngliche Textnachrichten können bearbeitet werden' });
 
   // Prüfen: Nutzer muss Mitglied der Gruppe sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', msgRow.group_id).eq('username', user.username).single();
@@ -6891,6 +7000,11 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
   }
   const { data: updated, error } = updatedResult;
   if (error) return res.status(500).json({ error: 'Fehler beim Aktualisieren' });
+  try {
+    await appendChatMutationEvent(updated.group_id, { action: 'edit', messageId: Number(updated.id), actor: user.username, at: now, message: publicChatMessage(updated) });
+  } catch (mutationError) {
+    console.error('Chat edit mutation event failed:', mutationError?.message || mutationError);
+  }
   res.json({ ok: true, message: publicChatMessage(updated) });
 });
 
@@ -6936,6 +7050,11 @@ app.delete('/api/chat/messages/:id', async (req, res) => {
     .select(hasMetadata ? CHAT_MESSAGE_FIELDS : LEGACY_CHAT_MESSAGE_FIELDS)
     .single();
   if (error) return res.status(500).json({ error: 'Nachricht konnte nicht gelöscht werden' });
+  try {
+    await appendChatMutationEvent(updated.group_id, { action: 'delete', messageId: Number(updated.id), actor: user.username, at: now, message: publicChatMessage(updated) });
+  } catch (mutationError) {
+    console.error('Chat delete mutation event failed:', mutationError?.message || mutationError);
+  }
   res.json({ ok: true, message: publicChatMessage(updated) });
 });
 
