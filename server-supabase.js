@@ -4625,7 +4625,8 @@ function parseChatMemberState(row) {
         kind,
         username,
         deliveredMessageId: Math.max(0, Number.parseInt(state.deliveredMessageId, 10) || 0),
-        readMessageId: Math.max(0, Number.parseInt(state.readMessageId, 10) || 0)
+        readMessageId: Math.max(0, Number.parseInt(state.readMessageId, 10) || 0),
+        mutationMessageId: Math.max(0, Number.parseInt(state.mutationMessageId, 10) || 0)
       };
     }
     if (kind === 'typing' && raw.startsWith(CHAT_TYPING_CONTENT_PREFIX)) {
@@ -4839,25 +4840,35 @@ async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUser
   const messages = [];
   for (let offset = 0; ; offset += 500) {
     const page = await supabaseAdmin.from('chat_messages')
-      .select('id,sender').eq('group_id', groupId).lte('id', upTo)
+      .select('id,sender,encrypted_content').eq('group_id', groupId).lte('id', upTo)
       .neq('sender', CHAT_MUTATION_EVENT_SENDER)
       .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
       .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
       .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER)
+      .not('encrypted_content', 'like', '%ehoser-ephemeral-stub-v1%')
       .order('id', { ascending: true }).range(offset, offset + 499);
     if (page.error) throw page.error;
     messages.push(...(page.data || []));
     if (!page.data || page.data.length < 500) break;
   }
   const memberNames = (members || []).map((member) => member.username).filter(Boolean);
-  const deletableIds = messages.filter((message) => {
+  const scrubIds = messages.filter((message) => {
     const messageId = Number(message.id) || 0;
+    if (String(message.encrypted_content || '') === DELETED_CHAT_MESSAGE_CONTENT) return false;
     return memberNames.filter((name) => name !== message.sender)
       .every((recipient) => (deliveredBy.get(recipient) || 0) >= messageId);
-  }).map((message) => Number(message.id)).filter(Boolean);
-  for (let offset = 0; offset < deletableIds.length; offset += 100) {
-    const result = await supabaseAdmin.from('chat_messages').delete()
-      .eq('group_id', groupId).in('id', deletableIds.slice(offset, offset + 100));
+  });
+  for (const message of scrubIds) {
+    let originalType = 'unknown';
+    try { originalType = String(JSON.parse(String(message.encrypted_content || '')).t || 'unknown').slice(0, 32); } catch {}
+    const result = await supabaseAdmin.from('chat_messages')
+      .update({
+        encrypted_content: JSON.stringify({ t: EPHEMERAL_CHAT_STUB_MARKER, originalType }),
+        pinned_at: null,
+        pinned_by: null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('group_id', groupId).eq('id', message.id);
     if (result.error) throw result.error;
   }
 }
@@ -4875,19 +4886,43 @@ async function saveChatReceiptState(groupId, username, patch = {}) {
   const { sender, row, state } = await getStoredChatMemberState(groupId, username, 'receipt');
   const previous = state || {
     deliveredMessageId: 0,
-    readMessageId: 0
+    readMessageId: 0,
+    mutationMessageId: 0
   };
   const deliveredMessageId = Math.max(previous.deliveredMessageId, Number(patch.deliveredMessageId) || 0);
   const readMessageId = Math.max(previous.readMessageId, Number(patch.readMessageId) || 0);
+  const mutationMessageId = Math.max(previous.mutationMessageId || 0, Number(patch.mutationMessageId) || 0);
   const encrypted_content = CHAT_RECEIPT_CONTENT_PREFIX + JSON.stringify({
     deliveredMessageId,
-    readMessageId
+    readMessageId,
+    mutationMessageId
   });
   const result = row
     ? await supabaseAdmin.from('chat_messages').update({ encrypted_content, updated_at: new Date().toISOString() }).eq('id', row.id)
     : await supabaseAdmin.from('chat_messages').insert({ group_id: groupId, sender, encrypted_content });
   if (result.error) throw result.error;
-  return { username, deliveredMessageId, readMessageId };
+  return { username, deliveredMessageId, readMessageId, mutationMessageId };
+}
+
+async function cleanupAcknowledgedChatMutationEvents(groupId) {
+  const [{ data: members, error: memberError }, { data: stateRows, error: stateError }] = await Promise.all([
+    supabaseAdmin.from('chat_group_members').select('username').eq('group_id', groupId),
+    supabaseAdmin.from('chat_messages').select('id,sender,encrypted_content').eq('group_id', groupId).like('sender', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+  ]);
+  if (memberError) throw memberError;
+  if (stateError) throw stateError;
+  const ackByUser = new Map();
+  for (const row of stateRows || []) {
+    const state = parseChatMemberState(row);
+    if (state?.kind === 'receipt') ackByUser.set(state.username, state.mutationMessageId || 0);
+  }
+  const memberNames = (members || []).map((member) => member.username).filter(Boolean);
+  if (!memberNames.length || memberNames.some((name) => !ackByUser.has(name))) return;
+  const safeUpTo = Math.min(...memberNames.map((name) => ackByUser.get(name) || 0));
+  if (!safeUpTo) return;
+  const { error } = await supabaseAdmin.from('chat_messages').delete()
+    .eq('group_id', groupId).eq('sender', CHAT_MUTATION_EVENT_SENDER).lte('id', safeUpTo);
+  if (error) throw error;
 }
 
 async function saveChatTypingState(groupId, username, typingUntil) {
@@ -5968,6 +6003,13 @@ app.post('/api/chat/groups/:id/members', async (req, res) => {
 const CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at,deleted_at,deleted_by,edited_at,edited_by,hide_edit_mark,pinned_at,pinned_by,updated_at';
 const LEGACY_CHAT_MESSAGE_FIELDS = 'id,group_id,sender,encrypted_content,created_at';
 const DELETED_CHAT_MESSAGE_CONTENT = JSON.stringify({ t: 'deleted' });
+const EPHEMERAL_CHAT_STUB_MARKER = 'ehoser-ephemeral-stub-v1';
+function parseEphemeralChatStub(content) {
+  try {
+    const value = JSON.parse(String(content || ''));
+    return value?.t === EPHEMERAL_CHAT_STUB_MARKER && typeof value.originalType === 'string' ? value : null;
+  } catch { return null; }
+}
 const TICTACTOE_TEST_OWNER = 'meisterlool_707';
 
 function publicChatMessage(row) {
@@ -5992,7 +6034,8 @@ function createChatMessageQuery(groupId, fields) {
     .neq('sender', GROUP_CALL_EVENT_SENDER)
     .neq('sender', CHAT_MUTATION_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
-    .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%');
+    .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
+    .not('encrypted_content', 'like', '%ehoser-ephemeral-stub-v1%');
 }
 
 function isTicTacToeTestCommand(username, content) {
@@ -6323,6 +6366,31 @@ app.post('/api/chat/groups/:groupId/delivered', async (req, res) => {
   } catch (error) {
     console.error('Save chat delivery receipt failed:', error?.message || error);
     return res.status(500).json({ error: 'Zustellstatus konnte nicht gespeichert werden' });
+  }
+});
+
+// Acknowledge processed edit/delete events; payloads are removed only after every current member has acknowledged.
+app.post('/api/chat/groups/:groupId/mutations/ack', async (req, res) => {
+  const user = chatAuth(req, res); if (!user) return;
+  const { groupId } = req.params;
+  const requestedId = Math.max(0, Number.parseInt(req.body?.upTo, 10) || 0);
+  const { data: self } = await supabaseAdmin.from('chat_group_members').select('username')
+    .eq('group_id', groupId).eq('username', user.username).maybeSingle();
+  if (!self) return res.status(403).json({ error: 'Nicht Mitglied' });
+  if (!requestedId) return res.json({ ok: true, acknowledged: 0 });
+  try {
+    const { data: latest, error: latestError } = await supabaseAdmin.from('chat_messages')
+      .select('id').eq('group_id', groupId).eq('sender', CHAT_MUTATION_EVENT_SENDER)
+      .lte('id', requestedId).order('id', { ascending: false }).limit(1);
+    if (latestError) throw latestError;
+    const acknowledged = Number(latest?.[0]?.id) || 0;
+    if (!acknowledged) return res.json({ ok: true, acknowledged: 0 });
+    await saveChatReceiptState(groupId, user.username, { mutationMessageId: acknowledged });
+    await cleanupAcknowledgedChatMutationEvents(groupId);
+    return res.json({ ok: true, acknowledged });
+  } catch (error) {
+    console.error('Acknowledge chat mutations failed:', error?.message || error);
+    return res.status(500).json({ error: 'Änderungen konnten nicht bestätigt werden' });
   }
 });
 
@@ -6900,6 +6968,8 @@ app.patch('/api/chat/messages/:id', async (req, res) => {
   if (selErr) return res.status(500).json({ error: 'DB Fehler' });
   if (!msgRow) return res.status(404).json({ error: 'Nachricht nicht gefunden' });
   if (msgRow.deleted_at) return res.status(409).json({ error: 'Gelöschte Nachrichten können nicht bearbeitet werden' });
+  const ephemeralStub = parseEphemeralChatStub(msgRow.encrypted_content);
+  if (ephemeralStub && ephemeralStub.originalType !== 'txt') return res.status(409).json({ error: 'Nur ursprüngliche Textnachrichten können bearbeitet werden' });
 
   // Prüfen: Nutzer muss Mitglied der Gruppe sein
   const { data: self } = await supabaseAdmin.from('chat_group_members').select('username').eq('group_id', msgRow.group_id).eq('username', user.username).single();
