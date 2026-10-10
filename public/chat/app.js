@@ -2158,12 +2158,14 @@ async function loadMessagesNow(gid, initial) {
             updatePinnedMessageBanner(response.pinnedMessage || null);
             updateMessageReceipts(activity);
             updateTypingIndicator(activity.typing || []);
+            if (nextMutationCursor > mutationAfter) void acknowledgeChatMutations(gid, nextMutationCursor);
             void markGroupDelivered(gid);
             markActiveGroupRead(gid);
             return;
         }
         await decryptMessagesForGroup(gid, messages);
         persistMessages(gid, messages);
+        if (nextMutationCursor > mutationAfter) void acknowledgeChatMutations(gid, nextMutationCursor);
         await fetchProBadges(messages.map((m) => m.sender));
         if (gid !== _activeGroupId) return;
         for (const m of messages) {
@@ -2249,6 +2251,16 @@ async function markGroupDelivered(gid = _activeGroupId) {
         await api('/chat/groups/' + gid + '/delivered', 'POST', { upTo });
     } catch {
         _lastDeliveredSent[gid] = previous;
+    }
+}
+
+async function acknowledgeChatMutations(gid, upTo) {
+    const cursor = Math.max(0, Number(upTo) || 0);
+    if (!gid || !cursor) return;
+    try {
+        await api('/chat/groups/' + gid + '/mutations/ack', 'POST', { upTo: cursor });
+    } catch {
+        // Mutation acknowledgements retry naturally on the next message sync.
     }
 }
 
