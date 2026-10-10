@@ -6239,7 +6239,9 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
 // lightweight receipt/typing rows, without exposing the Supabase service key
 // or making the chat tables public to browser clients.
 const CHAT_LIVE_WAIT_MS = 25_000;
-const CHAT_LIVE_RECHECK_MS = 1000;
+// Recheck the lightweight live cursor twice per second so new messages and receipts
+// reach active clients within roughly 0.5s without rapid 100ms database polling.
+const CHAT_LIVE_RECHECK_MS = 500;
 const waitForChatLiveChange = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function getChatLiveCursor(groupId) {
