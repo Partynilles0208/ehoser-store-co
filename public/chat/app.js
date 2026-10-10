@@ -153,6 +153,7 @@ let _ringAudioContext = null;
 let _notifiedIncomingCallId = null;
 let _finishingCall = false;
 let _callPollBusy = false;
+let _googleMeetBusy = false;
 let _callFacingMode = 'user';
 let _cameraSwitchBusy = false;
 let _callVideoInputCount = 0;
@@ -3747,8 +3748,111 @@ async function postCallSignal(kind, payload) {
     return api('/chat/calls/' + _currentCall.id + '/signals', 'POST', { kind, payload });
 }
 
+async function startGoogleMeetCall() {
+    if (_googleMeetBusy) return;
+    if (!_activeGroupId || !activeCallPeer() || _activeMembers.length !== 2) {
+        toast('Google-Meet-Anrufe sind nur in privaten Chats mit genau 2 Mitgliedern verfügbar.', 'err');
+        return;
+    }
+    if (!window.google?.accounts?.oauth2?.initTokenClient) {
+        toast('Google-Anmeldung ist noch nicht geladen. Bitte Seite neu laden und erneut versuchen.', 'err');
+        return;
+    }
+
+    _googleMeetBusy = true;
+    // Open a tab during the click gesture so the browser is less likely to
+    // block navigation after the OAuth/API requests finish.
+    const meetWindow = window.open('about:blank', '_blank');
+    if (meetWindow) {
+        try { meetWindow.opener = null; } catch {}
+        try { meetWindow.document.title = 'Ehoser – Google Meet wird vorbereitet'; } catch {}
+    }
+
+    try {
+        const clientId = await getChatGoogleClientId();
+        if (!clientId) throw new Error('Die Google OAuth Client-ID fehlt in der Ehoser-Konfiguration.');
+
+        const accessToken = await new Promise((resolve, reject) => {
+            let settled = false;
+            const finish = (fn, value) => {
+                if (settled) return;
+                settled = true;
+                fn(value);
+            };
+            const tokenClient = window.google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/meetings.space.created',
+                callback: (response) => {
+                    if (response?.error || !response?.access_token) {
+                        finish(reject, new Error('Google Meet wurde nicht autorisiert. Bitte erlaube den angefragten Zugriff.'));
+                        return;
+                    }
+                    finish(resolve, response.access_token);
+                },
+                error_callback: () => finish(reject, new Error('Das Google-Anmeldefenster konnte nicht geöffnet werden. Bitte Pop-ups für Ehoser erlauben.'))
+            });
+            tokenClient.requestAccessToken();
+        });
+
+        const response = await fetch('https://meet.googleapis.com/v2/spaces', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + accessToken,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        });
+        const meeting = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const detail = meeting?.error?.message;
+            if (response.status === 403) {
+                throw new Error('Google Meet hat den Zugriff abgelehnt. Prüfe, ob die Meet API aktiviert und der OAuth-Zugriff eingerichtet ist.' + (detail ? ' ' + detail : ''));
+            }
+            throw new Error(detail || ('Google Meet konnte keinen Anruf erstellen (HTTP ' + response.status + ').'));
+        }
+        const meetingUri = String(meeting?.meetingUri || '');
+        if (!/^https:\/\/meet\.google\.com\//i.test(meetingUri)) {
+            throw new Error('Google Meet hat keinen gültigen Besprechungslink zurückgegeben.');
+        }
+
+        const groupId = _activeGroupId;
+        const inviteText = '📹 Google-Meet-Anruf von ' + (_me?.username || 'Ehoser-Nutzer') + ': ' + meetingUri;
+        const plainContent = JSON.stringify({ t: 'txt', v: inviteText });
+        const storedContent = await encryptChatContent(groupId, plainContent);
+        const saved = await api('/chat/messages', 'POST', { groupId, content: storedContent });
+        const message = {
+            id: saved.id,
+            sender: _me.username,
+            created_at: saved.created_at || new Date().toISOString(),
+            content: storedContent
+        };
+        appendMessage(message, plainContent);
+        persistMessages(groupId, [message]);
+        _lastMsgId[groupId] = saved.id || _lastMsgId[groupId] || 0;
+        const area = document.getElementById('messagesArea');
+        if (area) area.scrollTop = area.scrollHeight;
+
+        if (meetWindow && !meetWindow.closed) {
+            meetWindow.location.href = meetingUri;
+        } else {
+            toast('Google-Meet-Link wurde in den Chat gesendet. Öffne die Nachricht, um beizutreten.', 'ok');
+        }
+    } catch (error) {
+        if (meetWindow && !meetWindow.closed) {
+            try { meetWindow.close(); } catch {}
+        }
+        toast(error?.message || 'Google-Meet-Anruf konnte nicht gestartet werden.', 'err');
+    } finally {
+        _googleMeetBusy = false;
+    }
+}
+
 async function startCall(mediaType = 'audio') {
     if (_currentCall || _incomingCall) return;
+    if (mediaType === 'video') {
+        await startGoogleMeetCall();
+        return;
+    }
     const peerName = activeCallPeer();
     if (!_activeGroupId || !peerName || _activeMembers.length !== 2) {
         toast('Anrufe gehen nur in Chats mit genau 2 Mitgliedern.', 'err');
