@@ -4862,12 +4862,7 @@ async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUser
     let originalType = 'unknown';
     try { originalType = String(JSON.parse(String(message.encrypted_content || '')).t || 'unknown').slice(0, 32); } catch {}
     const result = await supabaseAdmin.from('chat_messages')
-      .update({
-        encrypted_content: JSON.stringify({ t: EPHEMERAL_CHAT_STUB_MARKER, originalType }),
-        pinned_at: null,
-        pinned_by: null,
-        updated_at: new Date().toISOString()
-      })
+      .update({ encrypted_content: JSON.stringify({ t: EPHEMERAL_CHAT_STUB_MARKER, originalType }) })
       .eq('group_id', groupId).eq('id', message.id);
     if (result.error) throw result.error;
   }
@@ -6218,6 +6213,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
       .select(CHAT_MESSAGE_FIELDS)
       .eq('group_id', groupId)
       .is('deleted_at', null)
+      .not('encrypted_content', 'like', '%ehoser-ephemeral-stub-v1%')
       .not('pinned_at', 'is', null)
       .order('pinned_at', { ascending: false })
       .limit(1)
