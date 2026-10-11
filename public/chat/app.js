@@ -2170,7 +2170,6 @@ async function loadMessagesNow(gid, initial) {
             writeChatCache('mutationSync', mutationSync);
             void acknowledgeChatMutations(gid, nextMutationCursor);
         }
-        await fetchProBadges(messages.map((m) => m.sender));
         if (gid !== _activeGroupId) return;
         for (const m of messages) {
             if (gid !== _activeGroupId) break;
@@ -2188,6 +2187,21 @@ async function loadMessagesNow(gid, initial) {
             markMessageSeen(gid, m.id);
             _lastMsgId[gid] = Math.max(_lastMsgId[gid] || 0, Number(m.id) || 0);
         }
+        // Badge lookup is optional UI metadata. Never make newly received messages
+        // wait for the separate badge API request before they appear in the chat.
+        void fetchProBadges(messages.map((m) => m.sender)).then(() => {
+            if (gid !== _activeGroupId) return;
+            for (const message of messages) {
+                const row = document.querySelector('[data-msgid="' + String(message.id).replace(/"/g, '\\"') + '"]');
+                if (!row || !_proBadgeCache[message.sender]?.isPro) continue;
+                const sender = row.querySelector('.msg-sender');
+                if (sender && !sender.querySelector('.msg-pro-badge')) {
+                    sender.classList.add('pro-sender');
+                    sender.insertAdjacentHTML('beforeend', '<span class="msg-pro-badge">⭐ PRO</span>');
+                }
+                row.querySelector('.msg-avatar')?.classList.add('pro-av');
+            }
+        });
         updateMessageReceipts(activity);
         updateTypingIndicator(activity.typing || []);
         void markGroupDelivered(gid);
