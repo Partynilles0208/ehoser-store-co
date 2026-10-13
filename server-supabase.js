@@ -3853,8 +3853,9 @@ app.post('/api/admin/users/:id/add-month', async (req, res) => {
   const userId = Number(req.params.id);
   const plan = String(req.body?.plan || 'pro').toLowerCase();
   if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Ungueltige Nutzer-ID' });
+  if (!['pro', 'premium'].includes(plan)) return res.status(400).json({ error: 'Ungueltiger Tarif' });
   try {
-    const { data, error } = await supabase.from('users').select('username').eq('id', userId).single();
+    const { data, error } = await supabaseAdmin.from('users').select('username').eq('id', userId).single();
     if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
     const profile = await getProfile(data.username);
     const proBase = profile.proUntil && Date.parse(profile.proUntil) > Date.now() ? Date.parse(profile.proUntil) : Date.now();
@@ -3886,7 +3887,7 @@ app.post('/api/admin/users/:id/pro', async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('users')
       .select('username')
       .eq('id', userId)
@@ -3923,7 +3924,7 @@ app.post('/api/admin/users/:id/premium', async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('users')
       .select('username')
       .eq('id', userId)
@@ -4275,7 +4276,7 @@ app.post('/api/admin/users/unban', async (req, res) => {
   }
 });
 
-// Admin: Nutzerkonto loeschen
+// Admin: Nutzerkonto samt zugehörigen Profildaten, Chats und Tarif-Anfragen löschen.
 app.delete('/api/admin/users/:id', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (!adminKey || adminKey !== ADMIN_UPLOAD_KEY) {
@@ -4288,15 +4289,23 @@ app.delete('/api/admin/users/:id', async (req, res) => {
   }
 
   try {
-    await supabase.from('installations').delete().eq('user_id', userId);
+    const { data: user, error: lookupError } = await supabaseAdmin
+      .from('users')
+      .select('id, username')
+      .eq('id', userId)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!user) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+    if (isOwnerUsername(user.username)) {
+      return res.status(403).json({ error: 'Der Eigentümer-Account kann nicht über diese Nutzerliste gelöscht werden.' });
+    }
 
-    const { error } = await supabase.from('users').delete().eq('id', userId);
-    if (error) throw error;
-
-    res.json({ success: true });
+    const deleted = await permanentlyDeleteAccount(user.username, user.id);
+    if (!deleted) return res.status(404).json({ error: 'Nutzer konnte nicht gefunden werden.' });
+    return res.json({ success: true, username: user.username });
   } catch (error) {
-    console.error('Admin Delete User Error:', error);
-    res.status(500).json({ error: 'Nutzer konnte nicht gelöscht werden' });
+    console.error('Admin Delete User Error:', error?.message || error);
+    return res.status(500).json({ error: 'Nutzerkonto konnte nicht vollständig gelöscht werden. Bitte Serverprotokoll prüfen.' });
   }
 });
 
@@ -6165,7 +6174,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
   let hasMessageMetadata = true;
   let query = createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS);
   query = queryAfter
-    ? query.gt('id', queryAfter).order('id', { ascending: true }).limit(50)
+    ? query.gt('id', queryAfter).order('id', { ascending: true }).limit(250)
     // Only the first device to open a chat without a prior delivery watermark
     // receives a bounded bootstrap history. Later devices receive new messages only.
     : query.order('id', { ascending: false }).limit(180);
@@ -6174,7 +6183,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
     hasMessageMetadata = false;
     let legacyQuery = createChatMessageQuery(groupId, LEGACY_CHAT_MESSAGE_FIELDS);
     legacyQuery = queryAfter
-      ? legacyQuery.gt('id', queryAfter).order('id', { ascending: true }).limit(50)
+      ? legacyQuery.gt('id', queryAfter).order('id', { ascending: true }).limit(250)
       : legacyQuery.order('id', { ascending: false }).limit(180);
     ({ data, error } = await legacyQuery);
   }
@@ -6186,7 +6195,7 @@ app.get('/api/chat/messages/:groupId', async (req, res) => {
     const changedResult = await createChatMessageQuery(groupId, CHAT_MESSAGE_FIELDS)
       .gt('updated_at', changedAfter)
       .order('updated_at', { ascending: true })
-      .limit(50);
+      .limit(250);
     if (changedResult.error && !isMissingChatMessageMetadata(changedResult.error)) {
       return res.status(500).json({ error: 'Nachrichten konnten nicht geladen werden' });
     }
