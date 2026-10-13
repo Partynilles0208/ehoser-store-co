@@ -4850,8 +4850,7 @@ async function cleanupConfirmedDeliveredChatMessages(groupId, acknowledgedByUser
   for (let offset = 0; ; offset += 500) {
     const page = await supabaseAdmin.from('chat_messages')
       .select('id,sender,encrypted_content').eq('group_id', groupId).lte('id', upTo)
-      .neq('sender', CHAT_MUTATION_EVENT_SENDER)
-      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+        .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
       .not('sender', 'like', E2EE_KEY_ENVELOPE_PREFIX + '%')
       .neq('sender', CHAT_CALL_EVENT_SENDER).neq('sender', GROUP_CALL_EVENT_SENDER)
       .not('encrypted_content', 'like', '%ehoser-ephemeral-stub-v1%')
@@ -6267,7 +6266,22 @@ async function getChatLiveCursor(groupId) {
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .order('id', { ascending: false })
     .limit(1);
-  if (newestResult.error) throw newestResult.error;
+  let newest = newestResult.data?.[0] || {};
+  if (newestResult.error && isMissingChatMessageMetadata(newestResult.error)) {
+    const legacyNewest = await supabaseAdmin
+      .from('chat_messages')
+      .select('id')
+      .eq('group_id', groupId)
+      .neq('sender', CHAT_CALL_EVENT_SENDER)
+      .neq('sender', GROUP_CALL_EVENT_SENDER)
+      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+      .order('id', { ascending: false })
+      .limit(1);
+    if (legacyNewest.error) throw legacyNewest.error;
+    newest = legacyNewest.data?.[0] || {};
+  } else if (newestResult.error) {
+    throw newestResult.error;
+  }
 
   // Also track the most recently edited row so edits still wake the long-poll.
   let changedResult = await supabaseAdmin
@@ -6295,7 +6309,6 @@ async function getChatLiveCursor(groupId) {
     .limit(500);
   if (stateError) throw stateError;
 
-  const newest = newestResult.data?.[0] || {};
   const changed = changedResult.data?.[0] || {};
   // State payloads are intentionally excluded from the live cursor. Their
   // updated_at value changes on every receipt/typing write, so this small
