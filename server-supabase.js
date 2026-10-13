@@ -6254,27 +6254,37 @@ const CHAT_LIVE_RECHECK_MS = 500;
 const waitForChatLiveChange = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function getChatLiveCursor(groupId) {
-  let newestResult = await supabaseAdmin
+  // Detect new messages by monotonically increasing ID, not updated_at.
+  // Older rows can have a NULL or unchanged updated_at value, which otherwise
+  // makes the long-poll miss newly inserted messages until the fallback sync.
+  const newestResult = await supabaseAdmin
     .from('chat_messages')
     .select('id,updated_at')
     .eq('group_id', groupId)
     .neq('sender', CHAT_CALL_EVENT_SENDER)
     .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .neq('sender', CHAT_MUTATION_EVENT_SENDER)
+    .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
+    .order('id', { ascending: false })
+    .limit(1);
+  if (newestResult.error) throw newestResult.error;
+
+  // Also track the most recently edited row so edits still wake the long-poll.
+  let changedResult = await supabaseAdmin
+    .from('chat_messages')
+    .select('id,updated_at')
+    .eq('group_id', groupId)
+    .not('updated_at', 'is', null)
+    .neq('sender', CHAT_CALL_EVENT_SENDER)
+    .neq('sender', GROUP_CALL_EVENT_SENDER)
+    .neq('sender', CHAT_MUTATION_EVENT_SENDER)
     .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
     .order('updated_at', { ascending: false })
     .limit(1);
-  if (newestResult.error && isMissingChatMessageMetadata(newestResult.error)) {
-    newestResult = await supabaseAdmin
-      .from('chat_messages')
-      .select('id')
-      .eq('group_id', groupId)
-      .neq('sender', CHAT_CALL_EVENT_SENDER)
-      .neq('sender', GROUP_CALL_EVENT_SENDER)
-      .not('sender', 'like', CHAT_MEMBER_STATE_SENDER_PREFIX + '%')
-      .order('id', { ascending: false })
-      .limit(1);
+  if (changedResult.error && isMissingChatMessageMetadata(changedResult.error)) {
+    changedResult = { data: [], error: null };
   }
-  if (newestResult.error) throw newestResult.error;
+  if (changedResult.error) throw changedResult.error;
 
   const { data: stateRows, error: stateError } = await supabaseAdmin
     .from('chat_messages')
@@ -6286,12 +6296,13 @@ async function getChatLiveCursor(groupId) {
   if (stateError) throw stateError;
 
   const newest = newestResult.data?.[0] || {};
+  const changed = changedResult.data?.[0] || {};
   // State payloads are intentionally excluded from the live cursor. Their
   // updated_at value changes on every receipt/typing write, so this small
   // metadata-only query avoids repeatedly transferring the full state JSON.
   const stateSignature = (stateRows || []).map((row) => String(row.id) + ':' + String(row.updated_at || '')).join('|');
   return crypto.createHash('sha256')
-    .update(String(newest.id || 0) + ':' + String(newest.updated_at || '') + ':' + stateSignature)
+    .update(String(newest.id || 0) + ':' + String(newest.updated_at || '') + ':' + String(changed.id || 0) + ':' + String(changed.updated_at || '') + ':' + stateSignature)
     .digest('hex');
 }
 
