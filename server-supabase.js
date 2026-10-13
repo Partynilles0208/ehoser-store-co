@@ -1284,23 +1284,27 @@ async function upsertProfile(username, patch) {
   const newPremiumUntil = Object.prototype.hasOwnProperty.call(patch, 'premiumUntil') ? patch.premiumUntil : current.premiumUntil;
   const newSettings = normalizeSettings({ ...(current.settings || {}), ...(patch.settings || {}), premiumUntil: newPremiumUntil || null });
 
-  // Pro-Status in users Tabelle schreiben (primary – existiert garantiert)
+  // Admin writes are required here: the regular anon client can silently update
+  // zero rows because of RLS, making admin buttons look successful without changes.
   let savedToUsers = false;
   try {
-    const { error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('users')
       .update({ pro_until: newProUntil, premium_until: newPremiumUntil })
-      .eq('username', username);
-    if (!error) savedToUsers = true;
-  } catch {}
-  if (!savedToUsers) {
-    try {
-      const { error } = await supabase
+      .eq('username', username)
+      .select('id');
+    if (!error && Array.isArray(data) && data.length > 0) savedToUsers = true;
+    else if (error && /premium_until|column/i.test(error.message || '')) {
+      const fallback = await supabaseAdmin
         .from('users')
         .update({ pro_until: newProUntil })
-        .eq('username', username);
-      if (!error) savedToUsers = true;
-    } catch {}
+        .eq('username', username)
+        .select('id');
+      if (!fallback.error && Array.isArray(fallback.data) && fallback.data.length > 0) savedToUsers = true;
+    }
+    if (error && !/premium_until|column/i.test(error.message || '')) throw error;
+  } catch (error) {
+    console.error('Admin profile users-table update failed:', error?.message || error);
   }
 
   // Wenn users.pro_until Spalte fehlt →’ Auto-Spalte anlegen versuchen
@@ -3989,15 +3993,18 @@ app.post('/api/admin/users/:id/ps-account', async (req, res) => {
   }
 
   try {
-    const { data, error } = await supabase.from('users').select('username').eq('id', userId).single();
-    if (error || !data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+    const { data, error } = await supabaseAdmin.from('users').select('username').eq('id', userId).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
 
-    const { error: upsertErr } = await supabaseAdmin
+    const { data: saved, error: upsertErr } = await supabaseAdmin
       .from('user_profiles')
-      .upsert({ username: data.username, ps_account: enabled }, { onConflict: 'username' });
+      .upsert({ username: data.username, ps_account: enabled }, { onConflict: 'username' })
+      .select('username, ps_account')
+      .single();
 
-    if (upsertErr) return res.status(500).json({ error: upsertErr.message });
-    return res.json({ ok: true, username: data.username, ps_account: enabled });
+    if (upsertErr) throw upsertErr;
+    return res.json({ ok: true, username: data.username, ps_account: saved?.ps_account === true });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
