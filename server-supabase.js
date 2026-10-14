@@ -1272,8 +1272,8 @@ async function getProfile(username) {
     premiumUntil: premiumUntil || null,
     isPremium,
     isPro: isPremium || (Number.isFinite(ms) && ms > Date.now()),
-    // PS ist für jeden angemeldeten ehoser-Account verfügbar.
-    ps_account: true,
+    // PS-Zugriff folgt dem gespeicherten Admin-Schalter statt pauschal true zu sein.
+    ps_account: psAccount,
     credits: Number((settings || mem?.settings || {})?.credits?.balance || 0)
   };
 }
@@ -1383,8 +1383,15 @@ async function permanentlyDeleteAccount(username, userId = null) {
   }
   memoryProfiles.delete(username);
   await ignore(supabaseAdmin.from('user_profiles').delete().eq('username', username));
-  const { error } = await supabaseAdmin.from('users').delete().eq('id', userRow.id);
+  const { data: deletedRows, error } = await supabaseAdmin
+    .from('users')
+    .delete()
+    .eq('id', userRow.id)
+    .select('id');
   if (error) throw error;
+  if (!Array.isArray(deletedRows) || deletedRows.length === 0) {
+    throw new Error('Das Nutzerkonto wurde in der users-Tabelle nicht gelöscht (keine Zeile betroffen).');
+  }
   return true;
 }
 
